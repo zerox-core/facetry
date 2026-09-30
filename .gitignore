@@ -1,0 +1,17 @@
+node_modules/
+dist/
+
+# local config with secrets (use config.example.json instead)
+config.json
+
+# runtime data
+interview-site/data/
+resume-studio/data/
+sidenote/data/
+
+# cloned third-party repos (keep their own git history)
+open-source/
+
+# OS / editor
+.DS_Store
+Thumbs.db

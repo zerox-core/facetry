@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>面试评价报告</title>
+<style>
+  :root { --primary: #4a54c4; --primary-light: #eef0fb; --border: #e6e9ef; --text: #2b2f36; --muted: #7a828e; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #e9ebf0; color: var(--text); line-height: 1.7; }
+  .page { max-width: 820px; margin: 24px auto; background: #fff; padding: 48px 56px; box-shadow: 0 2px 16px rgba(0,0,0,.08); }
+  .site-brand { font-size: 12px; color: var(--muted); letter-spacing: 2px; }
+  h1 { font-size: 24px; margin: 6px 0 2px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .meta b { color: var(--text); font-weight: 600; }
+  h2 { font-size: 16px; color: var(--primary); margin: 26px 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--primary-light); }
+  .eval-box { background: var(--primary-light); border-radius: 10px; padding: 18px 20px; }
+  .eval-box p { margin-bottom: 8px; font-size: 14px; }
+  .eval-box ul { padding-left: 20px; font-size: 14px; }
+  .eval-box li { margin-bottom: 4px; }
+  .eval-label { font-weight: 700; color: var(--primary); }
+  .suggestion { margin-top: 10px; padding: 10px 14px; background: #fff; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { border: 1px solid var(--border); padding: 7px 12px; text-align: left; }
+  th { background: #f0f2f7; }
+  .qcard { border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; page-break-inside: avoid; }
+  .qcard .qhead { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; flex-wrap: wrap; }
+  .qid { font-weight: 700; color: var(--primary); }
+  .qpart { font-size: 11.5px; background: var(--primary-light); color: var(--primary); border-radius: 999px; padding: 2px 10px; font-weight: 600; }
+  .qavg { margin-left: auto; font-size: 13px; color: var(--muted); }
+  .qtext { font-size: 14px; margin-bottom: 10px; }
+  .qcard table td:first-child { white-space: nowrap; }
+  .no-print { display: flex; gap: 12px; justify-content: center; margin: 20px auto 0; max-width: 820px; }
+  .btn { border: 1px solid var(--border); background: #fff; border-radius: 8px; padding: 10px 26px; font-size: 15px; cursor: pointer; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 700; }
+  .btn:hover { opacity: .85; }
+  #evalStatus { font-size: 12px; color: var(--muted); text-align: center; margin-top: 8px; }
+  .loading { text-align: center; color: var(--muted); padding: 60px 0; }
+  @media print {
+    body { background: #fff; }
+    .page { box-shadow: none; margin: 0; max-width: none; padding: 0; }
+    .no-print, #evalStatus { display: none !important; }
+    * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .qcard { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="no-print">
+  <button class="btn primary" onclick="window.print()">🖨️ 导出 PDF（打印 / 另存为 PDF）</button>
+  <button class="btn" id="btnRegen" onclick="regenEvaluation()">↻ 重新生成 AI 综评</button>
+</div>
+<div id="evalStatus" class="no-print"></div>
+<div class="page" id="page"><div class="loading">报告加载中…</div></div>
+
+<script>
+const interviewId = new URLSearchParams(location.search).get('interviewId');
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+
+async function load() {
+  if (!interviewId) {
+    document.getElementById('page').innerHTML = '<div class="loading">缺少 interviewId 参数</div>';
+    return;
+  }
+  const res = await fetch('/api/interviews/' + encodeURIComponent(interviewId) + '/report-data');
+  if (!res.ok) {
+    document.getElementById('page').innerHTML = '<div class="loading">面试记录不存在</div>';
+    return;
+  }
+  render(await res.json());
+}
+
+function render(d) {
+  const c = d.candidate || {};
+  const iv = d.interview || {};
+  let html = '';
+  html += '<div class="site-brand">AI 管培生面试管理</div>';
+  html += '<h1>面试评价报告 · ' + esc(c.name || '未命名') + '</h1>';
+  html += '<div class="meta">面试日期：<b>' + fmtDate(iv.createdAt) + '</b>　状态：<b>' + esc(iv.status) + '</b>　有效题数：<b>' + d.questions.length + '</b></div>';
+
+  // AI 综合评价
+  html += '<h2>AI 综合评价</h2>';
+  if (d.evaluation && d.evaluation.overall) {
+    const ev = d.evaluation;
+    html += '<div class="eval-box">';
+    html += '<p><span class="eval-label">总体印象：</span>' + esc(ev.overall) + '</p>';
+    if (ev.strengths && ev.strengths.length) {
+      html += '<p><span class="eval-label">优势：</span></p><ul>' + ev.strengths.map(s => '<li>' + esc(s) + '</li>').join('') + '</ul>';
+    }
+    if (ev.weaknesses && ev.weaknesses.length) {
+      html += '<p><span class="eval-label">不足：</span></p><ul>' + ev.weaknesses.map(s => '<li>' + esc(s) + '</li>').join('') + '</ul>';
+    }
+    html += '<div class="suggestion"><span class="eval-label">录用建议：</span>' + esc(ev.suggestion) + '</div>';
+    html += '</div>';
+  } else {
+    html += '<div class="eval-box"><p class="muted">尚未生成 AI 综合评价，点击右上角「重新生成 AI 综评」。</p></div>';
+  }
+
+  // 汇总
+  html += '<h2>成绩汇总</h2>';
+  html += '<table><thead><tr><th>维度</th><th>平均分（5 分制）</th><th>百分制</th></tr></thead><tbody>';
+  for (const p of d.partAverages) {
+    html += '<tr><td>' + esc(p.partName) + '</td><td>' + p.avg.toFixed(1) + '</td><td>' + (p.avg / 5 * 100).toFixed(0) + '</td></tr>';
+  }
+  if (d.overallAvg !== null) {
+    html += '<tr style="font-weight:700;background:#fffbe8"><td>全场总平均</td><td>' + d.overallAvg.toFixed(1) + '</td><td>' + d.overallAvgPct.toFixed(0) + '</td></tr>';
+  }
+  html += '</tbody></table>';
+
+  // 逐题明细
+  html += '<h2>逐题明细</h2>';
+  for (const qq of d.questions) {
+    html += '<div class="qcard">';
+    html += '<div class="qhead"><span class="qid">' + esc(qq.id) + '</span><span class="qpart">' + esc(qq.partName) + '</span><span class="qavg">题平均分：' + (qq.avg === null ? '--' : qq.avg.toFixed(1)) + '</span></div>';
+    html += '<div class="qtext">' + esc(qq.question) + '</div>';
+    html += '<table><thead><tr><th>面试官</th><th style="width:70px">分数</th><th>备注</th></tr></thead><tbody>';
+    for (const s of qq.scores) {
+      html += '<tr><td>' + esc(s.interviewerName) + '</td><td>' + (typeof s.score === 'number' ? s.score : '--') + '</td><td>' + esc(s.note || '') + '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+
+  if (iv.comment) {
+    html += '<h2>面试官总评</h2><p style="font-size:14px;white-space:pre-wrap">' + esc(iv.comment) + '</p>';
+  }
+
+  document.getElementById('page').innerHTML = html;
+  document.title = '面试评价报告 - ' + (c.name || '未命名');
+}
+
+async function regenEvaluation() {
+  const st = document.getElementById('evalStatus');
+  const btn = document.getElementById('btnRegen');
+  btn.disabled = true;
+  st.textContent = '⏳ AI 综评生成中（约 1-3 分钟）…';
+  try {
+    const res = await fetch('/api/interviews/' + encodeURIComponent(interviewId) + '/evaluation?force=1', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    st.textContent = '✓ 已生成';
+    load();
+  } catch (e) {
+    st.textContent = '✗ 生成失败：' + e.message;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { st.textContent = ''; }, 5000);
+  }
+}
+
+load();
+</script>
+</body>
+</html>

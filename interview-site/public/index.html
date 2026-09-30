@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 管培生面试管理</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .hero { text-align: center; padding: 48px 0 32px; }
+  .hero h1 { font-size: 30px; }
+  .hero p { color: var(--muted); margin-top: 8px; }
+  .entries { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 20px; }
+  .entry {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 28px 24px; text-align: center; transition: all .15s; display: block;
+  }
+  .entry:hover { border-color: var(--primary); box-shadow: 0 4px 16px rgba(74,84,196,.12); text-decoration: none; transform: translateY(-2px); }
+  .entry .ico { font-size: 34px; }
+  .entry h3 { margin: 12px 0 8px; color: var(--text); font-size: 17px; }
+  .entry p { color: var(--muted); font-size: 13.5px; }
+  .tip { text-align: center; margin-top: 28px; color: var(--muted); font-size: 13px; }
+  @media (max-width: 760px) { .entries { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="hero">
+    <h1>AI 管培生面试管理</h1>
+    <p>Agent 进阶 30% · 思维 25% · 审美 15% · AI 基础 / 深度学习 / 后端 各 10%</p>
+  </div>
+  <div class="entries">
+    <a class="entry" href="/admin.html">
+      <div class="ico">🗂️</div>
+      <h3>① 人员管理</h3>
+      <p>维护面试官与面试者名单，上传 / 预览面试者 PDF 简历</p>
+    </a>
+    <a class="entry" href="/interview.html">
+      <div class="ico">🧭</div>
+      <h3>② 面试官控制台</h3>
+      <p>开始面试、逐题打分、查看参考答案、控制投屏、输出加权总分</p>
+    </a>
+    <a class="entry" href="/screen.html" target="_blank">
+      <div class="ico">🖥️</div>
+      <h3>③ 投屏页</h3>
+      <p>实时展示当前题目（无答案），建议在投影设备上全屏打开（按 F11）</p>
+    </a>
+  </div>
+  <div class="tip">提示：投屏页请在新窗口全屏浏览器中打开，按 F11 进入全屏。</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "folio-resume-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "页间 — 以简历为中心的面试工作台",
+  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js" },
+  "engines": { "node": ">=22" },
+  "dependencies": { "mammoth": "^1.11.0" }
+}

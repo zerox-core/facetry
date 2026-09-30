@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人员管理 - AI 管培生面试</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .name-input { width: 140px; padding: 5px 10px; font-size: 14px; }
+  .ai-panel { background: #f8f9fb; border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; }
+  .ai-panel h4 { margin: 10px 0 6px; font-size: 14px; color: var(--primary); }
+  .ai-panel ol { padding-left: 22px; }
+  .ai-panel li { margin-bottom: 5px; font-size: 13.5px; }
+  .ai-status { font-size: 13px; }
+  .ai-status.err { color: var(--danger); }
+  .ai-status.ok { color: var(--ok); }
+  /* AI 问题可折叠卡片 */
+  .qcard { background: #fff; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s; }
+  .qcard:hover { border-color: var(--primary); }
+  .qcard.open { border-left: 3px solid var(--primary); }
+  .qcard.open .qcard-head { color: var(--primary); }
+  .qcard-head { display: flex; gap: 8px; padding: 10px 14px; font-size: 13.5px; line-height: 1.6; }
+  .qcard-head .qnum { color: var(--primary); font-weight: 700; flex: none; }
+  .qcard-body { display: none; padding: 0 14px 12px 30px; }
+  .qcard.open .qcard-body { display: block; }
+  .qsec { font-size: 13px; margin-top: 8px; color: #454b54; line-height: 1.7; }
+  .qsec-label { display: inline-block; background: var(--primary-light); color: var(--primary); border-radius: 6px; padding: 1px 8px; font-size: 12px; font-weight: 600; margin-right: 6px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">AI 管培生面试</span>
+  <nav>
+    <a href="/">首页</a>
+    <a href="/admin.html" class="on">人员管理</a>
+    <a href="/interview.html">面试官控制台</a>
+    <a href="/screen.html" target="_blank">投屏页</a>
+  </nav>
+</div>
+<div class="container">
+
+  <div class="card">
+    <h2>面试官</h2>
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <input type="text" id="interviewerName" placeholder="面试官姓名" style="width:220px">
+      <button class="btn primary" onclick="addInterviewer()">添加面试官</button>
+    </div>
+    <table class="list">
+      <thead><tr><th>姓名</th><th style="width:100px">操作</th></tr></thead>
+      <tbody id="interviewerList"></tbody>
+    </table>
+    <p class="muted" id="interviewerEmpty">暂无面试官</p>
+  </div>
+
+  <div class="card">
+    <h2>面试者</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <input type="text" id="candName" placeholder="姓名（可留空，上传简历后 AI 识别）" style="width:230px">
+      <input type="tel" id="candPhone" placeholder="电话" style="width:160px">
+      <input type="text" id="candNote" placeholder="备注" style="flex:1;min-width:180px">
+      <button class="btn primary" onclick="addCandidate()">添加面试者</button>
+    </div>
+    <table class="list">
+      <thead><tr><th>姓名</th><th>电话</th><th>备注</th><th>简历</th><th style="width:230px">操作</th></tr></thead>
+      <tbody id="candidateList"></tbody>
+    </table>
+    <p class="muted" id="candidateEmpty">暂无面试者</p>
+  </div>
+
+</div>
+
+<script>
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    let msg = res.status;
+    try { msg = (await res.json()).error || msg; } catch (e) {}
+    alert('操作失败：' + msg);
+    throw new Error(msg);
+  }
+  return res.json();
+}
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ---------- 面试官 ----------
+async function loadInterviewers() {
+  const list = await api('/api/interviewers');
+  const tb = document.getElementById('interviewerList');
+  tb.innerHTML = '';
+  document.getElementById('interviewerEmpty').style.display = list.length ? 'none' : 'block';
+  for (const it of list) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td></td><td><button class="btn small danger">删除</button></td>';
+    tr.children[0].textContent = it.name;
+    tr.querySelector('button').onclick = async () => {
+      if (!confirm('删除面试官「' + it.name + '」？')) return;
+      await api('/api/interviewers/' + it.id, { method: 'DELETE' });
+      loadInterviewers();
+    };
+    tb.appendChild(tr);
+  }
+}
+async function addInterviewer() {
+  const name = document.getElementById('interviewerName').value.trim();
+  if (!name) return alert('请输入姓名');
+  await api('/api/interviewers', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
+  document.getElementById('interviewerName').value = '';
+  loadInterviewers();
+}
+
+// ---------- 面试者 ----------
+async function loadCandidates() {
+  const list = await api('/api/candidates');
+  const tb = document.getElementById('candidateList');
+  tb.innerHTML = '';
+  document.getElementById('candidateEmpty').style.display = list.length ? 'none' : 'block';
+  for (const c of list) {
+    const tr = document.createElement('tr');
+    tr.dataset.cid = c.id;
+
+    // 姓名（可编辑，失焦保存）
+    const td1 = document.createElement('td');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text'; nameInput.className = 'name-input'; nameInput.value = c.name;
+    nameInput.onblur = async () => {
+      const v = nameInput.value.trim();
+      if (!v || v === c.name) { nameInput.value = c.name; return; }
+      await api('/api/candidates/' + c.id, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: v })
+      });
+      c.name = v;
+    };
+    td1.appendChild(nameInput);
+
+    const td2 = document.createElement('td'); td2.textContent = c.phone || '-';
+    const td3 = document.createElement('td'); td3.textContent = c.note || '-';
+
+    // 简历列
+    const resumeTd = document.createElement('td');
+    const upBtn = document.createElement('button');
+    upBtn.className = 'btn small';
+    upBtn.textContent = c.resume ? '重新上传' : '上传 PDF 简历';
+    upBtn.onclick = () => pickResume(c);
+    resumeTd.appendChild(upBtn);
+    if (c.resume) {
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'btn small';
+      prevBtn.style.marginLeft = '6px';
+      prevBtn.textContent = '预览';
+      prevBtn.onclick = () => toggleIframeRow(c, tr, 'pdf-row', '/resumes/' + encodeURIComponent(c.id) + '.pdf');
+      resumeTd.appendChild(prevBtn);
+    }
+
+    // 操作列：AI 分析 / 查看问题 / 删除
+    const actTd = document.createElement('td');
+    if (c.resume) {
+      const aiBtn = document.createElement('button');
+      aiBtn.className = 'btn small primary';
+      aiBtn.textContent = 'AI 分析简历';
+      aiBtn.onclick = () => analyzeResume(c, aiBtn);
+      actTd.appendChild(aiBtn);
+    }
+    if (c.generatedQuestions && c.generatedQuestions.projects && c.generatedQuestions.projects.length) {
+      const viewBtn = document.createElement('button');
+      viewBtn.className = 'btn small';
+      viewBtn.style.marginLeft = '6px';
+      viewBtn.textContent = '查看 AI 问题';
+      viewBtn.onclick = () => toggleAiRow(c, tr);
+      actTd.appendChild(viewBtn);
+    }
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn small danger';
+    delBtn.style.marginLeft = '6px';
+    delBtn.textContent = '删除';
+    delBtn.onclick = async () => {
+      if (!confirm('删除面试者「' + c.name + '」？其简历文件将一并删除。')) return;
+      await api('/api/candidates/' + c.id, { method: 'DELETE' });
+      loadCandidates();
+    };
+    actTd.appendChild(delBtn);
+
+    tr.append(td1, td2, td3, resumeTd, actTd);
+    tb.appendChild(tr);
+  }
+}
+async function addCandidate() {
+  const name = document.getElementById('candName').value.trim();
+  const c = await api('/api/candidates', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      phone: document.getElementById('candPhone').value.trim(),
+      note: document.getElementById('candNote').value.trim()
+    })
+  });
+  document.getElementById('candName').value = '';
+  document.getElementById('candPhone').value = '';
+  document.getElementById('candNote').value = '';
+  loadCandidates();
+  return c;
+}
+
+// ---------- 简历上传 / 预览 ----------
+function pickResume(c) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) return alert('请选择 PDF 文件');
+    const res = await fetch('/api/candidates/' + c.id + '/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/pdf' },
+      body: file
+    });
+    if (!res.ok) { alert('上传失败'); return; }
+    c.resume = c.id + '.pdf';
+    await loadCandidates();
+    // 上传成功后自动触发一次 AI 分析（失败可手动重试）
+    analyzeResume(c, null);
+  };
+  input.click();
+}
+function toggleIframeRow(c, tr, cls, src) {
+  const next = tr.nextSibling;
+  if (next && next.classList && next.classList.contains(cls)) { next.remove(); return; }
+  const row = document.createElement('tr');
+  row.className = cls;
+  const td = document.createElement('td');
+  td.colSpan = 5;
+  td.innerHTML = '<iframe class="pdf-view" src="' + src + '"></iframe>';
+  row.appendChild(td);
+  tr.after(row);
+}
+
+// ---------- AI 简历分析（PDF.js 浏览器端渲染为图片 → 服务端多模态 LLM；渲染失败退回文本提取） ----------
+async function extractPdfText(url) {
+  const pdfjs = await import('/vendor/pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs';
+  const doc = await pdfjs.getDocument(url).promise;
+  let text = '';
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const tc = await page.getTextContent();
+    text += tc.items.map(it => it.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+// 逐页渲染为 JPEG dataURL：最多前 5 页，最长边约 1280px，quality 0.75
+async function renderPdfToImages(url) {
+  const pdfjs = await import('/vendor/pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs';
+  const doc = await pdfjs.getDocument(url).promise;
+  const pages = Math.min(doc.numPages, 5);
+  const images = [];
+  for (let i = 1; i <= pages; i++) {
+    const page = await doc.getPage(i);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(2, 1280 / Math.max(base.width, base.height));
+    const vp = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(vp.width);
+    canvas.height = Math.floor(vp.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    images.push(canvas.toDataURL('image/jpeg', 0.75));
+  }
+  return { images, totalPages: doc.numPages };
+}
+
+async function analyzeResume(c, btn) {
+  const tr = findCandidateRow(c.id);
+  showAiStatus(c, tr, '⏳ 正在把简历渲染为图片并分析（约 2-3 分钟）…', '');
+  if (btn) { btn.disabled = true; }
+  try {
+    let payload, pageNote = '';
+    try {
+      const { images, totalPages } = await renderPdfToImages('/resumes/' + encodeURIComponent(c.id) + '.pdf');
+      if (!images.length) throw new Error('渲染结果为空');
+      payload = { images };
+      if (totalPages > 5) pageNote = '（简历共 ' + totalPages + ' 页，已截取前 5 页）';
+    } catch (renderErr) {
+      // 渲染失败的极端情况：退回文本提取路径
+      console.warn('PDF 渲染失败，退回文本提取：', renderErr);
+      showAiStatus(c, tr, '⏳ 图片渲染失败，改用文本提取分析（约 2-3 分钟）…', '');
+      const resumeText = await extractPdfText('/resumes/' + encodeURIComponent(c.id) + '.pdf');
+      if (!resumeText.trim()) throw new Error('PDF 渲染与文本提取均失败（可能是损坏文件）');
+      payload = { resumeText };
+    }
+    // 提交异步任务（立即返回 jobId），随后轮询
+    const res = await fetch('/api/candidates/' + c.id + '/analyze', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    // 每 2s 轮询，最长 3 分钟；浏览器中途断连也不丢结果（重试会复用同一 job）
+    const t0 = Date.now();
+    let result = null;
+    while (true) {
+      await new Promise(r => setTimeout(r, 2000));
+      const st = await (await fetch('/api/candidates/' + c.id + '/analyze-status?jobId=' + encodeURIComponent(data.jobId))).json();
+      const sec = Math.round((Date.now() - t0) / 1000);
+      if (st.status === 'running') {
+        if (Date.now() - t0 > 300000) throw new Error('等待超时（5 分钟），可稍后重试或点「查看 AI 问题」');
+        showAiStatus(c, findCandidateRow(c.id) || tr, '⏳ AI 分析中（已耗时 ' + sec + 's，约需 2-3 分钟）…' + pageNote, '');
+        continue;
+      }
+      if (st.status === 'error') throw new Error(st.error || '分析失败');
+      if (st.status === 'done') { result = st.result; break; }
+      throw new Error('任务状态异常');
+    }
+    c.generatedQuestions = result;
+    if (result.name && (!c.name || c.name === '未命名')) c.name = result.name;
+    await loadCandidates();
+    const tr2 = findCandidateRow(c.id);
+    showAiStatus(c, tr2, '✓ 分析完成' + (result.name ? '，识别姓名：' + result.name : '') + pageNote, 'ok');
+    openAiRow(c, tr2);
+  } catch (e) {
+    showAiStatus(c, tr, '✗ 分析失败：' + e.message + '（可点「AI 分析简历」重试）', 'err');
+  } finally {
+    if (btn) { btn.disabled = false; }
+  }
+}
+
+function findCandidateRow(cid) {
+  for (const tr of document.querySelectorAll('#candidateList tr')) {
+    if (tr.dataset.cid === cid) return tr;
+  }
+  return null;
+}
+
+// 状态行 / 结果行（跟随在面试者行下方）
+function showAiStatus(c, tr, msg, cls) {
+  if (!tr) return;
+  removeFollowRow(tr);
+  const row = document.createElement('tr');
+  row.className = 'ai-row';
+  row.dataset.forCid = c.id;
+  const td = document.createElement('td');
+  td.colSpan = 5;
+  td.innerHTML = '<div class="ai-status ' + cls + '">' + esc(msg) + '</div>';
+  row.appendChild(td);
+  tr.after(row);
+}
+function removeFollowRow(tr) {
+  const next = tr && tr.nextSibling;
+  if (next && next.classList && (next.classList.contains('ai-row'))) next.remove();
+}
+function findPanelRow(cid) {
+  for (const tr of document.querySelectorAll('#candidateList tr.ai-panel-row')) {
+    if (tr.dataset.forCid === cid) return tr;
+  }
+  return null;
+}
+function toggleAiRow(c, tr) {
+  const existing = findPanelRow(c.id);
+  if (existing) { existing.remove(); return; }
+  openAiRow(c, tr);
+}
+function openAiRow(c, tr) {
+  if (!tr) return;
+  const existing = findPanelRow(c.id);
+  if (existing) existing.remove();
+  const gq = c.generatedQuestions;
+  if (!gq) return;
+  const row = document.createElement('tr');
+  row.className = 'ai-panel-row';
+  row.dataset.forCid = c.id;
+  const td = document.createElement('td');
+  td.colSpan = 5;
+  let html = '<div class="ai-panel">';
+  html += '<div class="muted">识别姓名：<b>' + esc(gq.name || '（未识别）') + '</b>　—— 已在上方姓名框中，可手改后失焦保存</div>';
+  for (let i = 0; i < gq.projects.length; i++) {
+    const pj = gq.projects[i];
+    html += '<h4>项目 ' + (i + 1) + '：' + esc(pj.name) + '</h4>';
+    pj.questions.forEach((item, qi) => {
+      // 兼容旧格式（纯字符串）与新格式（{q, point, followUp, expected}）
+      const nq = typeof item === 'string' ? { q: item } : (item || {});
+      const secs = [];
+      if (nq.point) secs.push(['🎯 考察点', nq.point]);
+      if (nq.followUp) secs.push(['🔁 追问话术', nq.followUp]);
+      if (nq.expected) secs.push(['✅ 参考答案 / 预期要点', nq.expected]);
+      html += '<div class="qcard" onclick="this.classList.toggle(\'open\')">';
+      html += '<div class="qcard-head"><span class="qnum">' + (qi + 1) + '.</span><span>' + esc(nq.q || nq.question || '') + '</span></div>';
+      if (secs.length) {
+        html += '<div class="qcard-body">';
+        for (const [label, text] of secs) {
+          html += '<div class="qsec"><span class="qsec-label">' + label + '</span>' + esc(text) + '</div>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+  td.innerHTML = html;
+  row.appendChild(td);
+  tr.after(row);
+}
+
+loadInterviewers();
+loadCandidates();
+</script>
+</body>
+</html>

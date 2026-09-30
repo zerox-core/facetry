@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>面试官控制台 - AI 管培生面试</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .who-card .who-list { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+  .who-chip {
+    border: 1.5px solid var(--border); background: #fff; border-radius: 999px;
+    padding: 7px 18px; font-size: 14.5px; cursor: pointer; transition: all .15s;
+  }
+  .who-chip:hover { border-color: var(--primary); color: var(--primary); }
+  .who-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 700; }
+  .who-warn { color: var(--danger); font-size: 13px; margin-top: 8px; display: none; }
+  .setup { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .setup select { min-width: 180px; }
+  .tabs { display: flex; gap: 6px; margin: 16px 0 0; }
+  .tab {
+    padding: 8px 20px; border-radius: 10px 10px 0 0; border: 1px solid var(--border);
+    border-bottom: none; background: #f0f1f5; cursor: pointer; font-size: 14.5px; color: var(--muted);
+  }
+  .tab.on { background: var(--card); color: var(--primary); font-weight: 700; position: relative; top: 1px; }
+  .layout { display: grid; grid-template-columns: 250px 1fr; gap: 16px; align-items: start; }
+  .nav-card { position: sticky; top: 70px; max-height: calc(100vh - 90px); overflow-y: auto; padding: 14px; }
+  .nav-part { font-size: 13px; font-weight: 700; color: var(--primary); margin: 12px 4px 6px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px;
+    cursor: pointer; font-size: 13.5px; color: var(--text);
+  }
+  .nav-item:hover { background: var(--primary-light); }
+  .nav-item.active { background: var(--primary-light); font-weight: 600; }
+  .nav-item.screening { box-shadow: inset 3px 0 0 var(--ok); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #d5d9e2; flex: none; }
+  .dot.mine { background: var(--ok); }
+  .dot.others { background: #f0a63c; }
+  .legend { font-size: 12px; color: var(--muted); padding: 4px 8px; }
+  .legend .dot { display: inline-block; vertical-align: middle; margin-right: 4px; }
+  .q-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .q-text { font-size: 16px; font-weight: 600; margin: 12px 0; line-height: 1.8; white-space: pre-wrap; }
+  .q-imgs { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0; }
+  .q-imgs img { max-width: 320px; max-height: 240px; border: 1px solid var(--border); border-radius: 8px; }
+  .q-material {
+    background: #fdeeee; border: 1px solid #f0c3c3; border-radius: 10px;
+    padding: 12px 16px; font-size: 14px; margin: 10px 0; white-space: pre-wrap;
+  }
+  .answer-box {
+    background: #f8f9fb; border-left: 3px solid var(--primary); border-radius: 0 8px 8px 0;
+    padding: 14px 18px; font-size: 14px; margin: 14px 0;
+  }
+  .answer-text { white-space: pre-wrap; margin-top: 6px; line-height: 1.75; }
+  .scores-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13.5px; }
+  .scores-table th, .scores-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+  .scores-table th { color: var(--muted); font-size: 12.5px; }
+  .scores-table tr.me td { background: var(--primary-light); }
+  .my-score { border-top: 1px dashed var(--border); padding-top: 12px; margin-top: 8px; }
+  .score-row { display: flex; gap: 8px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+  .score-btn {
+    width: 42px; height: 42px; border-radius: 10px; border: 1px solid var(--border);
+    background: #fff; font-size: 16px; font-weight: 700; cursor: pointer; transition: all .12s;
+  }
+  .score-btn:hover { border-color: var(--primary); color: var(--primary); }
+  .score-btn.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .note-input { width: 100%; min-height: 60px; resize: vertical; }
+  .screening-banner {
+    background: #eaf7ee; border: 1px solid #bfe5c8; color: var(--ok);
+    border-radius: 8px; padding: 8px 14px; font-size: 13.5px; font-weight: 600; margin-bottom: 12px;
+    display: none;
+  }
+  /* 评分总表 */
+  .matrix-wrap { overflow-x: auto; }
+  table.matrix { border-collapse: collapse; font-size: 13px; background: #fff; }
+  table.matrix th, table.matrix td { border: 1px solid var(--border); padding: 5px 8px; text-align: center; white-space: nowrap; }
+  table.matrix th { background: #f0f2f7; position: sticky; top: 0; }
+  table.matrix td.qcell { text-align: left; max-width: 340px; white-space: normal; }
+  table.matrix tr.part-row td { background: var(--primary-light); color: var(--primary); font-weight: 700; text-align: left; }
+  table.matrix th.me, table.matrix td.me { background: #f3f6ff; }
+  table.matrix tr.total-row td { background: #fffbe8; font-weight: 700; }
+  table.matrix tr.gen-row td { background: #f6f7fa; color: #7a828e; font-weight: 700; text-align: left; }
+  table.matrix tr.gen td { color: #7a828e; }
+  .nav-sub { font-size: 12px; color: var(--muted); margin: 6px 4px 2px 8px; }
+  .hide-btn { margin-left: auto; color: #c3c8d4; font-size: 14px; line-height: 1; padding: 2px 5px; border-radius: 4px; display: none; flex: none; }
+  .nav-item:hover .hide-btn { display: inline; }
+  .hide-btn:hover { color: var(--danger); background: #fdeeee; }
+  .hidden-head { color: var(--muted); font-size: 13px; border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 10px; }
+  .hidden-item { color: var(--muted); font-size: 12.5px; }
+  .restore-btn { margin-left: auto; font-size: 12px; color: var(--primary); padding: 1px 8px; border-radius: 4px; flex: none; }
+  .restore-btn:hover { background: var(--primary-light); }
+  #toast { position: fixed; top: 60px; right: 20px; background: #2b2f36; color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; z-index: 99; pointer-events: none; }
+  #toast.show { opacity: .95; }
+  #toast.err { background: var(--danger); }
+  .cell-note { display: block; font-size: 11px; color: var(--muted); max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+  select.cell-score { border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font-size: 13px; }
+  .no-score { color: #c3c8d4; }
+  .summary-nav { border-top: 1px dashed var(--border); margin-top: 10px; padding-top: 12px; font-weight: 600; }
+  table.stats { border-collapse: collapse; font-size: 13.5px; background: #fff; width: 100%; margin-top: 8px; }
+  table.stats th, table.stats td { border: 1px solid var(--border); padding: 7px 12px; text-align: center; }
+  table.stats th { background: #f0f2f7; }
+  table.stats td.dim { text-align: left; }
+  table.stats tr.total-row td { background: #fffbe8; font-weight: 700; }
+  table.stats th.me, table.stats td.me { background: #f3f6ff; }
+  .resume-panel { display: none; margin-top: 12px; }
+  .guide-box { font-size: 12.5px; color: var(--muted); }
+  .guide-box b { color: var(--text); }
+  .guide-box ul { padding-left: 18px; margin: 4px 0 8px; }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #c3c8d4; display: inline-block; margin-right: 5px; }
+  .sync-dot.live { background: var(--ok); }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .nav-card { position: static; max-height: none; } }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">AI 管培生面试</span>
+  <nav>
+    <a href="/">首页</a>
+    <a href="/admin.html">人员管理</a>
+    <a href="/interview.html" class="on">面试官控制台</a>
+    <a href="/screen.html" target="_blank">投屏页</a>
+  </nav>
+</div>
+<div class="container">
+
+  <div class="card who-card">
+    <h2>我是谁 <span class="muted" style="font-weight:400">（点选自己的名字，用于独立打分；未选择时不能打分）</span></h2>
+    <div class="who-list" id="whoList"></div>
+    <div class="who-warn" id="whoWarn">⚠️ 请先在上方点选自己的名字，再进行打分。面试官名单在「人员管理」页维护。</div>
+    <div class="setup">
+      <select id="selCandidate"><option value="">选择面试者…</option></select>
+      <button class="btn primary" id="btnStart" onclick="startOrResumeInterview()">开始 / 继续面试</button>
+      <button class="btn" id="btnResumeToggle" style="display:none" onclick="toggleResume()">展开简历</button>
+      <span class="tag" id="statusTag" style="display:none"></span>
+      <span class="muted"><span class="sync-dot" id="syncDot"></span><span id="syncText">未连接</span></span>
+      <div class="tabs" style="margin-left:auto">
+        <div class="tab on" id="tabDetail" onclick="switchView('detail')">逐题详看</div>
+        <div class="tab" id="tabMatrix" onclick="switchView('matrix')">评分总表</div>
+      </div>
+    </div>
+    <div class="resume-panel" id="resumePanel">
+      <iframe class="pdf-view" id="resumeFrame" style="height:560px"></iframe>
+    </div>
+  </div>
+
+  <div id="mainArea" style="display:none">
+    <div class="layout">
+      <div class="card nav-card" id="qnav"></div>
+      <div>
+        <div class="screening-banner" id="screeningBanner">📡 本题素材正在投屏中</div>
+        <div id="viewDetail">
+          <div class="card" id="qdetail"></div>
+        </div>
+        <div id="viewMatrix" style="display:none">
+          <div class="card matrix-wrap" id="matrixCard"></div>
+        </div>
+        <div id="viewSummary" style="display:none">
+          <div class="card">
+            <h2>面试小结</h2>
+            <textarea class="note-input" id="commentBox" style="min-height:110px" placeholder="总评语（加分信号 / 减分信号 / 综合判断）——全场合用一条"></textarea>
+            <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+              <button class="btn primary" id="btnFinish" onclick="finishInterview()">完成面试</button>
+              <a class="btn" id="reportLink" href="#" target="_blank">📄 评价报告</a>
+              <span class="muted" id="saveHint"></span>
+            </div>
+            <h2 style="margin-top:24px">全部面试官统计</h2>
+            <div id="statsCard"></div>
+          </div>
+        </div>
+        <div class="card guide-box">
+          <b>追问话术：</b>
+          <ul id="guideFollowups"></ul>
+          <b>加分信号：</b>
+          <ul id="guidePlus"></ul>
+          <b>减分信号：</b>
+          <ul id="guideMinus"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const PART_ORDER = ['A', 'B', 'E', 'F', 'C', 'D'];
+let QUESTIONS = [], PARTS = {}, GUIDE = {};
+let interview = null;
+let interviewers = [], candidates = [];
+let me = null;                 // 当前面试官对象
+let currentQid = null;
+let screeningQid = null;
+let view = 'detail';
+let es = null;                 // 面试 SSE
+let saveTimer = null;
+
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    let msg = res.status;
+    try { msg = (await res.json()).error || msg; } catch (e) {}
+    alert('操作失败：' + msg);
+    throw new Error(msg);
+  }
+  return res.json();
+}
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function hint(t) {
+  const el = document.getElementById('saveHint');
+  el.textContent = t;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => el.textContent = '', 2500);
+}
+
+// ---------- 初始化 ----------
+async function init() {
+  const qd = await api('/api/questions');
+  QUESTIONS = qd.questions; PARTS = qd.parts; GUIDE = qd.guide;
+  await reloadPeople();
+
+  fillUl('guideFollowups', GUIDE.followups);
+  fillUl('guidePlus', GUIDE.plusSignals);
+  fillUl('guideMinus', GUIDE.minusSignals);
+
+  renderWho();
+
+  // 投屏状态轮询（轻量，2s）
+  pollScreen();
+  setInterval(pollScreen, 2000);
+}
+async function reloadPeople() {
+  interviewers = await api('/api/interviewers');
+  candidates = await api('/api/candidates');
+  fillSelect('selCandidate', candidates, '选择面试者…');
+}
+function fillSelect(id, list, placeholder) {
+  const s = document.getElementById(id);
+  s.innerHTML = '<option value="">' + placeholder + '</option>';
+  for (const x of list) {
+    const opt = document.createElement('option');
+    opt.value = x.id; opt.textContent = x.name;
+    s.appendChild(opt);
+  }
+}
+function fillUl(id, arr) {
+  document.getElementById(id).innerHTML = (arr || []).map(t => '<li>' + esc(t) + '</li>').join('');
+}
+
+// ---------- 我是谁 ----------
+function renderWho() {
+  const list = document.getElementById('whoList');
+  list.innerHTML = '';
+  const savedId = localStorage.getItem('interviewerId');
+  me = interviewers.find(x => x.id === savedId) || null;
+  for (const it of interviewers) {
+    const chip = document.createElement('button');
+    chip.className = 'who-chip' + (me && me.id === it.id ? ' on' : '');
+    chip.textContent = it.name;
+    chip.onclick = () => {
+      localStorage.setItem('interviewerId', it.id);
+      renderWho();
+      renderAll();
+    };
+    list.appendChild(chip);
+  }
+  if (!interviewers.length) {
+    list.innerHTML = '<span class="muted">暂无面试官，请先到「人员管理」添加。</span>';
+  }
+  document.getElementById('whoWarn').style.display = me ? 'none' : 'block';
+}
+function requireMe() {
+  if (!me) {
+    document.getElementById('whoWarn').style.display = 'block';
+    document.querySelector('.who-card').scrollIntoView({ behavior: 'smooth' });
+    alert('请先点选「我是谁」，再打分。');
+    return false;
+  }
+  return true;
+}
+
+// ---------- 面试记录 ----------
+async function startOrResumeInterview() {
+  const candidateId = document.getElementById('selCandidate').value;
+  if (!candidateId) return alert('请选择面试者');
+  // 刷新候选人数据（可能刚在人员管理页做过 AI 分析，生成问题需最新）
+  candidates = await api('/api/candidates');
+  fillSelect('selCandidate', candidates, '选择面试者…');
+  document.getElementById('selCandidate').value = candidateId;
+  // 服务端对同一面试者的进行中面试自动复用
+  interview = await api('/api/interviews', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ candidateId })
+  });
+  enterMainArea();
+}
+
+function enterMainArea() {
+  document.getElementById('mainArea').style.display = 'block';
+  const tag = document.getElementById('statusTag');
+  tag.style.display = 'inline-block';
+  tag.textContent = interview.status;
+  const c = candidates.find(x => x.id === interview.candidateId);
+  const rb = document.getElementById('btnResumeToggle');
+  if (c && c.resume) { rb.style.display = 'inline-block'; rb.dataset.cid = c.id; }
+  else rb.style.display = 'none';
+  renderNav();
+  if (!currentQid) currentQid = QUESTIONS[0].id;
+  renderAll();
+  connectStream();
+  document.getElementById('mainArea').scrollIntoView({ behavior: 'smooth' });
+}
+
+function toggleResume() {
+  const panel = document.getElementById('resumePanel');
+  const btn = document.getElementById('btnResumeToggle');
+  if (panel.style.display === 'block') {
+    panel.style.display = 'none'; btn.textContent = '展开简历';
+  } else {
+    document.getElementById('resumeFrame').src = '/resumes/' + encodeURIComponent(btn.dataset.cid) + '.pdf';
+    panel.style.display = 'block'; btn.textContent = '收起简历';
+  }
+}
+
+// ---------- 面试 SSE ----------
+function connectStream() {
+  if (es) { es.close(); es = null; }
+  es = new EventSource('/api/interviews/' + interview.id + '/stream');
+  es.onopen = () => {
+    document.getElementById('syncDot').classList.add('live');
+    document.getElementById('syncText').textContent = '实时同步中';
+  };
+  es.onmessage = e => {
+    try {
+      const iv = JSON.parse(e.data);
+      if (iv.id !== interview.id) return;
+      interview = iv;
+      renderAll();
+    } catch (err) {}
+  };
+  es.onerror = () => {
+    document.getElementById('syncDot').classList.remove('live');
+    document.getElementById('syncText').textContent = '连接中断，重连中…';
+    // EventSource 浏览器原生自动重连
+  };
+}
+
+// ---------- 打分辅助 ----------
+function scoresOf(qid) { return (interview && interview.scores[qid]) || {}; }
+function myScoreOf(qid) { return me ? scoresOf(qid)[me.id] : undefined; }
+function currentCandidate() {
+  return interview ? candidates.find(x => x.id === interview.candidateId) : null;
+}
+// AI 生成的简历项目问题（虚拟题，id 形如 G-项目序号-问题序号，不计入加权总分）
+function genQuestions() {
+  const c = currentCandidate();
+  const gq = c && c.generatedQuestions;
+  const out = [];
+  if (gq && Array.isArray(gq.projects)) {
+    gq.projects.forEach((pj, pi) => {
+      (pj.questions || []).forEach((item, qi) => {
+        // 归一化：兼容旧格式（纯字符串）与新格式（{q, point, followUp}）
+        const nq = typeof item === 'string' ? { q: item, point: '', followUp: '' } : (item || {});
+        const qt = String(nq.q || nq.question || '');
+        if (!qt) return;
+        const guideParts = [];
+        if (nq.point) guideParts.push('🎯 考察点：' + nq.point);
+        if (nq.followUp) guideParts.push('🔁 追问话术：' + nq.followUp);
+        if (nq.expected) guideParts.push('✅ 参考答案 / 预期要点：' + nq.expected);
+        out.push({
+          id: 'G-' + (pi + 1) + '-' + (qi + 1),
+          part: 'G', partName: '🤖 简历项目问题',
+          title: pj.name,
+          question: qt,
+          answer: guideParts.length ? guideParts.join('\n') : 'AI 生成问题，无标准答案。结合候选人回答，考察其项目真实参与度、技术取舍和 AI 使用情况。',
+          hasGuide: guideParts.length > 0,
+          images: [], material: null, generated: true
+        });
+      });
+    });
+  }
+  return out;
+}
+function getQuestion(qid) {
+  return QUESTIONS.find(x => x.id === qid) || genQuestions().find(x => x.id === qid) || null;
+}
+function participants() {
+  // 参与本场面试（至少打过一格）的面试官
+  const ids = new Set();
+  for (const qid of Object.keys(interview.scores || {})) {
+    for (const iid of Object.keys(interview.scores[qid])) ids.add(iid);
+  }
+  return interviewers.filter(x => ids.has(x.id));
+}
+function interviewerName(iid) {
+  const it = interviewers.find(x => x.id === iid);
+  return it ? it.name : iid;
+}
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+
+// ---------- 视图切换 ----------
+function switchView(v) {
+  view = v;
+  document.getElementById('tabDetail').classList.toggle('on', v === 'detail');
+  document.getElementById('tabMatrix').classList.toggle('on', v === 'matrix');
+  document.getElementById('viewDetail').style.display = v === 'detail' ? 'block' : 'none';
+  document.getElementById('viewMatrix').style.display = v === 'matrix' ? 'block' : 'none';
+  document.getElementById('viewSummary').style.display = v === 'summary' ? 'block' : 'none';
+  if (v === 'matrix') renderMatrix();
+  if (v === 'summary') renderSummaryView();
+  markNav();
+}
+
+// ---------- 题目隐藏（跟随面试者持久化） ----------
+let hiddenExpanded = false;
+let toastTimer = null;
+function toast(msg, isErr) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 1800);
+}
+function hiddenSet() {
+  return new Set((currentCandidate() && currentCandidate().hiddenQuestions) || []);
+}
+function replaceCandidate(updated) {
+  const i = candidates.findIndex(x => x.id === updated.id);
+  if (i >= 0) candidates[i] = updated;
+}
+async function persistHidden(set) {
+  const c = currentCandidate();
+  const updated = await api('/api/candidates/' + c.id, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hiddenQuestions: [...set] })
+  });
+  replaceCandidate(updated);
+}
+function visibleQuestions() {
+  const hidden = hiddenSet();
+  return [...QUESTIONS, ...genQuestions()].filter(q => !hidden.has(q.id));
+}
+function nextVisibleQuestion(qid) {
+  const visIds = new Set(visibleQuestions().map(q => q.id));
+  if (!visIds.size) return null;
+  const all = [...QUESTIONS, ...genQuestions()];
+  const fixedIdx = all.findIndex(q => q.id === qid);
+  for (let i = fixedIdx + 1; i < all.length; i++) {
+    if (visIds.has(all[i].id)) return all[i].id;
+  }
+  return [...visIds][0];
+}
+function afterHiddenChange() {
+  renderNav();
+  if (view === 'detail') { if (currentQid) renderDetail(); }
+  else if (view === 'matrix') renderMatrix();
+  markNav();
+}
+async function hideQuestion(qid) {
+  if (!currentCandidate()) return;
+  const set = hiddenSet();
+  set.add(qid);
+  try {
+    await persistHidden(set);
+  } catch (e) {
+    toast('隐藏失败，已还原', true);
+    return; // 本地未变更，无需回滚（api 已弹错误）
+  }
+  if (currentQid === qid) currentQid = nextVisibleQuestion(qid);
+  toast('已隐藏 ' + qid);
+  afterHiddenChange();
+}
+async function restoreQuestion(qid) {
+  if (!currentCandidate()) return;
+  const set = hiddenSet();
+  set.delete(qid);
+  try {
+    await persistHidden(set);
+  } catch (e) {
+    toast('恢复失败', true);
+    return;
+  }
+  toast('已恢复 ' + qid);
+  afterHiddenChange();
+}
+
+// ---------- 题目导航 ----------
+function makeNavItem(q, labelText) {
+  const item = document.createElement('div');
+  item.className = 'nav-item';
+  item.id = 'nav-' + q.id;
+  item.onclick = () => { switchView('detail'); selectQuestion(q.id); };
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  const label = document.createElement('span');
+  label.textContent = labelText;
+  const hideBtn = document.createElement('span');
+  hideBtn.className = 'hide-btn';
+  hideBtn.textContent = '×';
+  hideBtn.title = '隐藏此题（仅当前面试者）';
+  hideBtn.onclick = (e) => { e.stopPropagation(); hideQuestion(q.id); };
+  item.append(dot, label, hideBtn);
+  return item;
+}
+
+function renderNav() {
+  const nav = document.getElementById('qnav');
+  const hidden = hiddenSet();
+  nav.innerHTML = '<div class="legend"><span class="dot mine"></span>我已打分 <span class="dot others" style="margin-left:10px"></span>仅他人已打</div>';
+  for (const p of PART_ORDER) {
+    const qs = QUESTIONS.filter(x => x.part === p && !hidden.has(x.id));
+    if (!qs.length) continue;
+    const div = document.createElement('div');
+    div.className = 'nav-part';
+    div.textContent = PARTS[p].name + '（权重 ' + PARTS[p].weight + '%）';
+    nav.appendChild(div);
+    for (const q of qs) {
+      nav.appendChild(makeNavItem(q, q.id + ' ' + q.title));
+    }
+  }
+  // AI 生成的简历项目问题分组（在小结导航项之前）
+  const gqs = genQuestions().filter(q => !hidden.has(q.id));
+  if (gqs.length) {
+    const div = document.createElement('div');
+    div.className = 'nav-part';
+    div.textContent = '🤖 简历项目问题（不计入加权）';
+    nav.appendChild(div);
+    let curProj = '';
+    for (const q of gqs) {
+      if (q.title !== curProj) {
+        curProj = q.title;
+        const sub = document.createElement('div');
+        sub.className = 'nav-sub';
+        sub.textContent = '项目：' + q.title;
+        nav.appendChild(sub);
+      }
+      nav.appendChild(makeNavItem(q, q.id + ' ' + (q.question.length > 18 ? q.question.slice(0, 18) + '…' : q.question)));
+    }
+  }
+  // 已隐藏题目折叠区
+  const hiddenQs = [...hidden].map(id => getQuestion(id)).filter(Boolean);
+  if (hiddenQs.length) {
+    const head = document.createElement('div');
+    head.className = 'nav-item hidden-head';
+    head.textContent = '🙈 已隐藏题目（' + hiddenQs.length + '）' + (hiddenExpanded ? ' ▾' : ' ▸');
+    head.onclick = () => { hiddenExpanded = !hiddenExpanded; renderNav(); };
+    nav.appendChild(head);
+    if (hiddenExpanded) {
+      for (const q of hiddenQs) {
+        const item = document.createElement('div');
+        item.className = 'nav-item hidden-item';
+        const label = document.createElement('span');
+        const text = q.part === 'G' ? (q.question.length > 16 ? q.question.slice(0, 16) + '…' : q.question) : q.title;
+        label.textContent = q.id + ' ' + text;
+        const rb = document.createElement('span');
+        rb.className = 'restore-btn';
+        rb.textContent = '恢复';
+        rb.onclick = (e) => { e.stopPropagation(); restoreQuestion(q.id); };
+        item.append(label, rb);
+        nav.appendChild(item);
+      }
+    }
+  }
+  const sumItem = document.createElement('div');
+  sumItem.className = 'nav-item summary-nav';
+  sumItem.id = 'nav-__summary';
+  sumItem.onclick = () => switchView('summary');
+  const sLabel = document.createElement('span');
+  sLabel.textContent = '📋 面试小结';
+  const sProg = document.createElement('span');
+  sProg.className = 'muted';
+  sProg.id = 'navSummaryProgress';
+  sProg.style.cssText = 'margin-left:auto;font-size:12px';
+  sumItem.append(sLabel, sProg);
+  nav.appendChild(sumItem);
+  markNav();
+}
+function markNav() {
+  const sumItem = document.getElementById('nav-__summary');
+  if (sumItem) sumItem.classList.toggle('active', view === 'summary');
+  if (interview) {
+    const hidden = hiddenSet();
+    const visibleFixed = QUESTIONS.filter(q => !hidden.has(q.id));
+    const visibleGen = genQuestions().filter(q => !hidden.has(q.id));
+    const total = visibleFixed.length + visibleGen.length;
+    const visible = [...visibleFixed, ...visibleGen];
+    const n = me
+      ? visible.filter(q => { const c = scoresOf(q.id)[me.id]; return c && typeof c.score === 'number'; }).length
+      : visible.filter(q => Object.values(scoresOf(q.id)).some(c => typeof c.score === 'number')).length;
+    const prog = document.getElementById('navSummaryProgress');
+    if (prog) prog.textContent = (me ? '已打 ' : '已评 ') + n + '/' + total;
+  }
+  document.querySelectorAll('.nav-item:not(.summary-nav):not(.hidden-head):not(.hidden-item)').forEach(el => {
+    const qid = el.id.slice(4);
+    el.classList.toggle('active', qid === currentQid && view === 'detail');
+    el.classList.toggle('screening', qid === screeningQid);
+    const dot = el.querySelector('.dot');
+    dot.classList.remove('mine', 'others');
+    if (!interview) return;
+    const cells = scoresOf(qid);
+    const mine = me && cells[me.id] && typeof cells[me.id].score === 'number';
+    const others = Object.entries(cells).some(([iid, c]) => iid !== (me && me.id) && typeof c.score === 'number');
+    if (mine) dot.classList.add('mine');
+    else if (others) dot.classList.add('others');
+  });
+}
+
+// ---------- 题目详情 ----------
+function selectQuestion(qid) {
+  currentQid = qid;
+  renderDetail();
+  markNav();
+}
+
+function renderDetail() {
+  if (!interview || !currentQid) return;
+  const q = getQuestion(currentQid);
+  if (!q) return;
+  const cells = scoresOf(q.id);
+  const mine = myScoreOf(q.id);
+
+  let html = '';
+  html += '<div class="q-title-row">';
+  html += '<span class="tag">' + esc(q.partName) + '</span>';
+  html += '<h2 style="margin:0">' + esc(q.id + ' · ' + q.title) + '</h2>';
+  html += '<span style="flex:1"></span>';
+  if (q.part === 'D') {
+    html += '<button class="btn small primary" onclick="screenQuestion(\'' + q.id + '\')">投屏素材</button>';
+  }
+  html += '<button class="btn small" onclick="stopScreen()">结束投屏</button>';
+  html += '</div>';
+  html += '<div class="q-text">' + esc(q.question) + '</div>';
+  if (q.images && q.images.length) {
+    html += '<div class="q-imgs">' + q.images.map(src => '<img src="' + src + '">').join('') + '</div>';
+  }
+  if (q.material) {
+    html += '<div class="q-material"><b>投屏原文：</b>' + esc(q.material) + '</div>';
+  }
+  html += '<div class="answer-box"><b style="color:var(--primary)">' + (q.generated ? (q.hasGuide ? '考察点 / 追问话术 / 参考答案（AI 生成问题）' : 'AI 生成问题，无标准答案') : '参考答案 / 考察点 / 评分要点') + '</b><div class="answer-text">' + esc(q.answer) + '</div></div>';
+
+  // 本题所有面试官评分
+  html += '<b style="font-size:13.5px">本题所有面试官评分</b>';
+  const entries = Object.entries(cells);
+  if (!entries.length) {
+    html += '<p class="muted" style="margin:6px 0">暂无评分</p>';
+  } else {
+    html += '<table class="scores-table"><thead><tr><th>面试官</th><th>分数</th><th>备注</th><th>更新时间</th></tr></thead><tbody>';
+    for (const [iid, c] of entries) {
+      html += '<tr' + (me && iid === me.id ? ' class="me"' : '') + '><td>' + esc(interviewerName(iid)) + (me && iid === me.id ? '（我）' : '') +
+        '</td><td><b>' + (typeof c.score === 'number' ? c.score : '--') + '</b></td><td>' + esc(c.note || '') +
+        '</td><td class="muted">' + fmtTime(c.updatedAt) + '</td></tr>';
+    }
+    html += '</tbody></table>';
+  }
+
+  // 我的评分
+  html += '<div class="my-score"><b style="font-size:13.5px">我的评分' + (me ? '（' + esc(me.name) + '）' : '（未选择身份，只读）') + '</b>';
+  html += '<div class="score-row">';
+  for (let i = 0; i <= 5; i++) {
+    html += '<button class="score-btn' + (mine && mine.score === i ? ' on' : '') + '" onclick="setMyScore(' + i + ')">' + i + '</button>';
+  }
+  html += '<span class="muted">（0–5 分，点击已选分数可取消）</span></div>';
+  html += '<textarea class="note-input" id="qnote" placeholder="我的备注（失焦自动保存）…">' + esc(mine && mine.note || '') + '</textarea>';
+  html += '</div>';
+
+  document.getElementById('qdetail').innerHTML = html;
+  document.getElementById('qnote').addEventListener('blur', saveMyNote);
+  document.getElementById('screeningBanner').style.display = (screeningQid === q.id) ? 'block' : 'none';
+}
+
+// SSE 更新后重绘详情，但不打断正在输入的备注框
+function renderDetailSafe() {
+  const noteEl = document.getElementById('qnote');
+  const noteFocused = noteEl && document.activeElement === noteEl;
+  const noteVal = noteFocused ? noteEl.value : null;
+  renderDetail();
+  if (noteFocused) {
+    const el = document.getElementById('qnote');
+    el.value = noteVal;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }
+}
+
+async function setMyScore(score) {
+  if (!requireMe()) return;
+  // 再次点击已选中的分数 = 取消评分
+  const mine = myScoreOf(currentQid);
+  const clearing = !!(mine && typeof mine.score === 'number' && mine.score === score);
+  await api('/api/interviews/' + interview.id + '/score', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ questionId: currentQid, interviewerId: me.id, score: clearing ? null : score })
+  });
+  hint(clearing ? '已取消评分 ✓' : '已保存 ✓');
+  // 服务端会 SSE 广播，本地也立即取一次保证响应速度
+  interview = await api('/api/interviews/' + interview.id);
+  renderAll();
+}
+
+async function saveMyNote() {
+  if (!me || !interview || !currentQid) return;
+  const note = document.getElementById('qnote').value;
+  const mine = myScoreOf(currentQid);
+  if (mine && mine.note === note) return;
+  await api('/api/interviews/' + interview.id + '/score', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ questionId: currentQid, interviewerId: me.id, note })
+  });
+  hint('备注已保存 ✓');
+}
+
+// ---------- 评分总表 ----------
+function renderMatrix() {
+  if (!interview) return;
+  const cols = participants();
+  let html = '<h2>评分总表 <span class="muted" style="font-weight:400">（我的列可直接改分，实时同步）</span></h2>';
+  if (!cols.length) {
+    html += '<p class="muted">还没有任何人打分。</p>';
+  } else {
+    html += '<table class="matrix"><thead><tr><th style="text-align:left">题目</th>';
+    for (const it of cols) {
+      html += '<th' + (me && it.id === me.id ? ' class="me"' : '') + '>' + esc(it.name) + (me && it.id === me.id ? '（我）' : '') + '</th>';
+    }
+    html += '<th>平均分</th></tr></thead><tbody>';
+
+    const rowFor = (q, gen) => {
+      const cells = scoresOf(q.id);
+      let h = '<tr' + (gen ? ' class="gen"' : '') + '><td class="qcell">' + (gen ? '🤖 ' : '') + esc(q.id + ' ' + (gen ? q.question : q.title)) + '</td>';
+      let sum = 0, n = 0;
+      for (const it of cols) {
+        const c = cells[it.id];
+        const isMe = me && it.id === me.id;
+        if (typeof (c && c.score) === 'number') { sum += c.score; n++; }
+        if (isMe) {
+          h += '<td class="me"><select class="cell-score" data-qid="' + q.id + '" onchange="matrixScore(this)">';
+          h += '<option value="">-</option>';
+          for (let i = 0; i <= 5; i++) {
+            h += '<option value="' + i + '"' + (c && c.score === i ? ' selected' : '') + '>' + i + '</option>';
+          }
+          h += '</select>';
+          if (c && c.note) h += '<span class="cell-note" title="' + esc(c.note) + '">' + esc(c.note) + '</span>';
+          h += '</td>';
+        } else {
+          h += '<td>' + (typeof (c && c.score) === 'number' ? '<b>' + c.score + '</b>' : '<span class="no-score">-</span>');
+          if (c && c.note) h += '<span class="cell-note" title="' + esc(c.note) + '">' + esc(c.note) + '</span>';
+          h += '</td>';
+        }
+      }
+      h += '<td>' + (n ? (sum / n).toFixed(1) : '<span class="no-score">-</span>') + '</td></tr>';
+      return h;
+    };
+
+    const hiddenMx = hiddenSet();
+    for (const p of PART_ORDER) {
+      const qs = QUESTIONS.filter(x => x.part === p && !hiddenMx.has(x.id));
+      if (!qs.length) continue;
+      html += '<tr class="part-row"><td colspan="' + (cols.length + 2) + '">' + esc(PARTS[p].name) + '（权重 ' + PARTS[p].weight + '%）</td></tr>';
+      for (const q of qs) html += rowFor(q, false);
+    }
+
+    // AI 生成的简历项目问题：追加在固定题之后，不计入加权总分
+    const gqs = genQuestions().filter(q => !hiddenMx.has(q.id));
+    if (gqs.length) {
+      html += '<tr class="gen-row"><td colspan="' + (cols.length + 2) + '">🤖 简历项目问题（不计入加权总分）</td></tr>';
+      for (const q of gqs) html += rowFor(q, true);
+    }
+
+    // 底部：每位面试官加权总分（百分制）+ 全员平均
+    html += '<tr class="total-row"><td class="qcell">加权总分（百分制）</td>';
+    const totals = cols.map(it => weightedTotal(it.id));
+    for (let i = 0; i < cols.length; i++) {
+      html += '<td' + (me && cols[i].id === me.id ? ' class="me"' : '') + '>' + (totals[i] === null ? '--' : totals[i].toFixed(1)) + '</td>';
+    }
+    const valid = totals.filter(t => t !== null);
+    html += '<td>' + (valid.length ? (valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(1) : '--') + '</td></tr>';
+
+    html += '</tbody></table>';
+    html += '<p class="muted" style="font-size:12px;margin-top:6px">口径：隐藏题不计入统计，按剩余维度权重归一化</p>';
+  }
+  document.getElementById('matrixCard').innerHTML = html;
+}
+
+async function matrixScore(sel) {
+  if (!requireMe()) { sel.value = ''; return; }
+  const qid = sel.dataset.qid;
+  // 选「-」表示清除分数
+  const score = sel.value === '' ? null : Number(sel.value);
+  await api('/api/interviews/' + interview.id + '/score', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ questionId: qid, interviewerId: me.id, score })
+  });
+  hint(score === null ? '已取消评分 ✓' : '已保存 ✓');
+}
+
+// 某面试官的加权总分（百分制），无任何打分返回 null
+// 口径：隐藏题不计入统计；某维度全部隐藏或其可见题均未打分时，剔除该维度权重，按剩余维度权重归一化
+function weightedTotal(iid) {
+  let sum = 0, wsum = 0;
+  for (const p of PART_ORDER) {
+    const pct = partAvgPct(iid, p); // 0-100 或 null
+    if (pct !== null) {
+      sum += pct * PARTS[p].weight;
+      wsum += PARTS[p].weight;
+    }
+  }
+  return wsum ? sum / wsum : null;
+}
+
+// ---------- 投屏 ----------
+async function screenQuestion(qid) {
+  await api('/api/screen', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ questionId: qid })
+  });
+}
+async function stopScreen() {
+  await api('/api/screen', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ questionId: null })
+  });
+}
+async function pollScreen() {
+  try {
+    const s = await api('/api/screen/state');
+    const newId = s.questionId;
+    if (newId !== screeningQid) {
+      screeningQid = newId;
+      if (interview) {
+        markNav();
+        document.getElementById('screeningBanner').style.display = (currentQid === screeningQid && view === 'detail') ? 'block' : 'none';
+      }
+    }
+  } catch (e) {}
+}
+
+// ---------- 小结 ----------
+// 某面试官在某维度的平均分（0-5 换算百分制），只统计可见题；维度全部隐藏或可见题均未打分时返回 null（显示 -- 且剔除权重）
+function partAvgPct(iid, p) {
+  const hidden = hiddenSet();
+  const qs = QUESTIONS.filter(x => x.part === p && !hidden.has(x.id));
+  if (!qs.length) return null;
+  const vals = qs.map(q => (scoresOf(q.id)[iid] || {}).score).filter(s => typeof s === 'number');
+  if (!vals.length) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length / 5 * 100;
+}
+
+function renderSummaryView() {
+  if (!interview) return;
+  const cols = participants();
+  let html = '';
+  if (!cols.length) {
+    html = '<p class="muted">还没有任何人打分。</p>';
+  } else {
+    html += '<table class="stats"><thead><tr><th style="text-align:left">维度</th>';
+    for (const it of cols) {
+      html += '<th' + (me && it.id === me.id ? ' class="me"' : '') + '>' + esc(it.name) + (me && it.id === me.id ? '（我）' : '') + '</th>';
+    }
+    html += '<th>全员平均</th></tr></thead><tbody>';
+    for (const p of PART_ORDER) {
+      html += '<tr><td class="dim">' + esc(PARTS[p].name) + ' <span class="muted">(' + PARTS[p].weight + '%)</span></td>';
+      const vals = [];
+      for (const it of cols) {
+        const pct = partAvgPct(it.id, p);
+        if (pct !== null) vals.push(pct);
+        html += '<td' + (me && it.id === me.id ? ' class="me"' : '') + '>' + (pct === null ? '<span class="no-score">--</span>' : pct.toFixed(1)) + '</td>';
+      }
+      html += '<td>' + (vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '--') + '</td></tr>';
+    }
+    // 加权总分：未打分维度按 0 计入（与评分总表口径一致）
+    html += '<tr class="total-row"><td class="dim">加权总分（百分制）</td>';
+    const totals = cols.map(it => weightedTotal(it.id));
+    for (let i = 0; i < cols.length; i++) {
+      html += '<td' + (me && cols[i].id === me.id ? ' class="me"' : '') + '>' + (totals[i] === null ? '--' : totals[i].toFixed(1)) + '</td>';
+    }
+    const valid = totals.filter(t => t !== null);
+    html += '<td>' + (valid.length ? (valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(1) : '--') + '</td></tr>';
+    html += '</tbody></table>';
+    html += '<p class="muted" style="font-size:12px;margin-top:6px">口径：隐藏题不计入统计；全部隐藏或可见题均未打分的维度剔除权重，按剩余维度权重归一化</p>';
+  }
+  document.getElementById('statsCard').innerHTML = html;
+  // 总评：若我未在编辑则刷新（focused 时跳过，不打断输入）
+  const cb = document.getElementById('commentBox');
+  if (document.activeElement !== cb) cb.value = interview.comment || '';
+}
+
+document.getElementById('commentBox').addEventListener('blur', async () => {
+  if (!interview) return;
+  const comment = document.getElementById('commentBox').value;
+  if (comment === (interview.comment || '')) return;
+  await api('/api/interviews/' + interview.id, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment })
+  });
+  hint('总评语已保存 ✓');
+});
+
+async function finishInterview() {
+  if (!confirm('确认完成面试？完成后仍可继续打分修改。')) return;
+  interview = await api('/api/interviews/' + interview.id, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: '已完成' })
+  });
+  document.getElementById('statusTag').textContent = interview.status;
+  const totals = participants().map(it => weightedTotal(it.id)).filter(t => t !== null);
+  const avg = totals.length ? (totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(1) : '--';
+  alert('面试已完成，全员加权平均：' + avg);
+}
+
+// SSE 收到新数据后的统一重绘入口
+function renderAll() {
+  if (!interview) return;
+  document.getElementById('statusTag').textContent = interview.status;
+  document.getElementById('reportLink').href = '/report.html?interviewId=' + encodeURIComponent(interview.id);
+  markNav();
+  if (view === 'detail') renderDetailSafe();
+  else if (view === 'matrix') renderMatrix();
+  else renderSummaryView();
+}
+
+init();
+</script>
+</body>
+</html>

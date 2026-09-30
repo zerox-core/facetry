@@ -1,0 +1,65 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1031 >>
+stream
+BT /F1 24 Tf 50 760 Td (LIN ZHIYUAN) Tj ET
+BT /F1 12 Tf 50 728 Td (AI APPLICATION ENGINEER | SYNTHETIC TEST RESUME) Tj ET
+BT /F1 16 Tf 50 675 Td (EXPERIENCE) Tj ET
+BT /F1 12 Tf 50 646 Td (YuanShan Technology | AI Engineer | 2023 - Present) Tj ET
+BT /F1 11 Tf 50 620 Td (Built enterprise AI products with product and algorithm teams.) Tj ET
+BT /F1 16 Tf 50 548 Td (Enterprise Knowledge Base) Tj ET
+BT /F1 11 Tf 50 518 Td (Python / FastAPI / LangChain / Milvus) Tj ET
+BT /F1 11 Tf 50 490 Td (Designed a RAG pipeline serving 500 internal users.) Tj ET
+BT /F1 11 Tf 50 465 Td (Combined BM25 and vector retrieval, followed by reranking.) Tj ET
+BT /F1 11 Tf 50 440 Td (Improved retrieval accuracy from 72% to 91% on a held-out set.) Tj ET
+BT /F1 11 Tf 50 415 Td (Implemented citations, streaming and production monitoring.) Tj ET
+BT /F1 16 Tf 50 320 Td (EDUCATION) Tj ET
+BT /F1 11 Tf 50 288 Td (Computer Science, Bachelor degree | 2019 - 2023) Tj ET
+BT /F1 9 Tf 50 45 Td (Fictional resume for application testing only. Page 1 of 2) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 775 >>
+stream
+BT /F1 22 Tf 50 760 Td (PROJECTS & SKILLS) Tj ET
+BT /F1 16 Tf 50 650 Td (Data Analysis Agent) Tj ET
+BT /F1 11 Tf 50 620 Td (TypeScript / Python / Tool Calling / PostgreSQL) Tj ET
+BT /F1 11 Tf 50 590 Td (Built a natural-language interface for queries and reports.) Tj ET
+BT /F1 11 Tf 50 565 Td (Designed SQL tools with read-only permissions and validation.) Tj ET
+BT /F1 11 Tf 50 540 Td (Reduced report turnaround time by 60% compared with manual work.) Tj ET
+BT /F1 11 Tf 50 515 Td (Implemented retry logic, tool execution tracing and failure alerts.) Tj ET
+BT /F1 16 Tf 50 400 Td (SKILLS) Tj ET
+BT /F1 11 Tf 50 370 Td (Python, TypeScript, Docker, PostgreSQL, RAG, Agent workflows) Tj ET
+BT /F1 9 Tf 50 45 Td (Fictional resume for application testing only. Page 2 of 2) Tj ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000001400 00000 n 
+0000001526 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+2352
+%%EOF
