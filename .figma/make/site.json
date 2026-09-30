@@ -1,0 +1,10 @@
+{
+  "description": "This web application simulates AI interviews, offering users a mock interface to practice and prepare for real interview scenarios with realistic data.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
