@@ -1,0 +1,119 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  --font-sans: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  --font-mono: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  /* 低饱和的墨蓝：替换 Tailwind 默认的高饱和亮蓝，避免"AI 蓝" */
+  --color-blue-50: #f3f5f8;
+  --color-blue-100: #e4e9f0;
+  --color-blue-200: #c9d2df;
+  --color-blue-300: #a3b1c5;
+  --color-blue-400: #7489a6;
+  --color-blue-500: #4f6788;
+  --color-blue-600: #334d70;
+  --color-blue-700: #283e5c;
+  --color-blue-800: #1f3049;
+  --color-blue-900: #172338;
+}
+
+@layer base {
+  body { background: #f4f3ef; color: #0f172a; font-family: var(--font-sans); font-feature-settings: 'tnum'; -webkit-font-smoothing: antialiased; }
+  ::selection { background: #e4e9f0; }
+}
+
+@keyframes login-scan { from { top: 60px; opacity: 0 } 15% { opacity: 1 } to { top: 330px; opacity: 0 } }
+@keyframes login-fill { from { width: 0 } to { width: 100% } }
+@keyframes login-fade { from { opacity: 0; transform: translateY(3px) } to { opacity: 1; transform: none } }
+.login-scan { animation: login-scan 0.9s ease-in-out forwards; }
+.login-fill { animation: login-fill linear forwards; }
+.login-fade { animation: login-fade 0.4s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .login-scan, .login-fill, .login-fade { animation: none; }
+  .login-fill { width: 100%; }
+}
+@keyframes login-check { to { background: var(--color-blue-600); border-color: var(--color-blue-600); color: white } }
+@keyframes login-pick { to { background: var(--color-blue-600); color: white } }
+.login-check { color: transparent; animation: login-check 0.25s ease-out forwards; }
+.login-pick { animation: login-pick 0.25s ease-out 1.5s forwards; }
+@keyframes login-draw { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+.login-draw { animation: login-draw 0.4s ease-out; }
+.login-desk {
+  background-color: #1d2939;
+  background-image: radial-gradient(rgb(255 255 255 / 0.06) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+/* 简历纸：暖白纸面 + 分层投影，底部两角微微卷起 */
+.login-paper {
+  background: #fffdf9;
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 1px rgb(15 23 42 / 0.04),
+    0 1px 1px rgb(0 0 0 / 0.12),
+    0 3px 6px rgb(0 0 0 / 0.12),
+    0 14px 28px -8px rgb(0 0 0 / 0.35),
+    0 44px 80px -24px rgb(0 0 0 / 0.6);
+}
+.login-paper::before, .login-paper::after {
+  content: ''; position: absolute; z-index: -1; bottom: 14px; width: 45%; height: 30px;
+  box-shadow: 0 18px 16px rgb(0 0 0 / 0.55);
+}
+.login-paper::before { left: 12px; transform: rotate(-3deg); }
+.login-paper::after { right: 12px; transform: rotate(3deg); }
+.login-sheet {
+  background: #f1ede4;
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2), 0 18px 36px -16px rgb(0 0 0 / 0.55);
+}
+@keyframes login-nudge { 50% { transform: translateX(3px) } }
+.login-nudge { animation: login-nudge 1.4s ease-in-out infinite; }
+
+/* ───────────── Facetry 设计规范（由登录页确定，工作台沿用） ─────────────
+   色彩
+   - 墨色 ink：#1d2939，桌面、顶栏等「承托」层；文字在其上用 white/60–90
+   - 纸面 paper：#fffdf9，承载内容的卡片；页面底色为暖灰 #f4f3ef
+   - 主色：墨蓝 blue-600 #334d70，常规主操作
+   - 强调色：琥珀 amber-400，每屏只出现一处，用于「入口」和「现在该做的事」
+   - 语义色：emerald 表示亮点或通过，amber 表示待核实或风险；只用浅底加深字，不做大面积色块
+   字体：Inter + Noto Sans SC。标题 600，正文 400；数字一律用 tabular-nums；不用全大写，不用衬线
+   层级：纸面阴影 --shadow-paper（静止）→ --shadow-lift（悬停或抬起），不用发光和渐变
+   动效
+   - 时长 --dur-fast 150ms（颜色/按压）、--dur-base 300ms（位移/展开）、--dur-slow 700ms（进度/描线）
+   - 缓动 --ease-out: cubic-bezier(.2,.7,.2,1)
+   - 入场：内容自上而下 ws-rise，每组延迟 60ms；悬停：抬起 2px 并加深阴影；按压：scale(.98)
+   - 开启 prefers-reduced-motion 时，只保留颜色过渡 */
+:root {
+  --ink: #1d2939;
+  --paper: #fffdf9;
+  --canvas: #f4f3ef;
+  --shadow-paper: 0 0 0 1px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 20px -12px rgb(15 23 42 / 0.18);
+  --shadow-lift: 0 0 0 1px rgb(15 23 42 / 0.08), 0 2px 4px rgb(15 23 42 / 0.06), 0 18px 32px -14px rgb(15 23 42 / 0.28);
+  --dur-fast: 150ms;
+  --dur-base: 300ms;
+  --dur-slow: 700ms;
+  --ease-out: cubic-bezier(.2, .7, .2, 1);
+}
+.ws-canvas { background: var(--canvas); }
+.ws-bar { background-color: var(--ink); background-image: radial-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px); background-size: 22px 22px; }
+.ws-paper { background: var(--paper); box-shadow: var(--shadow-paper); }
+.ws-lift { transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
+.ws-lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.ws-press { transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast), color var(--dur-fast); }
+.ws-press:active { transform: scale(.98); }
+@keyframes ws-rise { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+.ws-rise { animation: ws-rise 0.5s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms); }
+@keyframes ws-grow { from { width: 0 } }
+.ws-grow { animation: ws-grow var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms + 200ms); }
+@media (prefers-reduced-motion: reduce) {
+  .ws-rise, .ws-grow { animation: none; }
+  .ws-lift:hover { transform: none; }
+  .ws-press:active { transform: none; }
+}
+
+/* 语音动效：说话时的声波环与音量条；最小化顶栏的呼吸 */
+@keyframes voice-ring { from { transform: scale(1); opacity: .55 } to { transform: scale(1.6); opacity: 0 } }
+.voice-ring { animation: voice-ring 1.2s var(--ease-out) infinite; }
+@keyframes ws-breathe { 50% { box-shadow: inset 0 -2px 0 rgb(251 191 36 / 0.9), 0 6px 24px -6px rgb(251 191 36 / 0.35) } }
+.ws-breathe { box-shadow: inset 0 -2px 0 rgb(251 191 36 / 0.25); animation: ws-breathe 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .voice-ring, .ws-breathe { animation: none; } }

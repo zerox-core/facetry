@@ -1,0 +1,7 @@
+{
+  "name": "facetry-server",
+  "private": true,
+  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js" },
+  "engines": { "node": ">=22" },
+  "dependencies": { "mammoth": "^1.11.0" }
+}

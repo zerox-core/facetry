@@ -8,6 +8,7 @@ config.json
 interview-site/data/
 resume-studio/data/
 sidenote/data/
+facetry/server/data/
 
 # cloned third-party repos (keep their own git history)
 open-source/
@@ -15,3 +16,4 @@ open-source/
 # OS / editor
 .DS_Store
 Thumbs.db
+facetry/public/pdfjs/cmaps/Adobe-Korea1-2.bcmap
