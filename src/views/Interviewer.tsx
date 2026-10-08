@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { bank } from '../data'
-import { addQuestion, findC, pickedOf, setPicked as savePicked } from '../store'
+import { addQuestion, findC, pickedOf, setPicked as savePicked, slotLabel } from '../store'
 import type { Go } from '../App'
 import { Btn } from './ui'
 import ResumeDoc from './ResumeDoc'
@@ -17,27 +17,35 @@ export default function Interviewer({ cid, go }: Props) {
   const [hover, setHover] = useState<string>()
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState({ q: '', topic: TOPICS[0], points: '', follow: '' })
-  const add = (text: string, topic: string, points: string[] = [], follow: string[] = []) => addQuestion(cid, text, topic, points, follow)
   const submit = () => {
     if (!draft.q.trim()) return
     const lines = (v: string) => v.split('\n').map((x) => x.trim()).filter(Boolean)
-    add(draft.q.trim(), draft.topic, lines(draft.points), lines(draft.follow))
+    addQuestion(cid, { q: draft.q.trim(), topic: draft.topic, points: lines(draft.points), follow: lines(draft.follow) })
     setDraft({ q: '', topic: draft.topic, points: '', follow: '' })
     setAdding(false)
   }
   const used = new Set(c.qs.map((q) => q.q))
   const toggle = (id: string) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id])
 
+  // 面试间是关键节点，入口按候选人状态降频：只有临近面试 / 待评价才是主行动
+  const roomBtn = c.status === '待面试'
+    ? <Btn variant="accent" onClick={() => go('room', cid)}>进入面试间（{picked.length} 题）</Btn>
+    : c.status === '待评价'
+      ? <Btn variant="accent" onClick={() => go('room', cid)}>去补填评价</Btn>
+      : c.status === '待约面'
+        ? <Btn variant="ghost" onClick={() => go('room', cid)}>进入面试间（{picked.length} 题）</Btn>
+        : <Btn variant="ghost" onClick={() => go('room', cid)}>面试记录（已提交）</Btn>
+
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-5 ws-rise">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{c.name} · {c.role}</h1>
-          <p className="mt-1.5 text-[15px] text-slate-500">{c.slot} · {c.round}　·　岗位匹配 {c.match}%　·　已生成 {c.qs.length} 道题，勾选本场要问的</p>
+          <p className="mt-1.5 text-[15px] text-slate-500">{slotLabel(c.slot)} · {c.round}　·　岗位匹配 {c.match}%　·　已生成 {c.qs.length} 道题，勾选本场要问的</p>
         </div>
         <div className="flex gap-2">
           <Btn variant="ghost" onClick={() => go('back')}>返回{go.from}</Btn>
-          <Btn variant="accent" onClick={() => go('room', cid)}>进入面试间（{picked.length} 题）</Btn>
+          {roomBtn}
         </div>
       </div>
 
@@ -106,7 +114,7 @@ export default function Interviewer({ cid, go }: Props) {
                   <ul className="mt-2 space-y-1">
                     {bank.filter((b) => !used.has(b.q)).slice(0, 5).map((b) => (
                       <li key={b.q}>
-                        <button onClick={() => add(b.q, b.cat === '综合' ? '行为面试' : '技术深挖')} className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
+                        <button onClick={() => addQuestion(cid, { q: b.q, topic: b.cat === '综合' ? '行为面试' : '技术深挖', diff: b.diff, basis: `题库 · ${b.cat}`, points: b.points, answer: b.answer, follow: b.follow, flag: b.flag })} className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
                           <span>{b.q}</span><span className="shrink-0 text-blue-600">+ 添加</span>
                         </button>
                       </li>

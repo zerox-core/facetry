@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import type React from 'react'
+import { useEffect, useState } from 'react'
 import Home from './views/Home'
 import Candidates from './views/Candidates'
 import Bank from './views/Bank'
@@ -8,10 +9,37 @@ import Login from './views/Login'
 import Join from './views/Join'
 import Result from './views/Result'
 import Overview from './views/Overview'
-import { resetDemo, useStore } from './store'
+import { elapsedOf, findC, resetDemo, rooms, runningRoomId, useStore } from './store'
 
 const nav = [['home', '工作台'], ['overview', '总览'], ['candidates', '候选人'], ['bank', '题库']]
 const LABEL: Record<string, string> = { home: '工作台', overview: '总览', candidates: '候选人', bank: '题库', analysis: '候选人分析', result: '结果分析', room: '面试间' }
+const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+
+/** 后台面试悬浮入口：面试进行中离开面试间时出现（暂停 / 结束不出现），计时继续，点「回到面试间」直接进入、不再确认 */
+function BgRoomWidget({ go }: { go: Go }) {
+  const cid = runningRoomId()
+  const [, tick] = useState(0)
+  useEffect(() => {
+    if (!cid) return
+    const t = setInterval(() => tick((x) => x + 1), 1000)
+    return () => clearInterval(t)
+  }, [cid])
+  if (!cid) return null
+  const c = findC(cid)
+  return (
+    <div className="ws-rise fixed bottom-5 right-5 z-40 flex items-center gap-3.5 rounded-xl bg-[#1d2939] py-2.5 pl-4 pr-2.5 text-white shadow-[var(--shadow-lift)]" style={{ '--i': 0 } as React.CSSProperties}>
+      <span className="relative flex h-2.5 w-2.5 shrink-0">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-70" />
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-xs tabular-nums text-white/55">面试进行中 · {mmss(elapsedOf(rooms[cid]))}</div>
+        <div className="max-w-44 truncate text-sm font-medium">{c.name} · {c.role}</div>
+      </div>
+      <button onClick={() => go('room', cid)} className="h-9 shrink-0 cursor-pointer rounded-lg bg-amber-400 px-3.5 text-sm font-semibold text-[#1d2939] transition-colors hover:bg-amber-300">回到面试间</button>
+    </div>
+  )
+}
 
 /** 导航：go(v) 进入新页并记住来源；go('back') 回到来源页；replace 用于不该回退到的中间页（如提交后的面试间）。
  *  go.from 是返回目标的名称，页面上的「← xx」按钮用它 */
@@ -79,6 +107,7 @@ export default function App() {
         {view === 'analysis' && <Interviewer key={cid} cid={cid} go={go} />}
         {view === 'result' && <Result key={cid} cid={cid} go={go} />}
       </main>
+      <BgRoomWidget go={go} />
     </div>
   )
 }

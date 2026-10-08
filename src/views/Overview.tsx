@@ -41,7 +41,6 @@ export default function Overview({ go }: { go: Go }) {
     <div className="space-y-8">
       <div className="ws-rise">
         <h1 className="text-2xl font-semibold text-slate-900">数据总览</h1>
-        <p className="mt-1 text-sm text-slate-500">截至 2026-09-30 · 基于 {n} 场已提交评价</p>
       </div>
 
       <div className="ws-rise grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-slate-200/70 ring-1 ring-slate-200/70 md:grid-cols-5" style={{ '--i': 1 } as React.CSSProperties}>
@@ -55,7 +54,7 @@ export default function Overview({ go }: { go: Go }) {
 
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <section className="ws-rise" style={{ '--i': 2 } as React.CSSProperties}>
-          <SectionHead title="得分走势" sub="每场综合得分，按面试日期" />
+          <SectionHead title="得分走势" />
           <Card className="px-5 pb-4 pt-6">
             <div className="flex h-44 items-end gap-3">
               {trend.map((h, i) => (
@@ -100,7 +99,7 @@ export default function Overview({ go }: { go: Go }) {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="ws-rise" style={{ '--i': 5 } as React.CSSProperties}>
-          <SectionHead title="岗位表现" sub="均分最低的岗位标出" />
+          <SectionHead title="岗位表现" />
           <Card>
             <table className="w-full text-left text-sm">
               <thead><tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500"><th className="px-5 py-2.5 font-medium">岗位</th><th className="font-medium">场次</th><th className="font-medium">均分</th><th className="px-5 text-right font-medium">推荐率</th></tr></thead>
@@ -119,7 +118,7 @@ export default function Overview({ go }: { go: Go }) {
         </section>
 
         <section className="ws-rise" style={{ '--i': 6 } as React.CSSProperties}>
-          <SectionHead title="考察方向均分" sub="来自面试间逐题评分，由低到高" />
+          <SectionHead title="考察方向均分" />
           <Card className="space-y-3 px-5 py-4">
             {topics.length ? topics.map((x) => (
               <div key={x.t} className="grid grid-cols-[96px_1fr_64px] items-center gap-3 text-sm">

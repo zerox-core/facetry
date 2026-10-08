@@ -87,8 +87,17 @@
   --ink: #1d2939;
   --paper: #fffdf9;
   --canvas: #f4f3ef;
-  --shadow-paper: 0 0 0 1px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 20px -12px rgb(15 23 42 / 0.18);
-  --shadow-lift: 0 0 0 1px rgb(15 23 42 / 0.08), 0 2px 4px rgb(15 23 42 / 0.06), 0 18px 32px -14px rgb(15 23 42 / 0.28);
+  /* 卡片立体感：阴影加深、层次拉开（2026-10-01 用户反馈后加深） */
+  --shadow-paper:
+    0 0 0 1px rgb(15 23 42 / 0.07),
+    0 1px 3px rgb(15 23 42 / 0.08),
+    0 6px 16px -8px rgb(15 23 42 / 0.22),
+    0 18px 36px -18px rgb(15 23 42 / 0.22);
+  --shadow-lift:
+    0 0 0 1px rgb(15 23 42 / 0.08),
+    0 2px 4px rgb(15 23 42 / 0.08),
+    0 12px 28px -10px rgb(15 23 42 / 0.3),
+    0 28px 56px -24px rgb(15 23 42 / 0.3);
   --dur-fast: 150ms;
   --dur-base: 300ms;
   --dur-slow: 700ms;
@@ -117,3 +126,19 @@
 @keyframes ws-breathe { 50% { box-shadow: inset 0 -2px 0 rgb(251 191 36 / 0.9), 0 6px 24px -6px rgb(251 191 36 / 0.35) } }
 .ws-breathe { box-shadow: inset 0 -2px 0 rgb(251 191 36 / 0.25); animation: ws-breathe 2.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .voice-ring, .ws-breathe { animation: none; } }
+
+/* 弹窗遮罩：墨色压暗 + 背景模糊，弹窗为主体（2026-10-01 用户反馈新增） */
+.ws-scrim {
+  background: rgb(29 41 57 / 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* 纸面卡片悬停浮起（新页面使用，与 ws-lift 同族） */
+.ws-paper-hover {
+  transition: box-shadow var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+.ws-paper-hover:hover {
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-1px);
+}

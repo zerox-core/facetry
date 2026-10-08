@@ -1,12 +1,13 @@
 import type React from 'react'
-import { findC, pickedOf, rooms } from '../store'
+import { findC, pickedOf, rooms, buildReviewFor, commit } from '../store'
 import type { Go } from '../App'
 import { Btn, Card, SectionHead } from './ui'
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 const verdictCls: Record<string, string> = { 推荐: 'bg-emerald-50 text-emerald-700', 待定: 'bg-slate-100 text-slate-600', 不推荐: 'bg-amber-50 text-amber-700' }
 
-/** 结果分析：每场面试结束后的复盘。报告以评分与备注为准，会话记录只作为补充 */
+/** 结果分析：每场面试结束后的复盘。报告以评分与备注为准，会话记录只作为补充。
+ *  提交后评分与结论不可修改，但综合评价报告可以随时重新生成（第二天回来也可以）。 */
 export default function Result({ cid, go }: { cid: string; go: Go }) {
   const c = findC(cid)
   const room = rooms[cid]
@@ -30,6 +31,12 @@ export default function Result({ cid, go }: { cid: string; go: Go }) {
   const by = (w: string) => talk.filter((t) => t.who === w).length
   const cand = by('候选人'), me = by('面试官')
   const rv = room.review
+
+  // 报告只基于已保存的评分与记录重建，不改动任何面试结果
+  const regen = () => {
+    const r = buildReviewFor(cid)
+    if (r) { room.review = r; commit() }
+  }
 
   return (
     <div className="space-y-8">
@@ -112,7 +119,13 @@ export default function Result({ cid, go }: { cid: string; go: Go }) {
       </div>
 
       <section className="ws-rise" style={{ '--i': 5 } as React.CSSProperties}>
-        <SectionHead title="综合评价" sub={rv ? `生成于 ${rv.at}` : '在面试间结束页生成'} />
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">综合评价</h2>
+            <p className="mt-0.5 text-sm text-slate-400">{rv ? `生成于 ${rv.at} · 评分提交后不可修改，报告可随时重新生成` : '基于已保存的评分与记录生成，面试结束后任何时间都可以回来生成'}</p>
+          </div>
+          <Btn variant={rv ? 'ghost' : 'accent'} className="!h-9 !px-3.5" onClick={regen}>{rv ? '重新生成报告' : '生成综合评价'}</Btn>
+        </div>
         <Card className="px-6 py-5">
           {rv ? (
             <div className="space-y-4 text-sm leading-7 text-slate-700">
@@ -124,7 +137,7 @@ export default function Result({ cid, go }: { cid: string; go: Go }) {
               </div>
               <p className="rounded-lg bg-slate-50 px-3 py-2">建议：{rv.suggestion}</p>
             </div>
-          ) : <p className="whitespace-pre-line text-sm leading-7 text-slate-700">{room.summary || '暂无评价'}</p>}
+          ) : <p className="whitespace-pre-line text-sm leading-7 text-slate-700">{room.summary || '还没有生成报告——点击右上角「生成综合评价」即可基于本场记录生成。'}</p>}
         </Card>
       </section>
     </div>
