@@ -15,7 +15,7 @@ type Props = {
   doc: DocData
   sections: Section[]
   lines: ResumeLine[]
-  /** 当前展开浮层的板块 */
+  /** 当前展开浮层/底部抽屉的板块 */
   activeId: string | null
   onToggle: (id: string | null) => void
   /** 右侧面板悬停的板块（标记高亮联动） */
@@ -24,6 +24,8 @@ type Props = {
   placingFor: string | null
   onPlace: (sectionId: string, page: number, y: number) => void
   onLocate: (sectionId: string) => void
+  /** 窄屏模式：点标记改为打开底部抽屉，不再渲染行内浮层 */
+  onOpenSection?: (sectionId: string) => void
 }
 
 function CanvasSlot({ canvas }: { canvas: HTMLCanvasElement }) {
@@ -53,19 +55,19 @@ function anchorY(sec: Section, lines: ResumeLine[]): number | null {
   return a.y
 }
 
-export function PdfViewer({ doc, sections, lines, activeId, onToggle, hoverId, placingFor, onPlace, onLocate }: Props) {
+export function PdfViewer({ doc, sections, lines, activeId, onToggle, hoverId, placingFor, onPlace, onLocate, onOpenSection }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
 
-  // 点击浮层与标记以外的地方关闭浮层
+  // 点击浮层与标记以外的地方关闭浮层（窄屏底部抽屉模式下由抽屉自己处理关闭）
   useEffect(() => {
-    if (!activeId) return
+    if (!activeId || onOpenSection) return
     const onDown = (e: MouseEvent) => {
       const t = e.target as HTMLElement
       if (!t.closest('[data-marker]') && !t.closest('[data-popover]')) onToggle(null)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
-  }, [activeId, onToggle])
+  }, [activeId, onToggle, onOpenSection])
 
   return (
     <div ref={rootRef} className="space-y-6">
@@ -132,6 +134,10 @@ export function PdfViewer({ doc, sections, lines, activeId, onToggle, hoverId, p
                       onClick={(e) => {
                         e.stopPropagation()
                         if (placingFor) return
+                        if (onOpenSection) {
+                          onOpenSection(sec.id)
+                          return
+                        }
                         onToggle(active ? null : sec.id)
                       }}
                       className={`pointer-events-auto absolute z-10 grid h-[22px] w-[22px] -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-[11px] font-semibold tabular-nums transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
@@ -141,7 +147,7 @@ export function PdfViewer({ doc, sections, lines, activeId, onToggle, hoverId, p
                     >
                       {idx}
                     </button>
-                    {active && (
+                    {active && !onOpenSection && (
                       <div
                         data-popover
                         className="ws-paper login-fade pointer-events-auto absolute z-20 w-64 rounded-xl p-4"

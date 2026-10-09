@@ -52,9 +52,49 @@ function createApp(options = {}) {
     try { return JSON.parse(fs.readFileSync(bankFile, 'utf8')); } catch { throw fail('题库数据损坏，请检查 data/_bank.json', 500); }
   }
   function bankPart(bank, key) { return bank.parts[key] ? { part: key, partName: bank.parts[key].name } : { part: 'CUST', partName: '自定义' }; }
+  const authFile = path.join(dir, '_auth.json'), oauthStates = new Map();
+  function saveAuth(auth) { fs.writeFileSync(authFile + '.tmp', JSON.stringify(auth)); fs.renameSync(authFile + '.tmp', authFile); }
+  function loadAuth() {
+    let auth = {};
+    try { auth = JSON.parse(fs.readFileSync(authFile, 'utf8')); } catch {}
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000; let dirty = false;
+    for (const [t, s] of Object.entries(auth)) { if (!s.createdAt || Date.parse(s.createdAt) < cutoff) { delete auth[t]; dirty = true; } }
+    if (dirty) saveAuth(auth);
+    return auth;
+  }
+  function cookieToken(req) { const m = /(?:^|;\s*)zm_sess=([\w-]+)/.exec(req.headers.cookie || ''); return m && m[1]; }
+  function currentUser(req) { const t = cookieToken(req); if (!t) return null; const s = loadAuth()[t]; return s ? { id: s.userId, name: s.name, avatar: s.avatar, token: t } : null; }
+  function requireUser(req) { const u = currentUser(req); if (!u) throw fail('请先登录', 401); return u; }
+  function issueSession(res, userId, name, avatar) {
+    const auth = loadAuth(), token = crypto.randomBytes(24).toString('hex');
+    auth[token] = { userId, name, avatar, createdAt: new Date().toISOString() };
+    saveAuth(auth);
+    res.setHeader('Set-Cookie', `zm_sess=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`);
+    return { id: userId, name, avatar };
+  }
+  function adoptLegacy(userId) {
+    for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json') && !x.startsWith('_'))) {
+      try { const s = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); if (!s.userId) { s.userId = userId; save(s); } } catch (e) { console.error('历史数据迁移失败:', f, e.message); }
+    }
+  }
+  const feishuClient = options.feishuClient || { async exchange(code) {
+    const cfg = config();
+    try {
+      const atRes = await fetch('https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app_id: cfg.feishuAppId, app_secret: cfg.feishuAppSecret }), signal: AbortSignal.timeout(15000) });
+      const at = await atRes.json();
+      if (!atRes.ok || at.code !== 0 || !at.app_access_token) throw new Error('app_access_token: ' + JSON.stringify(at));
+      const utRes = await fetch('https://open.feishu.cn/open-apis/authen/v1/access_token', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + at.app_access_token }, body: JSON.stringify({ grant_type: 'authorization_code', code }), signal: AbortSignal.timeout(15000) });
+      const ut = await utRes.json();
+      if (!utRes.ok || ut.code !== 0 || !ut.data?.access_token) throw new Error('access_token: ' + JSON.stringify(ut));
+      const uiRes = await fetch('https://open.feishu.cn/open-apis/authen/v1/user_info', { headers: { Authorization: 'Bearer ' + ut.data.access_token }, signal: AbortSignal.timeout(15000) });
+      const ui = await uiRes.json();
+      if (!uiRes.ok || ui.code !== 0 || !ui.data || (!ui.data.union_id && !ui.data.open_id)) throw new Error('user_info: ' + JSON.stringify(ui));
+      return { userId: 'fs:' + (ui.data.union_id || ui.data.open_id), name: ui.data.name || ui.data.en_name || '飞书用户', avatar: ui.data.avatar_url || '' };
+    } catch (e) { console.error('飞书登录失败:', e.message); throw fail('飞书登录失败，请重试', 502); }
+  } };
   function get(sid) { if (!/^[\w-]+$/.test(sid) || sid.startsWith('_')) throw fail('无效编号'); const file = path.join(dir, sid + '.json'); if (!fs.existsSync(file)) throw fail('简历不存在', 404); return JSON.parse(fs.readFileSync(file, 'utf8')); }
   function save(s) { s.updatedAt = new Date().toISOString(); const dest = path.join(dir, s.id + '.json'); fs.writeFileSync(dest + '.tmp', JSON.stringify(s)); fs.renameSync(dest + '.tmp', dest); return s; }
-  function config() { try { return JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8')); } catch { return {}; } }
+  function config() { let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8')); } catch {} return { ...cfg, ...(options.config || {}) }; }
   async function llm(messages) {
     if (options.llm) return parseResult(await options.llm(messages));
     const cfg = config();
@@ -75,14 +115,49 @@ function createApp(options = {}) {
         if (req.headers.origin !== `http://${req.headers.host}` && !['localhost', '127.0.0.1'].includes(originHost)) throw fail('不允许跨来源请求', 403);
       }
       const url = new URL(req.url, 'http://localhost'), p = decodeURIComponent(url.pathname), method = req.method;
-      if (p === '/api/status') return send(res, 200, { configured: !!(config().apiKey && config().model && config().baseUrl) });
+      if (p === '/api/status') return send(res, 200, { configured: !!(config().apiKey && config().model && config().baseUrl), feishu: !!(config().feishuAppId && config().feishuAppSecret) });
+      if (p === '/api/auth/feishu' && method === 'GET') {
+        const cfg = config();
+        if (!cfg.feishuAppId || !cfg.feishuAppSecret) throw fail('未配置飞书应用');
+        for (const [st, exp] of oauthStates) if (exp < Date.now()) oauthStates.delete(st);
+        const state = crypto.randomBytes(8).toString('hex');
+        oauthStates.set(state, Date.now() + 10 * 60 * 1000);
+        const redirectUri = cfg.feishuRedirectUri || `http://${req.headers.host || '127.0.0.1:3220'}/api/auth/feishu/callback`;
+        const location = 'https://open.feishu.cn/open-apis/authen/v1/authorize?app_id=' + encodeURIComponent(cfg.feishuAppId) + '&redirect_uri=' + encodeURIComponent(redirectUri) + '&state=' + state;
+        res.writeHead(302, { Location: location }); return res.end();
+      }
+      if (p === '/api/auth/feishu/callback' && method === 'GET') {
+        const state = url.searchParams.get('state') || '', code = url.searchParams.get('code') || '';
+        const expires = oauthStates.get(state); oauthStates.delete(state);
+        if (!expires || expires < Date.now()) throw fail('登录状态已失效，请重新发起登录');
+        const user = await feishuClient.exchange(code);
+        if (!user || !user.userId) throw fail('飞书登录失败，请重试', 502);
+        adoptLegacy(user.userId);
+        issueSession(res, user.userId, clip(user.name, 50) || '飞书用户', typeof user.avatar === 'string' ? user.avatar : '');
+        res.writeHead(302, { Location: '/' }); return res.end();
+      }
+      if (p === '/api/auth/demo' && method === 'POST') {
+        const b = await json(req), name = clip(b.name, 50).trim();
+        if (!name) throw fail('请提供用户名');
+        const user = issueSession(res, 'demo:' + name, name, '');
+        return send(res, 200, { user });
+      }
+      if (p === '/api/auth/me' && method === 'GET') { const u = requireUser(req); return send(res, 200, { user: { id: u.id, name: u.name, avatar: u.avatar } }); }
+      if (p === '/api/auth/logout' && method === 'POST') {
+        const t = cookieToken(req);
+        if (t) { const auth = loadAuth(); if (auth[t]) { delete auth[t]; saveAuth(auth); } }
+        res.setHeader('Set-Cookie', 'zm_sess=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');
+        res.writeHead(204, { 'Cache-Control': 'no-store' }); return res.end();
+      }
       if (p === '/api/bank' && method === 'GET') {
+        requireUser(req);
         const bank = loadBank();
         const parts = PART_ORDER.filter(k => bank.parts[k]).map(k => ({ key: k, name: bank.parts[k].name, weight: bank.parts[k].weight }));
         if (bank.questions.some(q => q.custom)) parts.push({ key: 'CUST', name: '自定义', weight: 0 });
         return send(res, 200, { parts, questions: bank.questions });
       }
       if (p === '/api/bank' && method === 'POST') {
+        requireUser(req);
         const bank = loadBank(), b = await json(req);
         const title = clip(b.title, 100), q = clip(b.q);
         if (!title.trim() || !q.trim()) throw fail('标题和题干不能为空');
@@ -93,6 +168,7 @@ function createApp(options = {}) {
       }
       const bm = p.match(/^\/api\/bank\/([\w-]+)$/);
       if (bm && method === 'PATCH') {
+        requireUser(req);
         const bank = loadBank(), b = await json(req);
         const question = bank.questions.find(q => q.id === bm[1]);
         if (!question) throw fail('题目不存在', 404);
@@ -105,13 +181,15 @@ function createApp(options = {}) {
         return send(res, 200, question);
       }
       if (bm && method === 'DELETE') {
+        requireUser(req);
         const bank = loadBank(), index = bank.questions.findIndex(q => q.id === bm[1]);
         if (index === -1) throw fail('题目不存在', 404);
         bank.questions.splice(index, 1); saveBank(bank);
         res.writeHead(204, { 'Cache-Control': 'no-store' }); return res.end();
       }
-      if (p === '/api/sessions' && method === 'GET') return send(res, 200, fs.readdirSync(dir).filter(x => x.endsWith('.json') && !x.startsWith('_')).map(x => JSON.parse(fs.readFileSync(path.join(dir, x), 'utf8'))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ sections, lines, text, evaluation, ...s }) => { const questions = (sections || []).flatMap(x => x.questions).filter(q => !q.excluded); const scored = questions.filter(q => q.score !== null); return { ...s, questionCount: questions.length, scoredCount: scored.length, avgScore: scored.length ? Math.round(scored.reduce((a, q) => a + q.score, 0) / scored.length * 10) / 10 : null, hasEvaluation: !!evaluation, suggestion: evaluation ? clip(evaluation.suggestion, 200) : '' }; }));
+      if (p === '/api/sessions' && method === 'GET') { const user = requireUser(req); return send(res, 200, fs.readdirSync(dir).filter(x => x.endsWith('.json') && !x.startsWith('_')).map(x => JSON.parse(fs.readFileSync(path.join(dir, x), 'utf8'))).filter(x => x.userId === user.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ sections, lines, text, evaluation, ...s }) => { const questions = (sections || []).flatMap(x => x.questions).filter(q => !q.excluded); const scored = questions.filter(q => q.score !== null); return { ...s, questionCount: questions.length, scoredCount: scored.length, avgScore: scored.length ? Math.round(scored.reduce((a, q) => a + q.score, 0) / scored.length * 10) / 10 : null, hasEvaluation: !!evaluation, suggestion: evaluation ? clip(evaluation.suggestion, 200) : '' }; })); }
       if (p === '/api/upload' && method === 'POST') {
+        const user = requireUser(req);
         const name = clip(url.searchParams.get('name'), 200), ext = path.extname(name).toLowerCase();
         if (!['.pdf', '.docx', '.txt', '.png', '.jpg', '.jpeg'].includes(ext)) throw fail('支持 PDF、DOCX、TXT、PNG 和 JPG 格式');
         const file = await body(req, 20 * 1024 * 1024);
@@ -124,13 +202,15 @@ function createApp(options = {}) {
         if (ext === '.docx') { try { text = (await require('mammoth').extractRawText({ buffer: file })).value.slice(0, 60000); } catch { throw fail('Word 文件无法解析，请导出为 PDF 后上传'); } }
         const sid = id(), storedExt = ext === '.jpeg' ? '.jpg' : ext;
         fs.writeFileSync(path.join(dir, sid + storedExt), file);
-        return send(res, 201, save({ id: sid, fileName: name, file: sid + storedExt, name: name.replace(/\.[^.]+$/, ''), role: '', summary: '', text, sections: [], lines: [], pageCount: 1, phase: 'prepare', note: '', evaluation: null, createdAt: new Date().toISOString() }));
+        return send(res, 201, save({ id: sid, userId: user.id, fileName: name, file: sid + storedExt, name: name.replace(/\.[^.]+$/, ''), role: '', summary: '', text, sections: [], lines: [], pageCount: 1, phase: 'prepare', note: '', evaluation: null, createdAt: new Date().toISOString() }));
       }
       const jm = p.match(/^\/api\/jobs\/([\w-]+)$/);
       if (jm && method === 'GET') { const job = jobs.get(jm[1]); if (!job) throw fail('任务已结束或服务已重启，请重试', 404); return send(res, 200, job); }
       const sm = p.match(/^\/api\/sessions\/([\w-]+)(?:\/(analyze|evaluate))?$/);
       if (sm) {
         let s = get(sm[1]);
+        const user = requireUser(req);
+        if (s.userId !== user.id) throw fail('简历不存在', 404);
         if (!sm[2] && method === 'GET') return send(res, 200, s);
         if (!sm[2] && method === 'DELETE') {
           fs.unlinkSync(path.join(dir, s.id + '.json'));
@@ -215,6 +295,9 @@ function createApp(options = {}) {
       let file;
       if (p.startsWith('/files/')) {
         const name = p.slice(7); if (!/^[\w-]+\.(pdf|docx|txt|png|jpg)$/.test(name)) throw fail('文件不存在', 404);
+        const user = requireUser(req);
+        const owner = get(name.replace(/\.[^.]+$/, ''));
+        if (owner.userId !== user.id) throw fail('文件不存在', 404);
         file = path.join(dir, name);
       } else {
         file = path.resolve(distDir, '.' + (p === '/' ? '/index.html' : p));
@@ -226,5 +309,5 @@ function createApp(options = {}) {
   });
   return server;
 }
-if (require.main === module) { const port = Number(process.env.PORT) || 3220; createApp().listen(port, '127.0.0.1', () => console.log(`FaceTry 已启动：http://localhost:${port}`)); }
+if (require.main === module) { const port = Number(process.env.PORT) || 3220, host = process.env.HOST || '0.0.0.0'; createApp().listen(port, host, () => { const nets = require('os').networkInterfaces(); const lan = Object.values(nets).flat().filter(Boolean).find(n => n.family === 'IPv4' && !n.internal); console.log(`知马已启动：http://localhost:${port}${lan ? `（局域网：http://${lan.address}:${port}）` : ''}`); }); }
 module.exports = { createApp, normalizeAnalysis };

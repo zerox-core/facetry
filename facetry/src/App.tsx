@@ -1,5 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { api } from './api'
 import { ToastHost } from './components/Toast'
+import { Spinner } from './components/ui'
+import type { AuthUser } from './types'
 import Bank from './views/Bank'
 import Home from './views/Home'
 import Login from './views/Login'
@@ -21,15 +24,18 @@ type Entry = { view: string; sessionId: string }
 export default function App() {
   const [stack, setStack] = useState<Entry[]>([{ view: 'home', sessionId: '' }])
   const { view, sessionId } = stack[stack.length - 1]
-  const [user, setUser] = useState(() => localStorage.getItem('facetry-user'))
-  const login = (name: string) => {
-    localStorage.setItem('facetry-user', name)
-    setUser(name)
-    setStack([{ view: 'home', sessionId: '' }])
-  }
+  // 服务端会话（zm_sess cookie）：启动时先问 /api/auth/me
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [authPending, setAuthPending] = useState(true)
+  useEffect(() => {
+    api
+      .me()
+      .then((r) => setUser(r.user))
+      .catch(() => setUser(null))
+      .finally(() => setAuthPending(false))
+  }, [])
   const logout = () => {
-    localStorage.removeItem('facetry-user')
-    setUser(null)
+    void api.logout().finally(() => location.reload())
   }
   const go = ((v: string, sid?: string, opt?: { replace?: boolean }) => {
     setStack((s) => {
@@ -47,7 +53,14 @@ export default function App() {
     window.scrollTo(0, 0)
   }
 
-  if (!user) return <Login onLogin={login} />
+  if (authPending) {
+    return (
+      <div className="ws-canvas grid min-h-screen place-items-center">
+        <Spinner />
+      </div>
+    )
+  }
+  if (!user) return <Login />
 
   // 高亮当前入口（栈底），而不是当前页
   const tab = stack[0].view
@@ -55,18 +68,18 @@ export default function App() {
     <div className="ws-canvas min-h-screen">
       <ToastHost />
       <header className="ws-bar sticky top-0 z-20 text-white">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-8 px-6">
-          <button onClick={() => enter('home')} className="flex cursor-pointer items-center gap-2">
-            <span className="grid h-7 w-7 place-items-center rounded-md bg-amber-400 text-sm font-bold text-[#1d2939]">F</span>
-            <span className="text-base font-semibold">Facetry</span>
-            <span className="ml-1 rounded bg-white/10 px-1.5 py-0.5 text-xs text-white/60">简历评审</span>
+        <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
+          <button onClick={() => enter('home')} className="flex shrink-0 cursor-pointer items-center gap-2">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fffdf9] p-0.5"><img src="/logo.png" alt="知马" className="h-full w-full object-contain" /></span>
+            <span className="hidden text-base font-semibold sm:inline">知马</span>
+            <span className="ml-1 hidden rounded bg-white/10 px-1.5 py-0.5 text-xs text-white/60 md:inline">简历评审</span>
           </button>
           <nav className="flex h-full flex-1 gap-1">
             {nav.map(([k, v]) => (
               <button
                 key={k}
                 onClick={() => enter(k)}
-                className={`relative cursor-pointer px-3 text-sm transition-colors duration-150 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:origin-center after:rounded-full after:bg-amber-400 after:transition-transform after:duration-300 ${
+                className={`relative cursor-pointer px-2 text-[13px] transition-colors duration-150 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:origin-center after:rounded-full after:bg-amber-400 after:transition-transform after:duration-300 sm:px-3 sm:text-sm ${
                   tab === k ? 'font-medium text-white after:scale-x-100' : 'text-white/55 after:scale-x-0 hover:text-white'
                 }`}
               >
@@ -74,9 +87,13 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <div className="flex items-center gap-3 text-sm text-white/70">
-            <span className="hidden sm:inline">{user}</span>
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white">{user[0]}</span>
+          <div className="flex shrink-0 items-center gap-3 text-sm text-white/70">
+            <span className="hidden sm:inline">{user.name}</span>
+            {user.avatar ? (
+              <img src={user.avatar} alt={user.name} referrerPolicy="no-referrer" className="h-7 w-7 rounded-full object-cover" />
+            ) : (
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white">{user.name[0]}</span>
+            )}
             <button onClick={logout} className="cursor-pointer text-white/45 hover:text-white">
               退出
             </button>
@@ -84,7 +101,7 @@ export default function App() {
         </div>
       </header>
       <main key={view + sessionId} className="mx-auto max-w-7xl px-6 py-8">
-        {view === 'home' && <Home go={go} user={user} />}
+        {view === 'home' && <Home go={go} user={user.name} />}
         {view === 'resumes' && <Resumes go={go} />}
         {view === 'bank' && <Bank />}
         {view === 'review' && <Review sessionId={sessionId} go={go} />}

@@ -117,3 +117,8 @@
 @keyframes ws-breathe { 50% { box-shadow: inset 0 -2px 0 rgb(251 191 36 / 0.9), 0 6px 24px -6px rgb(251 191 36 / 0.35) } }
 .ws-breathe { box-shadow: inset 0 -2px 0 rgb(251 191 36 / 0.25); animation: ws-breathe 2.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .voice-ring, .ws-breathe { animation: none; } }
+
+/* 窄屏底部抽屉：自底部上移淡入 */
+@keyframes ws-sheet-up { from { opacity: 0; transform: translateY(24px) } to { opacity: 1; transform: none } }
+.ws-sheet-up { animation: ws-sheet-up var(--dur-base) var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .ws-sheet-up { animation: none; } }

@@ -1,5 +1,8 @@
 {
   "baseUrl": "https://api.openai.com/v1",
   "apiKey": "sk-...",
-  "model": "gpt-4o"
+  "model": "gpt-4o",
+  "feishuAppId": "cli_...",
+  "feishuAppSecret": "...",
+  "feishuRedirectUri": "http://127.0.0.1:3220/api/auth/feishu/callback"
 }

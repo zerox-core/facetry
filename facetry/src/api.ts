@@ -1,4 +1,4 @@
-import type { AnalyzePayload, Bank, BankQuestion, BankQuestionInput, Job, Session, SessionPatch, SessionSummary } from './types'
+import type { AnalyzePayload, AuthUser, Bank, BankQuestion, BankQuestionInput, Job, Session, SessionPatch, SessionSummary } from './types'
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, options)
@@ -14,7 +14,11 @@ const json = (body: unknown): RequestInit => ({
 })
 
 export const api = {
-  status: () => request<{ configured: boolean }>('/api/status'),
+  status: () => request<{ configured: boolean; feishu: boolean }>('/api/status'),
+
+  me: () => request<{ user: AuthUser }>('/api/auth/me'),
+
+  logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
 
   listSessions: () => request<SessionSummary[]>('/api/sessions'),
 

@@ -34,7 +34,7 @@ export function ScoreDots({ value, onChange, readonly, size = 'md' }: Props) {
           </button>
         )
       })}
-      {value !== null && <span className="ml-1 text-xs text-slate-400">{LABELS[value]}</span>}
+      {value !== null && <span className="ml-1 hidden text-xs text-slate-400 sm:inline">{LABELS[value]}</span>}
     </div>
   )
 }

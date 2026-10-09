@@ -3,19 +3,23 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { createApp, normalizeAnalysis } = require('../server');
 const analysis = { name:'测试候选人',role:'工程师',summary:'测试',sections:[{title:'知识库项目',kind:'project',anchor:{lineId:'p2-l3',quote:'知识库项目',page:1,y:.1},questions:[{q:'混合检索带来了什么收益？',point:'证据',followUp:'怎样验证？',expected:['对照实验'],type:'技术取舍'},{q:'如何处理失败？',point:'可靠性',followUp:'举例',expected:['案例'],type:'经历深挖'}]}] };
 const lines=[{id:'p2-l3',text:'知识库项目',page:2,y:.47,x:.12}];
-async function fixture(t,llm) {
+async function fixture(t,llm,opts) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facetry-test-'));
-  const server=createApp({dataDir:dir,llm:llm||(()=>structuredClone(analysis))});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const server=createApp({dataDir:dir,llm:llm||(()=>structuredClone(analysis)),...(opts||{})});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(async()=>{await new Promise(resolve=>server.close(resolve));const target=path.resolve(dir);if(target.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(target).startsWith('facetry-test-'))fs.rmSync(target,{recursive:true,force:true});});
   const base='http://127.0.0.1:'+server.address().port;
-  const req=async(p,method='GET',data)=>{const r=await fetch(base+p,{method,headers:{'Content-Type':'application/json'},...(data!==undefined?{body:JSON.stringify(data)}:{})});return {status:r.status,data:r.status===204?null:await r.json()};};
-  const upload=async(name='测试.txt',text='测试候选人\n知识库项目\n采用混合检索')=>{const r=await fetch(base+'/api/upload?name='+encodeURIComponent(name),{method:'POST',body:text});return {status:r.status,data:await r.json()};};
+  const login=async(name='测试员')=>{const r=await fetch(base+'/api/auth/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});const data=await r.json();return {cookie:r.headers.get('set-cookie').split(';')[0],user:data.user,status:r.status};};
+  const self=await login(),cookie=self.cookie;
+  const req=async(p,method='GET',data)=>{const r=await fetch(base+p,{method,headers:{'Content-Type':'application/json',Cookie:cookie},...(data!==undefined?{body:JSON.stringify(data)}:{})});return {status:r.status,data:r.status===204?null:await r.json()};};
+  const reqAs=(other)=>(p,method='GET',data)=>fetch(base+p,{method,headers:{'Content-Type':'application/json',Cookie:other.cookie},...(data!==undefined?{body:JSON.stringify(data)}:{})}).then(async r=>({status:r.status,data:r.status===204?null:await r.json()}));
+  const upload=async(name='测试.txt',text='测试候选人\n知识库项目\n采用混合检索')=>{const r=await fetch(base+'/api/upload?name='+encodeURIComponent(name),{method:'POST',headers:{Cookie:cookie},body:text});return {status:r.status,data:await r.json()};};
   const poll=async jid=>{for(let n=0;n<100;n++){const {data}=await req('/api/jobs/'+jid);if(data.state!=='running')return data;await new Promise(r=>setTimeout(r,10));}throw new Error('job timeout');};
   const analyze=async s=>{const p='/api/sessions/'+s.id;const {data:job}=await req(p+'/analyze','POST',{lines,pageCount:2});assert.equal((await poll(job.id)).state,'done');return (await req(p)).data;};
-  return {req,upload,poll,analyze,base,dir};
+  return {req,reqAs,upload,poll,analyze,login,base,dir,cookie,user:self.user};
 }
 test('source line determines exact page and coordinates, and invalid model output fails',()=>{
   const r=normalizeAnalysis(analysis,lines,2);assert.equal(r.sections[0].anchor.page,2);assert.equal(r.sections[0].anchor.y,.47);assert.equal(r.sections[0].anchor.matched,true);
@@ -31,7 +35,7 @@ test('DOCX content is extracted as text and malformed documents are rejected',as
   const f=await fixture(t),JSZip=require('jszip'),zip=new JSZip();
   zip.file('[Content_Types].xml','<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
   zip.file('word/document.xml','<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>测试候选人的知识库项目</w:t></w:r></w:p></w:body></w:document>');
-  const buf=await zip.generateAsync({type:'nodebuffer'});const response=await fetch(f.base+'/api/upload?name=resume.docx',{method:'POST',body:buf});assert.equal(response.status,201);assert.match((await response.json()).text,/知识库项目/);
+  const buf=await zip.generateAsync({type:'nodebuffer'});const response=await fetch(f.base+'/api/upload?name=resume.docx',{method:'POST',headers:{Cookie:f.cookie},body:buf});assert.equal(response.status,201);assert.match((await response.json()).text,/知识库项目/);
   assert.equal((await f.upload('bad.docx','broken')).status,400);
 });
 test('analysis, selection, scoring, notes and manual anchors survive readback',async t=>{
@@ -98,10 +102,10 @@ test('session list exposes questionCount and scoredCount excluding excluded ques
 test('DELETE removes the session json and stored file',async t=>{
   const f=await fixture(t),{data:s}=await f.upload(),p='/api/sessions/'+s.id;
   assert.ok(fs.existsSync(path.join(f.dir,s.file)));assert.ok(fs.existsSync(path.join(f.dir,s.id+'.json')));
-  const response=await fetch(f.base+p,{method:'DELETE'});assert.equal(response.status,204);
+  const response=await fetch(f.base+p,{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(response.status,204);
   assert.ok(!fs.existsSync(path.join(f.dir,s.id+'.json')));assert.ok(!fs.existsSync(path.join(f.dir,s.file)));
   assert.equal((await f.req(p)).status,404);
-  const again=await fetch(f.base+p,{method:'DELETE'});assert.equal(again.status,404);
+  const again=await fetch(f.base+p,{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(again.status,404);
 });
 test('localhost origins are allowed, other cross origins are rejected',async t=>{
   const f=await fixture(t);
@@ -139,13 +143,13 @@ test('bank POST creates a custom question, validates input and persists edits',a
   assert.equal(ps,200);assert.equal(patched.title,'改后的标题');assert.equal(patched.part,'C');assert.equal(patched.partName,'Part C · 思维题');assert.equal(patched.answer,'改后的答案');assert.ok(patched.updatedAt>=created.updatedAt);
   assert.equal((await f.req('/api/bank/'+created.id,'PATCH',{q:''})).status,400);
   const {data:bank2}=await f.req('/api/bank');const saved=bank2.questions.find(q=>q.id===created.id);assert.equal(saved.title,'改后的标题');assert.equal(saved.part,'C');
-  const del=await fetch(f.base+'/api/bank/'+created.id,{method:'DELETE'});assert.equal(del.status,204);
+  const del=await fetch(f.base+'/api/bank/'+created.id,{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(del.status,204);
   const {data:bank3}=await f.req('/api/bank');assert.equal(bank3.questions.length,41);assert.ok(!bank3.parts.some(x=>x.key==='CUST'));
 });
 test('bank PATCH and DELETE return 404 for unknown ids',async t=>{
   const f=await fixture(t);
   assert.equal((await f.req('/api/bank/NOPE','PATCH',{title:'x'})).status,404);
-  const del=await fetch(f.base+'/api/bank/NOPE',{method:'DELETE'});assert.equal(del.status,404);
+  const del=await fetch(f.base+'/api/bank/NOPE',{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(del.status,404);
   const {data:bank}=await f.req('/api/bank');assert.equal(bank.questions.length,41);
 });
 test('bank storage file never leaks into session list or session routes',async t=>{
@@ -154,6 +158,66 @@ test('bank storage file never leaks into session list or session routes',async t
   assert.ok(fs.existsSync(path.join(f.dir,'_bank.json')));
   const {data:list}=await f.req('/api/sessions');assert.ok(Array.isArray(list));assert.ok(!list.some(s=>s&&s.parts));
   assert.equal((await f.req('/api/sessions/_bank')).status,400);
-  const del=await fetch(f.base+'/api/sessions/_bank',{method:'DELETE'});assert.equal(del.status,400);
+  const del=await fetch(f.base+'/api/sessions/_bank',{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(del.status,400);
   assert.ok(fs.existsSync(path.join(f.dir,'_bank.json')));
+});
+test('unauthenticated requests to protected routes are rejected with 401',async t=>{
+  const f=await fixture(t);
+  assert.equal((await fetch(f.base+'/api/sessions')).status,401);
+  assert.equal((await fetch(f.base+'/api/upload?name=x.txt',{method:'POST',body:'hello'})).status,401);
+  assert.equal((await fetch(f.base+'/files/abc.txt')).status,401);
+  assert.equal((await fetch(f.base+'/api/bank')).status,401);
+  assert.equal((await fetch(f.base+'/api/auth/me')).status,401);
+  assert.equal((await fetch(f.base+'/api/status')).status,200);
+  assert.equal((await fetch(f.base+'/api/auth/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'  '})})).status,400);
+});
+test('demo login issues a cookie and sessions are isolated per user',async t=>{
+  const f=await fixture(t);assert.equal(f.user.id,'demo:测试员');
+  const me=await f.req('/api/auth/me');assert.equal(me.status,200);assert.equal(me.data.user.id,'demo:测试员');
+  const {data:s}=await f.upload(),p='/api/sessions/'+s.id;
+  assert.ok((await f.req('/api/sessions')).data.some(x=>x.id===s.id));
+  assert.equal((await fetch(f.base+'/files/'+s.file,{headers:{Cookie:f.cookie}})).status,200);
+  const other=await f.login('另一位面试官'),req2=f.reqAs(other);
+  assert.equal((await req2('/api/sessions')).data.length,0);
+  assert.equal((await req2(p)).status,404);
+  assert.equal((await req2(p,'PATCH',{note:'越权'})).status,404);
+  assert.equal((await req2(p+'/analyze','POST',{lines})).status,404);
+  assert.equal((await req2(p+'/evaluate','POST',{})).status,404);
+  assert.equal((await fetch(f.base+p,{method:'DELETE',headers:{Cookie:other.cookie}})).status,404);
+  assert.equal((await fetch(f.base+'/files/'+s.file,{headers:{Cookie:other.cookie}})).status,404);
+  assert.equal((await req2('/api/bank')).status,200);
+  assert.equal((await f.req(p)).status,200);
+});
+test('feishu oauth redirect, state validation and mocked callback issue an fs: session',async t=>{
+  const f=await fixture(t,undefined,{config:{feishuAppId:'cli_test',feishuAppSecret:'test_secret'},feishuClient:{exchange:async code=>{assert.equal(code,'testcode');return {userId:'fs:u123',name:'飞书用户',avatar:'https://a.example.com/av.png'};}}});
+  const r=await fetch(f.base+'/api/auth/feishu',{redirect:'manual'});assert.equal(r.status,302);
+  const loc=r.headers.get('location');assert.ok(loc.startsWith('https://open.feishu.cn/open-apis/authen/v1/authorize?'));assert.ok(loc.includes('app_id=cli_test'));const ru=new URL(loc).searchParams.get('redirect_uri');assert.ok(ru.startsWith('http://127.0.0.1:'));assert.ok(ru.endsWith('/api/auth/feishu/callback'));
+  const state=new URL(loc).searchParams.get('state');assert.match(state,/^[0-9a-f]{16}$/);
+  assert.equal((await fetch(f.base+'/api/auth/feishu/callback?code=x&state=wrong',{redirect:'manual'})).status,400);
+  const cb=await fetch(f.base+'/api/auth/feishu/callback?code=testcode&state='+state,{redirect:'manual'});
+  assert.equal(cb.status,302);assert.equal(cb.headers.get('location'),'/');
+  const setCookie=cb.headers.get('set-cookie');assert.match(setCookie,/^zm_sess=[0-9a-f]{48}; HttpOnly; Path=\/; SameSite=Lax; Max-Age=2592000$/);
+  const me=await fetch(f.base+'/api/auth/me',{headers:{Cookie:setCookie.split(';')[0]}});const meData=await me.json();
+  assert.equal(me.status,200);assert.equal(meData.user.id,'fs:u123');assert.equal(meData.user.name,'飞书用户');assert.equal(meData.user.avatar,'https://a.example.com/av.png');
+  assert.equal((await fetch(f.base+'/api/auth/feishu/callback?code=testcode&state='+state,{redirect:'manual'})).status,400);
+});
+test('feishu login adopts legacy sessions without userId and leaves owned sessions alone',async t=>{
+  const f=await fixture(t,undefined,{config:{feishuAppId:'cli_test',feishuAppSecret:'test_secret'},feishuClient:{exchange:async()=>({userId:'fs:boss',name:'管理员',avatar:''})}});
+  const {data:mine}=await f.upload();
+  const legacyId=crypto.randomUUID();
+  fs.writeFileSync(path.join(f.dir,legacyId+'.json'),JSON.stringify({id:legacyId,fileName:'旧简历.txt',file:legacyId+'.txt',name:'旧简历',role:'',summary:'',text:'',sections:[],lines:[],pageCount:1,phase:'prepare',note:'',evaluation:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}));
+  const r=await fetch(f.base+'/api/auth/feishu',{redirect:'manual'}),state=new URL(r.headers.get('location')).searchParams.get('state');
+  const cb=await fetch(f.base+'/api/auth/feishu/callback?code=c&state='+state,{redirect:'manual'});assert.equal(cb.status,302);
+  const legacy=JSON.parse(fs.readFileSync(path.join(f.dir,legacyId+'.json'),'utf8'));assert.equal(legacy.userId,'fs:boss');
+  const mineFile=JSON.parse(fs.readFileSync(path.join(f.dir,mine.id+'.json'),'utf8'));assert.equal(mineFile.userId,'demo:测试员');
+  const bossMe=await fetch(f.base+'/api/auth/me',{headers:{Cookie:cb.headers.get('set-cookie').split(';')[0]}});assert.equal((await bossMe.json()).user.id,'fs:boss');
+  const bossList=await fetch(f.base+'/api/sessions',{headers:{Cookie:cb.headers.get('set-cookie').split(';')[0]}});const bossData=await bossList.json();
+  assert.ok(bossData.some(x=>x.id===legacyId));assert.ok(!bossData.some(x=>x.id===mine.id));
+});
+test('logout deletes the token and expires the cookie',async t=>{
+  const f=await fixture(t);
+  assert.equal((await f.req('/api/auth/me')).status,200);
+  const out=await fetch(f.base+'/api/auth/logout',{method:'POST',headers:{Cookie:f.cookie}});
+  assert.equal(out.status,204);assert.ok(out.headers.get('set-cookie').includes('Max-Age=0'));
+  assert.equal((await fetch(f.base+'/api/auth/me',{headers:{Cookie:f.cookie}})).status,401);
 });

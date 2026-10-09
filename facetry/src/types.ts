@@ -1,5 +1,7 @@
 export type Phase = 'prepare' | 'interview' | 'review'
 
+export type AuthUser = { id: string; name: string; avatar?: string }
+
 export type Anchor = {
   lineId?: string
   page: number

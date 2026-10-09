@@ -62,6 +62,19 @@ export function useUpload(onUploaded: (s: Session) => void) {
 
 export const phaseLabels: Record<Phase, string> = { prepare: '准备中', interview: '面试中', review: '已完成' }
 
+/** 媒体查询响应式钩子：窄屏判定用 '(max-width: 1023px)'（lg 以下 = 手机 / iPad 竖屏） */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const mql = window.matchMedia(query)
+    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches)
+    setMatches(mql.matches)
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [query])
+  return matches
+}
+
 // —— 题库：模块级缓存，Bank 视图与评审页选题器共享，避免重复请求 ——
 let bankCache: Bank | null = null
 let bankPromise: Promise<Bank> | null = null

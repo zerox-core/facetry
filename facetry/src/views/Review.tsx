@@ -7,12 +7,13 @@ import { ConfirmModal } from '../components/Modal'
 import { kindLabels, PdfViewer } from '../components/PdfViewer'
 import { formToPatch, QuestionCard, QuestionForm } from '../components/QuestionCard'
 import { ScoreDots } from '../components/ScoreDots'
+import { SectionSheet } from '../components/SectionSheet'
 import { toast } from '../components/Toast'
 import { Btn, Card, Label, Spinner } from '../components/ui'
 import { captureImages, evictDocument, loadDocumentCached, type DocData } from '../pdf'
 import { useReviewSession } from '../store'
 import type { BankQuestion, Job, Phase, Session } from '../types'
-import { shortPartName } from './shared'
+import { shortPartName, useMediaQuery } from './shared'
 
 const phases: [Phase, string][] = [
   ['prepare', '准备'],
@@ -143,6 +144,8 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
   const [pickerFor, setPickerFor] = useState<string | null>(null)
   const [newSectionTitle, setNewSectionTitle] = useState('')
   const [confirmRegen, setConfirmRegen] = useState(false)
+  // 窄屏（手机 / iPad 竖屏）：上下堆叠 + 点标记弹底部抽屉
+  const narrow = useMediaQuery('(max-width: 1023px)')
 
   const sid = session?.id
   const file = session?.file
@@ -248,6 +251,8 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
     saveState === 'saving' ? '保存中…' : saveState === 'error' ? '保存失败' : saveState === 'saved' ? `已自动保存 ${savedAt}` : ''
 
   const ev = session.evaluation
+  const sheetSectionIndex = session.sections.findIndex((s) => s.id === activeSectionId)
+  const sheetSection = sheetSectionIndex >= 0 ? session.sections[sheetSectionIndex] : null
 
   return (
     <div className="space-y-6">
@@ -321,6 +326,7 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
                 toast('锚点已更新')
               }}
               onLocate={locateSection}
+              onOpenSection={narrow ? setActiveSectionId : undefined}
             />
           )}
         </div>
@@ -640,6 +646,17 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
       )}
 
       <BankPicker open={!!pickerFor} onClose={() => setPickerFor(null)} onPick={(b) => pickerFor && pickFromBank(pickerFor, b)} />
+
+      {narrow && sheetSection && (
+        <SectionSheet
+          section={sheetSection}
+          index={sheetSectionIndex + 1}
+          qIndex={qIndex}
+          onPatch={(p) => patch({ question: p })}
+          onRemove={(id) => patch({ removeQuestion: { id } })}
+          onClose={() => setActiveSectionId(null)}
+        />
+      )}
 
       <ConfirmModal
         open={confirmRegen}
