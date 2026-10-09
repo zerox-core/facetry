@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 import { ToastHost } from './components/Toast'
 import { Spinner } from './components/ui'
-import type { AuthUser } from './types'
+import type { AuthUser, UserGroup } from './types'
+import Admin from './views/Admin'
 import Bank from './views/Bank'
 import Home from './views/Home'
+import Jds from './views/Jds'
 import Login from './views/Login'
 import Resumes from './views/Resumes'
 import Review from './views/Review'
@@ -12,9 +14,10 @@ import Review from './views/Review'
 const nav: [string, string][] = [
   ['home', '工作台'],
   ['resumes', '简历库'],
+  ['jds', '岗位库'],
   ['bank', '题库'],
 ]
-const LABEL: Record<string, string> = { home: '工作台', resumes: '简历库', bank: '题库', review: '评审详情' }
+const LABEL: Record<string, string> = { home: '工作台', resumes: '简历库', jds: '岗位库', bank: '题库', admin: '管理', review: '评审详情' }
 
 /** 导航：go(v, sessionId) 进入新页并记住来源；go('back') 回到来源页。
  *  go.from 是返回目标的名称，页面上的「← xx」按钮用它 */
@@ -26,11 +29,15 @@ export default function App() {
   const { view, sessionId } = stack[stack.length - 1]
   // 服务端会话（zm_sess cookie）：启动时先问 /api/auth/me
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [groups, setGroups] = useState<UserGroup[]>([])
   const [authPending, setAuthPending] = useState(true)
   useEffect(() => {
     api
       .me()
-      .then((r) => setUser(r.user))
+      .then((r) => {
+        setUser(r.user)
+        setGroups(r.groups || [])
+      })
       .catch(() => setUser(null))
       .finally(() => setAuthPending(false))
   }, [])
@@ -75,7 +82,7 @@ export default function App() {
             <span className="ml-1 hidden rounded bg-white/10 px-1.5 py-0.5 text-xs text-white/60 md:inline">简历评审</span>
           </button>
           <nav className="flex h-full flex-1 gap-1">
-            {nav.map(([k, v]) => (
+            {(user.isAdmin ? [...nav, ['admin', '管理'] as [string, string]] : nav).map(([k, v]) => (
               <button
                 key={k}
                 onClick={() => enter(k)}
@@ -88,7 +95,12 @@ export default function App() {
             ))}
           </nav>
           <div className="flex shrink-0 items-center gap-3 text-sm text-white/70">
-            <span className="hidden sm:inline">{user.name}</span>
+            <span className="hidden text-right leading-tight lg:block">
+              <span className="block">{user.name}</span>
+              <span className="block max-w-56 truncate text-xs text-white/45">
+                {user.isAdmin ? '管理员' : groups[0]?.pathName || '未识别组织'}
+              </span>
+            </span>
             {user.avatar ? (
               <img src={user.avatar} alt={user.name} referrerPolicy="no-referrer" className="h-7 w-7 rounded-full object-cover" />
             ) : (
@@ -103,7 +115,9 @@ export default function App() {
       <main key={view + sessionId} className="mx-auto max-w-7xl px-6 py-8">
         {view === 'home' && <Home go={go} user={user.name} />}
         {view === 'resumes' && <Resumes go={go} />}
+        {view === 'jds' && <Jds go={go} />}
         {view === 'bank' && <Bank />}
+        {view === 'admin' && user.isAdmin && <Admin />}
         {view === 'review' && <Review sessionId={sessionId} go={go} />}
       </main>
     </div>

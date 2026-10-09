@@ -1,4 +1,4 @@
-import type { AnalyzePayload, AuthUser, Bank, BankQuestion, BankQuestionInput, Job, Session, SessionPatch, SessionSummary } from './types'
+import type { AdminOverview, AnalyzePayload, Bank, BankQuestion, BankQuestionInput, DirectoryUser, GeneratedQuestion, Job, JobDescription, JobDescriptionInput, MeResponse, Session, SessionPatch, SessionSummary } from './types'
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, options)
@@ -16,9 +16,11 @@ const json = (body: unknown): RequestInit => ({
 export const api = {
   status: () => request<{ configured: boolean; feishu: boolean }>('/api/status'),
 
-  me: () => request<{ user: AuthUser }>('/api/auth/me'),
+  me: () => request<MeResponse>('/api/auth/me'),
 
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
+
+  listUsers: () => request<{ users: DirectoryUser[] }>('/api/users'),
 
   listSessions: () => request<SessionSummary[]>('/api/sessions'),
 
@@ -56,6 +58,28 @@ export const api = {
     request<BankQuestion>(`/api/bank/${id}`, { method: 'PATCH', ...json(input) }),
 
   deleteBankQuestion: (id: string) => request<void>(`/api/bank/${id}`, { method: 'DELETE' }),
+
+  generateBank: (payload: { jdId?: string; jdText?: string; requirements?: string; count?: number }) =>
+    request<{ questions: GeneratedQuestion[] }>('/api/bank/generate', { method: 'POST', ...json(payload) }),
+
+  listJds: () => request<{ jds: JobDescription[] }>('/api/jds'),
+
+  addJd: (input: JobDescriptionInput) => request<JobDescription>('/api/jds', { method: 'POST', ...json(input) }),
+
+  updateJd: (id: string, input: Partial<JobDescriptionInput>) =>
+    request<JobDescription>(`/api/jds/${id}`, { method: 'PATCH', ...json(input) }),
+
+  deleteJd: (id: string) => request<void>(`/api/jds/${id}`, { method: 'DELETE' }),
+
+  adminOverview: () => request<AdminOverview>('/api/admin/overview'),
+
+  adminSetGrants: (userId: string, deptIds: string[]) =>
+    request<{ userId: string; deptIds: string[] }>('/api/admin/grants', { method: 'PUT', ...json({ userId, deptIds }) }),
+
+  adminRefreshOrg: () => request<{ depts: AdminOverview['depts']; fetchedAt: string; syncedUsers?: number }>('/api/admin/org/refresh', { method: 'POST' }),
+
+  adminSetAdmin: (userId: string, admin: boolean) =>
+    request<{ userId: string; admin: boolean }>('/api/admin/admins', { method: 'PUT', ...json({ userId, admin }) }),
 }
 
 const MAX_SIZE = 20 * 1024 * 1024

@@ -1,6 +1,13 @@
 export type Phase = 'prepare' | 'interview' | 'review'
 
-export type AuthUser = { id: string; name: string; avatar?: string }
+export type AuthUser = { id: string; name: string; avatar?: string; isAdmin?: boolean }
+
+/** 飞书组织架构里的最小用户组（最深层部门） */
+export type UserGroup = { id: string; name: string; pathName: string; path: string[] }
+
+export type DirectoryUser = { id: string; name: string; avatar: string; groupName: string }
+
+export type MeResponse = { user: AuthUser; groups: UserGroup[] }
 
 export type Anchor = {
   lineId?: string
@@ -48,6 +55,7 @@ export type ResumeLine = { id: string; text: string; page: number; y: number; x?
 
 export type Session = {
   id: string
+  userId: string
   fileName: string
   file: string
   name: string
@@ -60,6 +68,8 @@ export type Session = {
   phase: Phase
   note: string
   evaluation: Evaluation | null
+  /** 被分享的用户 id 列表（仅所有者可维护） */
+  shares?: string[]
   createdAt: string
   updatedAt: string
 }
@@ -75,6 +85,8 @@ export type SessionSummary = Pick<
   hasEvaluation: boolean
   /** evaluation.suggestion 截断 200 字，无评价时为 '' */
   suggestion: string
+  /** 他人分享给我的简历，值为分享者姓名；自己的简历为 '' */
+  sharedBy: string
 }
 
 export type JobType = 'analyze' | 'evaluate'
@@ -114,6 +126,8 @@ export type SessionPatch = {
   addQuestion?: { sectionId?: string; sectionTitle?: string; question: NewQuestion }
   removeQuestion?: { id: string }
   anchor?: { id: string; page: number; y: number }
+  /** 仅所有者可设置：把简历分享给指定用户（用户 id 数组，整体覆盖） */
+  shares?: string[]
 }
 
 export type AnalyzePayload = {
@@ -137,6 +151,16 @@ export type BankQuestion = {
   material?: string
   custom: boolean
   updatedAt: string
+  /** 创建者；最小用户组共享范围：GLOBAL=全员，''=仅自己，其余为部门 id */
+  userId?: string
+  userName?: string
+  groupId?: string
+  groupName?: string
+  /** 关联的岗位 JD（无则为通用题） */
+  jdId?: string
+  jdTitle?: string
+  /** 当前用户是否只读（授权组 / 全局种子题对非管理员） */
+  readonly?: boolean
 }
 
 export type Bank = { parts: BankPart[]; questions: BankQuestion[] }
@@ -147,4 +171,50 @@ export type BankQuestionInput = {
   q: string
   answer?: string
   material?: string
+  /** 关联岗位 JD id；空串表示取消关联 */
+  jdId?: string
 }
+
+export type GeneratedQuestion = {
+  title: string
+  q: string
+  answer: string
+  material: string
+  /** 匹配到现有分类时为分类 key；模型提议新分类时为 ''（partName 为建议名） */
+  part: string
+  partName?: string
+  jdId?: string
+  jdTitle?: string
+}
+
+/** 岗位 JD：按创建者最小用户组共享 */
+export type JobDescription = {
+  id: string
+  title: string
+  company: string
+  content: string
+  requirements: string
+  tags: string[]
+  userId: string
+  userName: string
+  groupId: string
+  groupName: string
+  createdAt: string
+  updatedAt: string
+  readonly?: boolean
+}
+
+export type JobDescriptionInput = {
+  title: string
+  company?: string
+  content: string
+  requirements?: string
+  tags?: string[]
+}
+
+/** 组织架构部门（缓存自飞书） */
+export type OrgDept = { id: string; name: string; parentId: string; path: string[]; pathName: string }
+
+export type AdminUser = DirectoryUser & { groupName: string; isAdmin: boolean; grants: string[] }
+
+export type AdminOverview = { users: AdminUser[]; depts: Record<string, OrgDept>; fetchedAt: string }
