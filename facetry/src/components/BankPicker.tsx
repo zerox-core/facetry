@@ -15,6 +15,7 @@ type Props = {
 export function BankPicker({ open, onClose, onPick }: Props) {
   const { bank, error, reload } = useBank()
   const [part, setPart] = useState('')
+  const [jdFilter, setJdFilter] = useState('ALL') // 'ALL' | '' 通用题 | jdId
   const [search, setSearch] = useState('')
   const [added, setAdded] = useState<Set<string>>(new Set())
 
@@ -32,7 +33,19 @@ export function BankPicker({ open, onClose, onPick }: Props) {
   }, [open])
 
   if (!open) return null
-  const list = bank ? filterBank(bank, part, search) : []
+  const jdGroups = (() => {
+    const m = new Map<string, { id: string; title: string; count: number }>()
+    let common = 0
+    for (const q of bank?.questions || []) {
+      if (q.jdId) {
+        const g = m.get(q.jdId)
+        if (g) g.count++
+        else m.set(q.jdId, { id: q.jdId, title: q.jdTitle || '岗位', count: 1 })
+      } else common++
+    }
+    return { common, jds: [...m.values()].sort((a, b) => b.count - a.count || a.title.localeCompare(b.title, 'zh')) }
+  })()
+  const list = bank ? filterBank(bank, part, search).filter((q) => (jdFilter === 'ALL' ? true : jdFilter === '' ? !q.jdId : q.jdId === jdFilter)) : []
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -50,6 +63,21 @@ export function BankPicker({ open, onClose, onPick }: Props) {
           </button>
         </div>
         <div className="space-y-3 px-5 pt-3">
+          {bank && jdGroups.jds.length > 0 && (
+            <select
+              value={jdFilter}
+              onChange={(e) => setJdFilter(e.target.value)}
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="ALL">全部题目</option>
+              <option value="">通用题（{jdGroups.common}）</option>
+              {jdGroups.jds.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.title}（{g.count}）
+                </option>
+              ))}
+            </select>
+          )}
           {bank && <PartCapsules bank={bank} value={part} onChange={setPart} />}
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索标题、题干或答案…" className={`${bankSearchCls} sm:w-full`} />
         </div>

@@ -122,15 +122,12 @@ test('evaluation does not overwrite newer interview evidence',async t=>{
   const {data:s}=await f.upload(),p='/api/sessions/'+s.id;let j=await f.req(p+'/analyze','POST',{lines,pageCount:2});await f.poll(j.data.id);const {data:r}=await f.req(p),qid=r.sections[0].questions[0].id;
   await f.req(p,'PATCH',{question:{id:qid,score:4}});j=await f.req(p+'/evaluate','POST',{});await f.req(p,'PATCH',{question:{id:qid,note:'生成期间的新记录'}});finish();assert.equal((await f.poll(j.data.id)).state,'error');assert.equal((await f.req(p)).data.evaluation,null);
 });
-test('bank is seeded with all questions and ordered parts on first access',async t=>{
+test('group-less users get no seed bank; bank starts empty with standard parts',async t=>{
   const f=await fixture(t);
   const {status,data}=await f.req('/api/bank');assert.equal(status,200);
-  assert.equal(data.questions.length,41);
+  assert.equal(data.questions.length,0);
   assert.deepEqual(data.parts.map(x=>x.key),['A','B','E','F','C','D']);
   assert.equal(data.parts[0].name,'Part A · 基础题');assert.equal(data.parts[0].weight,10);
-  const a1=data.questions.find(q=>q.id==='A1');assert.equal(a1.partName,'Part A · 基础题');assert.ok(a1.q.includes('Workflow'));assert.ok(!('images' in a1));assert.equal(a1.custom,false);assert.ok(a1.updatedAt);
-  const d3=data.questions.find(q=>q.id==='D3');assert.ok(d3.material.includes('飞速发展'));
-  assert.ok(fs.existsSync(path.join(f.dir,'_bank.json')));
 });
 test('bank POST creates a custom question, validates input and persists edits',async t=>{
   const f=await fixture(t);
@@ -138,19 +135,19 @@ test('bank POST creates a custom question, validates input and persists edits',a
   assert.equal((await f.req('/api/bank','POST',{title:'标题',q:'  '})).status,400);
   const {status,data:created}=await f.req('/api/bank','POST',{title:'自定义题',q:'自定义题干内容',answer:'参考答案',material:'素材'});
   assert.equal(status,201);assert.match(created.id,/^U-[0-9a-f]{8}$/);assert.equal(created.part,'CUST');assert.equal(created.partName,'自定义');assert.equal(created.custom,true);assert.equal(created.material,'素材');
-  const {data:bank}=await f.req('/api/bank');assert.equal(bank.questions.length,42);assert.equal(bank.parts.at(-1).key,'CUST');assert.equal(bank.parts.at(-1).weight,0);
+  const {data:bank}=await f.req('/api/bank');assert.equal(bank.questions.length,1);assert.equal(bank.parts.at(-1).key,'CUST');assert.equal(bank.parts.at(-1).weight,0);
   const {status:ps,data:patched}=await f.req('/api/bank/'+created.id,'PATCH',{title:'改后的标题',part:'C',answer:'改后的答案'});
   assert.equal(ps,200);assert.equal(patched.title,'改后的标题');assert.equal(patched.part,'C');assert.equal(patched.partName,'Part C · 思维题');assert.equal(patched.answer,'改后的答案');assert.ok(patched.updatedAt>=created.updatedAt);
   assert.equal((await f.req('/api/bank/'+created.id,'PATCH',{q:''})).status,400);
   const {data:bank2}=await f.req('/api/bank');const saved=bank2.questions.find(q=>q.id===created.id);assert.equal(saved.title,'改后的标题');assert.equal(saved.part,'C');
   const del=await fetch(f.base+'/api/bank/'+created.id,{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(del.status,204);
-  const {data:bank3}=await f.req('/api/bank');assert.equal(bank3.questions.length,41);assert.ok(!bank3.parts.some(x=>x.key==='CUST'));
+  const {data:bank3}=await f.req('/api/bank');assert.equal(bank3.questions.length,0);assert.ok(!bank3.parts.some(x=>x.key==='CUST'));
 });
 test('bank PATCH and DELETE return 404 for unknown ids',async t=>{
   const f=await fixture(t);
   assert.equal((await f.req('/api/bank/NOPE','PATCH',{title:'x'})).status,404);
   const del=await fetch(f.base+'/api/bank/NOPE',{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(del.status,404);
-  const {data:bank}=await f.req('/api/bank');assert.equal(bank.questions.length,41);
+  const {data:bank}=await f.req('/api/bank');assert.equal(bank.questions.length,0);
 });
 test('bank storage file never leaks into session list or session routes',async t=>{
   const f=await fixture(t);
