@@ -17,3 +17,4 @@ open-source/
 .DS_Store
 Thumbs.db
 facetry/public/pdfjs/cmaps/Adobe-Korea1-2.bcmap
+__pycache__/
