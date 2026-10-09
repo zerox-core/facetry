@@ -18,3 +18,6 @@ open-source/
 Thumbs.db
 facetry/public/pdfjs/cmaps/Adobe-Korea1-2.bcmap
 __pycache__/
+
+# server logs
+*.log
