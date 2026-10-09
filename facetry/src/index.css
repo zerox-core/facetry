@@ -19,6 +19,8 @@
 }
 
 @layer base {
+  /* 始终保留滚动条轨道，避免页面切换时因滚动条有无产生布局抖动 */
+  html { overflow-y: scroll; }
   body { background: #f4f3ef; color: #0f172a; font-family: var(--font-sans); font-feature-settings: 'tnum'; -webkit-font-smoothing: antialiased; }
   ::selection { background: #e4e9f0; }
 }
