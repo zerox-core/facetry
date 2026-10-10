@@ -11,9 +11,10 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   server: {
+    // 代理目标跟随 PORT（与服务端默认 8080 一致）；本机 8080 被占用时用 PORT=8081 npm run dev / npm run server 一起换
     proxy: {
-      '/api': 'http://127.0.0.1:8081',
-      '/files': 'http://127.0.0.1:8081',
+      '/api': `http://127.0.0.1:${process.env.PORT || 8080}`,
+      '/files': `http://127.0.0.1:${process.env.PORT || 8080}`,
     },
   },
 })
