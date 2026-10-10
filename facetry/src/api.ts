@@ -1,4 +1,4 @@
-import type { AdminOverview, AnalyzePayload, Bank, BankQuestion, BankQuestionInput, DirectoryUser, GeneratedQuestion, Job, JobDescription, JobDescriptionInput, MeResponse, Session, SessionPatch, SessionSummary } from './types'
+import type { AdminOverview, AnalyzePayload, Bank, BankQuestion, BankQuestionInput, DashboardData, DirectoryUser, GeneratedQuestion, Job, JobDescription, JobDescriptionInput, MeResponse, Session, SessionPatch, SessionSummary } from './types'
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, options)
@@ -31,8 +31,9 @@ export const api = {
 
   deleteSession: (id: string) => request<void>(`/api/sessions/${id}`, { method: 'DELETE' }),
 
-  async upload(file: File): Promise<Session> {
-    const response = await fetch('/api/upload?name=' + encodeURIComponent(file.name), {
+  async upload(file: File, jdId?: string): Promise<Session> {
+    const qs = '?name=' + encodeURIComponent(file.name) + (jdId ? '&jd=' + encodeURIComponent(jdId) : '')
+    const response = await fetch('/api/upload' + qs, {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream' },
       body: file,
@@ -59,6 +60,9 @@ export const api = {
 
   deleteBankQuestion: (id: string) => request<void>(`/api/bank/${id}`, { method: 'DELETE' }),
 
+  renameBankPart: (key: string, name: string) =>
+    request<{ key: string; name: string }>(`/api/bank/parts/${key}`, { method: 'PATCH', ...json({ name }) }),
+
   generateBank: (payload: { jdId?: string; jdText?: string; requirements?: string; count?: number }) =>
     request<{ questions: GeneratedQuestion[] }>('/api/bank/generate', { method: 'POST', ...json(payload) }),
 
@@ -72,6 +76,12 @@ export const api = {
   deleteJd: (id: string) => request<void>(`/api/jds/${id}`, { method: 'DELETE' }),
 
   adminOverview: () => request<AdminOverview>('/api/admin/overview'),
+
+  adminDashboard: () => request<DashboardData>('/api/admin/dashboard'),
+
+  bankGroup: (groupId: string) => request<Bank>('/api/bank?group=' + encodeURIComponent(groupId)),
+
+  jdsGroup: (groupId: string) => request<{ jds: JobDescription[] }>('/api/jds?group=' + encodeURIComponent(groupId)),
 
   adminSetGrants: (userId: string, deptIds: string[]) =>
     request<{ userId: string; deptIds: string[] }>('/api/admin/grants', { method: 'PUT', ...json({ userId, deptIds }) }),

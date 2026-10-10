@@ -1,12 +1,270 @@
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
+import type { Go } from '../App'
 import { Chip } from '../components/Chip'
 import { toast } from '../components/Toast'
-import { Btn, Card, Spinner } from '../components/ui'
-import type { AdminOverview, AdminUser, OrgDept } from '../types'
+import { Btn, Card, ScoreStamp, SectionHead, Spinner } from '../components/ui'
+import type { AdminOverview, AdminUser, AuthUser, Bank, DashboardData, JobDescription, OrgDept, SessionSummary } from '../types'
+import { fmtTime, PhaseChip, ProgressBar, shortPartName } from './shared'
 
 const rise = (i: number) => ({ '--i': i } as React.CSSProperties)
+
+/** 组内容抽屉：超管从看板钻取查看某组的题库或岗位（只读） */
+function GroupDrawer({ group, kind, onClose }: { group: { groupId: string; groupName: string }; kind: 'bank' | 'jds'; onClose: () => void }) {
+  const [bank, setBank] = useState<Bank | null>(null)
+  const [jds, setJds] = useState<JobDescription[] | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  useEffect(() => {
+    const run = kind === 'bank' ? api.bankGroup(group.groupId).then(setBank) : api.jdsGroup(group.groupId).then((r) => setJds(r.jds))
+    void run.catch((e) => setError(e instanceof Error ? e.message : '加载失败，请重试'))
+  }, [group.groupId, kind])
+
+  const loading = kind === 'bank' ? !bank : !jds
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-[#1d2939]/50" onClick={onClose} />
+      <div className="login-fade relative flex h-full w-full max-w-xl flex-col bg-white shadow-2xl" role="dialog" aria-modal="true">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">
+              {group.groupName} · {kind === 'bank' ? '题库' : '岗位'}
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-400">只读视图 · 共 {kind === 'bank' ? (bank?.questions.length ?? '…') : (jds?.length ?? '…')} 条</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="关闭" className="cursor-pointer text-slate-400 hover:text-slate-700">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M6 6l12 12 M18 6L6 18" /></svg>
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-6 py-4">
+          {error && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">{error}</p>}
+          {loading && !error && (
+            <p className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400">
+              <Spinner /> 正在加载…
+            </p>
+          )}
+          {bank?.questions.map((q) => {
+            const open = openId === q.id
+            return (
+              <div key={q.id} className="rounded-lg bg-slate-50 px-4 py-3">
+                <button type="button" onClick={() => setOpenId(open ? null : q.id)} className="w-full cursor-pointer text-left">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Chip tone="blue">{shortPartName(q.partName)}</Chip>
+                    {q.userName && <span className="text-xs text-slate-400">{q.userName}</span>}
+                    <span className="text-sm font-medium text-slate-900">{q.title || q.q}</span>
+                  </div>
+                  {q.title && <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-500">{q.q}</p>}
+                </button>
+                {open && q.answer && <p className="mt-2 whitespace-pre-wrap border-t border-slate-200 pt-2 text-xs leading-5 text-slate-600">{q.answer}</p>}
+              </div>
+            )
+          })}
+          {bank && !bank.questions.length && <p className="py-12 text-center text-sm text-slate-400">该组暂无题目</p>}
+          {jds?.map((j) => (
+            <div key={j.id} className="rounded-lg bg-slate-50 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-slate-900">{j.title}</span>
+                {j.company && <Chip>{j.company}</Chip>}
+                <span className="text-xs text-slate-400">{j.userName}</span>
+              </div>
+              <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-slate-500">{j.content}</p>
+            </div>
+          ))}
+          {jds && !jds.length && <p className="py-12 text-center text-sm text-slate-400">该组暂无岗位</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 成员简历抽屉：列出该成员全部简历，点击进入评审详情 */
+function MemberDrawer({ member, sessions, onClose, go }: { member: { userId: string; name: string }; sessions: SessionSummary[]; onClose: () => void; go: Go }) {
+  const list = sessions.filter((s) => s.userId === member.userId)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-[#1d2939]/50" onClick={onClose} />
+      <div className="login-fade relative flex h-full w-full max-w-xl flex-col bg-white shadow-2xl" role="dialog" aria-modal="true">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">{member.name} 的简历</h3>
+            <p className="mt-0.5 text-xs text-slate-400">共 {list.length} 份 · 点击查看详细面试情况（只读）</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="关闭" className="cursor-pointer text-slate-400 hover:text-slate-700">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M6 6l12 12 M18 6L6 18" /></svg>
+          </button>
+        </div>
+        <ul className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+          {list.map((s) => (
+            <li key={s.id} onClick={() => go('review', s.id)} className="flex cursor-pointer items-center gap-3 px-6 py-3.5 transition-colors hover:bg-slate-50">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-900">{s.name || '待解析'}</span>
+                  <span className="truncate text-xs text-slate-400">{s.role || '—'}</span>
+                </div>
+                <p className="mt-0.5 truncate text-xs text-slate-400">{s.fileName}</p>
+              </div>
+              <ProgressBar scored={s.scoredCount} total={s.questionCount} />
+              <PhaseChip phase={s.phase} questionCount={s.questionCount} jobState={s.jobState} />
+              {s.avgScore !== null && <ScoreStamp score={s.avgScore} />}
+              <span className="w-14 shrink-0 text-right text-xs text-slate-400">{fmtTime(s.updatedAt)}</span>
+            </li>
+          ))}
+          {!list.length && <li className="px-6 py-12 text-center text-sm text-slate-400">该成员还没有简历</li>}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+/** 超管数据看板：全组织的简历、面试、题库、岗位汇总 */
+function Dashboard({ go }: { go: Go }) {
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [member, setMember] = useState<{ userId: string; name: string } | null>(null)
+  const [groupView, setGroupView] = useState<{ kind: 'bank' | 'jds'; groupId: string; groupName: string } | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    void api
+      .adminDashboard()
+      .then(setData)
+      .catch((e) => setError(e instanceof Error ? e.message : '看板加载失败'))
+    void api
+      .listSessions()
+      .then(setSessions)
+      .catch(() => {})
+  }, [])
+  if (error)
+    return (
+      <Card className="px-5 py-4">
+        <p className="text-sm text-amber-700">{error}</p>
+      </Card>
+    )
+  if (!data)
+    return (
+      <Card className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400">
+        <Spinner /> 正在加载看板…
+      </Card>
+    )
+  const stats: [string, string | number, string][] = [
+    ['用户', data.userCount, '已登录过的成员'],
+    ['简历总数', data.sessions.total, `已完成评价 ${data.sessions.evaluated}`],
+    ['题目总数', data.questions.total, `已评分 ${data.questions.scored}`],
+    ['平均得分', data.questions.avgScore === null ? '—' : data.questions.avgScore.toFixed(1), '全部已评分题'],
+    ['题库题目', data.bank.total, `${data.bank.byGroup.length} 个组`],
+    ['岗位 JD', data.jds.total, `${data.jds.byGroup.length} 个组`],
+  ]
+  return (
+    <section className="space-y-4">
+      <SectionHead title="数据看板" sub="全部组织 · 仅超管可见" />
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        {stats.map(([label, value, sub]) => (
+          <Card key={label} className="px-4 py-3.5">
+            <div className="text-xs font-medium text-slate-500">{label}</div>
+            <div className="mt-1.5 text-2xl font-semibold text-slate-900 tabular-nums">{value}</div>
+            <div className="mt-0.5 text-xs text-slate-400">{sub}</div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="overflow-hidden">
+          <div className="border-b border-slate-100 px-5 py-3 text-sm font-medium text-slate-900">成员面试情况</div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-slate-400">
+                <th className="px-5 py-2 font-medium">成员</th>
+                <th className="py-2 font-medium">简历</th>
+                <th className="py-2 font-medium">题目</th>
+                <th className="py-2 font-medium">已评分</th>
+                <th className="px-5 py-2 text-right font-medium">已评价</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.byUser.map((u) => (
+                <tr key={u.userId} onClick={() => setMember(u)} className="cursor-pointer border-t border-slate-100 transition-colors hover:bg-slate-50">
+                  <td className="px-5 py-2.5 font-medium text-slate-900">{u.name}</td>
+                  <td className="py-2.5 tabular-nums text-slate-600">{u.sessions}</td>
+                  <td className="py-2.5 tabular-nums text-slate-600">{u.questions}</td>
+                  <td className="py-2.5 tabular-nums text-slate-600">{u.scored}</td>
+                  <td className="px-5 py-2.5 text-right tabular-nums text-slate-600">{u.evaluated}</td>
+                </tr>
+              ))}
+              {!data.byUser.length && (
+                <tr>
+                  <td colSpan={5} className="px-5 py-8 text-center text-sm text-slate-400">
+                    还没有简历数据
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-slate-100 px-5 py-3 text-sm font-medium text-slate-900">最近活动</div>
+          <ul className="divide-y divide-slate-100">
+            {data.recent.map((s) => (
+              <li key={s.id} onClick={() => go('review', s.id)} className="flex cursor-pointer items-center gap-3 px-5 py-2.5 transition-colors hover:bg-slate-50">
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-slate-900">{s.name || '待解析'}</span>
+                  <span className="ml-2 text-xs text-slate-400">{s.role || '—'}</span>
+                  <span className="ml-2 text-xs text-slate-300">by {s.ownerName}</span>
+                </div>
+                <PhaseChip phase={s.phase} questionCount={s.questionCount} />
+                {s.avgScore !== null && <ScoreStamp score={s.avgScore} />}
+                <span className="w-16 text-right text-xs text-slate-400">{fmtTime(s.updatedAt)}</span>
+              </li>
+            ))}
+            {!data.recent.length && <li className="px-5 py-8 text-center text-sm text-slate-400">暂无活动</li>}
+          </ul>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="px-5 py-4">
+          <div className="text-sm font-medium text-slate-900">题库分布</div>
+          <ul className="mt-3 space-y-2">
+            {data.bank.byGroup.map((g) => (
+              <li key={g.groupId || 'personal'} onClick={() => setGroupView({ kind: 'bank', groupId: g.groupId, groupName: g.groupName })} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1 text-sm transition-colors hover:bg-slate-50">
+                <span className="min-w-0 flex-1 truncate text-slate-700">{g.groupName}</span>
+                <span className="text-xs text-slate-400">共 {g.total} 题 · 自建 {g.custom}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+        <Card className="px-5 py-4">
+          <div className="text-sm font-medium text-slate-900">岗位分布</div>
+          <ul className="mt-3 space-y-2">
+            {data.jds.byGroup.map((g) => (
+              <li key={g.groupId || 'personal'} onClick={() => setGroupView({ kind: 'jds', groupId: g.groupId, groupName: g.groupName })} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1 text-sm transition-colors hover:bg-slate-50">
+                <span className="min-w-0 flex-1 truncate text-slate-700">{g.groupName}</span>
+                <span className="text-xs text-slate-400">{g.count} 个岗位</span>
+              </li>
+            ))}
+            {!data.jds.byGroup.length && <li className="text-sm text-slate-400">暂无岗位</li>}
+          </ul>
+        </Card>
+      </div>
+
+      {member && <MemberDrawer member={member} sessions={sessions} go={go} onClose={() => setMember(null)} />}
+      {groupView && <GroupDrawer group={groupView} kind={groupView.kind} onClose={() => setGroupView(null)} />}
+    </section>
+  )
+}
+
 
 type TreeNode = { dept: OrgDept; children: TreeNode[] }
 
@@ -193,7 +451,7 @@ function GrantDrawer({ user, overview, onClose, onSaved }: { user: AdminUser; ov
   )
 }
 
-export default function Admin() {
+export default function Admin({ me, go }: { me: AuthUser; go: Go }) {
   const [overview, setOverview] = useState<AdminOverview | null>(null)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -240,8 +498,14 @@ export default function Admin() {
   const users = (overview?.users || []).filter((u) => !kw || u.name.toLowerCase().includes(kw) || u.groupName.toLowerCase().includes(kw))
 
   return (
-    <div className="space-y-6">
-      <div className="ws-rise flex items-end justify-between" style={rise(0)}>
+    <div className="space-y-8">
+      {me.isSuper && (
+        <div className="ws-rise" style={rise(0)}>
+          <Dashboard go={go} />
+        </div>
+      )}
+      <div className="space-y-6">
+        <div className="ws-rise flex items-end justify-between" style={rise(1)}>
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">系统管理</h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -292,7 +556,8 @@ export default function Admin() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900">
                     {u.name}
-                    {u.isAdmin && <Chip tone="blue">管理员</Chip>}
+                    {u.isSuper && <Chip tone="emerald">超管</Chip>}
+                    {u.isAdmin && !u.isSuper && <Chip tone="blue">管理员</Chip>}
                   </div>
                   <div className="truncate text-xs text-slate-400">{u.groupName || '未识别组织'}</div>
                 </div>
@@ -336,6 +601,7 @@ export default function Admin() {
           onSaved={() => void reload()}
         />
       )}
+      </div>
     </div>
   )
 }

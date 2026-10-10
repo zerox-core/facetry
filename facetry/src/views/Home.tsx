@@ -21,7 +21,7 @@ export default function Home({ go, user }: { go: Go; user: string }) {
   const { sessions, error, reload } = useSessions()
   const { uploading, pick, input } = useUpload((s) => go('review', s.id))
 
-  const all = sessions || []
+  const all = (sessions || []).filter((s) => !s.viaSuper && !s.viaLeader)
   const pending = all.filter(isPending)
   const scoring = all.filter(isScoring)
   const done = all.filter(isDone)
@@ -162,7 +162,7 @@ export default function Home({ go, user }: { go: Go; user: string }) {
                   <div className="flex items-center gap-2">
                     <span className="text-[15px] font-medium text-slate-900">{s.name || '待解析'}</span>
                     <span className="truncate text-sm text-slate-500">{s.role || '—'}</span>
-                    <PhaseChip phase={s.phase} questionCount={s.questionCount} />
+                    <PhaseChip phase={s.phase} questionCount={s.questionCount} jobState={s.jobState} />
                   </div>
                   <p className="mt-1 truncate text-xs text-slate-400">{s.fileName}</p>
                 </div>

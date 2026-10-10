@@ -98,7 +98,7 @@ export default function App() {
             <span className="hidden text-right leading-tight lg:block">
               <span className="block">{user.name}</span>
               <span className="block max-w-56 truncate text-xs text-white/45">
-                {user.isAdmin ? '管理员' : groups[0]?.pathName || '未识别组织'}
+                {user.isSuper ? '超级管理员' : user.isAdmin ? '管理员' : groups[0]?.pathName || '未识别组织'}
               </span>
             </span>
             {user.avatar ? (
@@ -117,7 +117,7 @@ export default function App() {
         {view === 'resumes' && <Resumes go={go} />}
         {view === 'jds' && <Jds go={go} />}
         {view === 'bank' && <Bank />}
-        {view === 'admin' && user.isAdmin && <Admin />}
+        {view === 'admin' && user.isAdmin && <Admin me={user} go={go} />}
         {view === 'review' && <Review sessionId={sessionId} go={go} />}
       </main>
     </div>

@@ -1,6 +1,6 @@
 export type Phase = 'prepare' | 'interview' | 'review'
 
-export type AuthUser = { id: string; name: string; avatar?: string; isAdmin?: boolean }
+export type AuthUser = { id: string; name: string; avatar?: string; isAdmin?: boolean; isSuper?: boolean }
 
 /** 飞书组织架构里的最小用户组（最深层部门） */
 export type UserGroup = { id: string; name: string; pathName: string; path: string[] }
@@ -68,6 +68,8 @@ export type Session = {
   phase: Phase
   note: string
   evaluation: Evaluation | null
+  /** 上传时选择的岗位 JD（role 从 JD 带出；未选则待补充） */
+  jdId?: string
   /** 被分享的用户 id 列表（仅所有者可维护） */
   shares?: string[]
   createdAt: string
@@ -76,7 +78,7 @@ export type Session = {
 
 export type SessionSummary = Pick<
   Session,
-  'id' | 'fileName' | 'name' | 'role' | 'summary' | 'pageCount' | 'phase' | 'createdAt' | 'updatedAt'
+  'id' | 'userId' | 'fileName' | 'name' | 'role' | 'summary' | 'pageCount' | 'phase' | 'createdAt' | 'updatedAt'
 > & {
   questionCount: number
   scoredCount: number
@@ -87,6 +89,12 @@ export type SessionSummary = Pick<
   suggestion: string
   /** 他人分享给我的简历，值为分享者姓名；自己的简历为 '' */
   sharedBy: string
+  /** 非本人且并非被分享、仅因超管权限可见 */
+  viaSuper?: boolean
+  /** 非本人且并非被分享、仅因组负责人权限可见 */
+  viaLeader?: boolean
+  /** 正在后台生成的任务类型（analyze=出题 / evaluate=评价），无则为 null */
+  jobState?: 'analyze' | 'evaluate' | null
 }
 
 export type JobType = 'analyze' | 'evaluate'
@@ -96,6 +104,8 @@ export type Job = {
   sessionId: string
   type: JobType
   state: 'running' | 'done' | 'error'
+  /** analyze 任务的真实阶段：outline=识别经历 / questions=生成问题 */
+  stage?: 'outline' | 'questions'
   error?: string
 }
 
@@ -128,6 +138,10 @@ export type SessionPatch = {
   anchor?: { id: string; page: number; y: number }
   /** 仅所有者可设置：把简历分享给指定用户（用户 id 数组，整体覆盖） */
   shares?: string[]
+  /** 仅所有者：关联岗位库 JD（空串取消关联；关联后 role 自动取 JD 岗位名） */
+  jdId?: string
+  /** 仅所有者：未匹配到现有 JD 时手动填写岗位方向 */
+  role?: string
 }
 
 export type AnalyzePayload = {
@@ -135,6 +149,8 @@ export type AnalyzePayload = {
   lines: ResumeLine[]
   pageCount: number
   images: string[]
+  /** 已有题目时强制重新识别（清空旧题目与评价） */
+  force?: boolean
 }
 
 export type BankPartKey = 'A' | 'B' | 'E' | 'F' | 'C' | 'D' | 'CUST'
@@ -215,6 +231,27 @@ export type JobDescriptionInput = {
 /** 组织架构部门（缓存自飞书） */
 export type OrgDept = { id: string; name: string; parentId: string; path: string[]; pathName: string }
 
-export type AdminUser = DirectoryUser & { groupName: string; isAdmin: boolean; grants: string[] }
+export type AdminUser = DirectoryUser & { groupName: string; isAdmin: boolean; isSuper: boolean; grants: string[] }
 
 export type AdminOverview = { users: AdminUser[]; depts: Record<string, OrgDept>; fetchedAt: string }
+
+export type DashboardData = {
+  userCount: number
+  sessions: { total: number; evaluated: number; byPhase: { prepare: number; interview: number; review: number } }
+  questions: { total: number; scored: number; avgScore: number | null }
+  byUser: { userId: string; name: string; sessions: number; questions: number; scored: number; evaluated: number }[]
+  bank: { total: number; byGroup: { groupId: string; groupName: string; total: number; custom: number }[] }
+  jds: { total: number; byGroup: { groupId: string; groupName: string; count: number }[] }
+  recent: {
+    id: string
+    name: string
+    role: string
+    ownerName: string
+    phase: Phase
+    updatedAt: string
+    questionCount: number
+    scoredCount: number
+    avgScore: number | null
+    hasEvaluation: boolean
+  }[]
+}

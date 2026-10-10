@@ -127,7 +127,8 @@ export default function Resumes({ go }: { go: Go }) {
   }, [sharing])
 
   const mine = (sessions || []).filter((s) => !s.sharedBy)
-  const shared = (sessions || []).filter((s) => s.sharedBy)
+  const shared = (sessions || []).filter((s) => s.sharedBy && !s.viaSuper && !s.viaLeader)
+  const leadView = (sessions || []).filter((s) => s.viaLeader)
 
   const doDelete = async () => {
     if (!removing) return
@@ -212,7 +213,7 @@ export default function Resumes({ go }: { go: Go }) {
                       <ProgressBar scored={s.scoredCount} total={s.questionCount} />
                     </td>
                     <td className="px-5 py-3.5">
-                      <PhaseChip phase={s.phase} questionCount={s.questionCount} />
+                      <PhaseChip phase={s.phase} questionCount={s.questionCount} jobState={s.jobState} />
                     </td>
                     <td className="px-5 py-3.5 text-slate-400 tabular-nums">{fmtTime(s.updatedAt)}</td>
                     <td className="px-5 py-3.5 text-right">
@@ -297,7 +298,52 @@ export default function Resumes({ go }: { go: Go }) {
                         <ProgressBar scored={s.scoredCount} total={s.questionCount} />
                       </td>
                       <td className="px-5 py-3.5">
-                        <PhaseChip phase={s.phase} questionCount={s.questionCount} />
+                        <PhaseChip phase={s.phase} questionCount={s.questionCount} jobState={s.jobState} />
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-400 tabular-nums">{fmtTime(s.updatedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </section>
+      )}
+
+      {leadView.length > 0 && (
+        <section className="ws-rise" style={{ '--i': 4 } as React.CSSProperties}>
+          <SectionHead title="组内成员简历" sub={`共 ${leadView.length} 份 · 负责人可见，只读`} />
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-400">
+                    <th className="px-5 py-3 font-medium">候选人</th>
+                    <th className="px-5 py-3 font-medium">文件</th>
+                    <th className="px-5 py-3 font-medium">岗位</th>
+                    <th className="px-5 py-3 font-medium">评分进度</th>
+                    <th className="px-5 py-3 font-medium">阶段</th>
+                    <th className="px-5 py-3 font-medium">更新</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leadView.map((s) => (
+                    <tr
+                      key={s.id}
+                      onClick={() => go('review', s.id)}
+                      className="cursor-pointer border-t border-slate-100 transition-colors duration-150 hover:bg-slate-50"
+                    >
+                      <td className="px-5 py-3.5">
+                        <span className="font-medium text-slate-900">{s.name || '待解析'}</span>
+                        <Chip className="ml-2">{s.sharedBy} 的</Chip>
+                      </td>
+                      <td className="max-w-48 truncate px-5 py-3.5 text-slate-500">{s.fileName}</td>
+                      <td className="px-5 py-3.5 text-slate-500">{s.role || '—'}</td>
+                      <td className="px-5 py-3.5">
+                        <ProgressBar scored={s.scoredCount} total={s.questionCount} />
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <PhaseChip phase={s.phase} questionCount={s.questionCount} jobState={s.jobState} />
                       </td>
                       <td className="px-5 py-3.5 text-slate-400 tabular-nums">{fmtTime(s.updatedAt)}</td>
                     </tr>
