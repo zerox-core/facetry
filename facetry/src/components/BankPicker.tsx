@@ -3,6 +3,7 @@ import type { BankQuestion } from '../types'
 import { useBank } from '../views/shared'
 import { bankSearchCls, filterBank, PartCapsules } from './BankBits'
 import { Chip } from './Chip'
+import { Select } from './Select'
 import { Spinner } from './ui'
 
 type Props = {
@@ -64,19 +65,15 @@ export function BankPicker({ open, onClose, onPick }: Props) {
         </div>
         <div className="space-y-3 px-5 pt-3">
           {bank && jdGroups.jds.length > 0 && (
-            <select
+            <Select
               value={jdFilter}
-              onChange={(e) => setJdFilter(e.target.value)}
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            >
-              <option value="ALL">全部题目</option>
-              <option value="">通用题（{jdGroups.common}）</option>
-              {jdGroups.jds.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.title}（{g.count}）
-                </option>
-              ))}
-            </select>
+              onChange={setJdFilter}
+              options={[
+                { value: 'ALL', label: '全部题目' },
+                { value: '', label: `通用题（${jdGroups.common}）` },
+                ...jdGroups.jds.map((g) => ({ value: g.id, label: `${g.title}（${g.count}）` })),
+              ]}
+            />
           )}
           {bank && <PartCapsules bank={bank} value={part} onChange={setPart} />}
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索标题、题干或答案…" className={`${bankSearchCls} sm:w-full`} />
