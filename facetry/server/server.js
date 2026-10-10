@@ -2,8 +2,12 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { DatabaseSync } = require('node:sqlite');
 const { OUTLINE, GENERATE, EVALUATE, BANKGEN } = require('./prompts');
 const seed = require('./bank-seed');
+
+// 环境变量（LLM_BASE_URL / LLM_API_KEY / LLM_MODEL）优先于 config.json；支持 server/.env
+try { process.loadEnvFile(path.join(__dirname, '.env')); } catch {}
 
 const id = () => crypto.randomUUID();
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -59,35 +63,98 @@ function normalizeQuestions(result, outline) {
 }
 
 function createApp(options = {}) {
-  const root = __dirname, dir = options.dataDir || path.join(root, 'data');
+  const root = __dirname;
+  // SQLITE_PATH（平台注入 /data/app.db）决定数据库位置，上传的简历附件与数据库同目录持久化
+  const sqlitePath = process.env.SQLITE_PATH || '';
+  const dir = options.dataDir || (sqlitePath ? path.dirname(sqlitePath) : path.join(root, 'data'));
   fs.mkdirSync(dir, { recursive: true });
   const distDir = path.resolve(root, '..', 'dist');
   const jobs = new Map();
-  // —— 通用 JSON 数据文件：用户目录 / 授权 / 岗位 / 组织架构缓存 / 元信息 ——
-  const dataFile = name => path.join(dir, name);
-  function loadJSON(file, fallback) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; } }
-  function saveJSON(file, obj) { fs.writeFileSync(file + '.tmp', JSON.stringify(obj)); fs.renameSync(file + '.tmp', file); }
-  const usersFile = dataFile('_users.json'), grantsFile = dataFile('_grants.json'), jdsFile = dataFile('_jds.json'), orgFile = dataFile('_org.json'), metaFile = dataFile('_meta.json'), jobsFile = dataFile('_jobs.json');
-  const loadUsers = () => loadJSON(usersFile, {});
-  const loadGrants = () => loadJSON(grantsFile, {});
-  const loadJds = () => loadJSON(jdsFile, { jds: [] });
-  const loadOrg = () => loadJSON(orgFile, { depts: {}, fetchedAt: '' });
-  const loadMeta = () => loadJSON(metaFile, { admins: [] });
-  const bankFile = path.join(dir, '_bank.json'), PART_ORDER = ['A', 'B', 'E', 'F', 'C', 'D'];
-  function saveBank(bank) { fs.writeFileSync(bankFile + '.tmp', JSON.stringify(bank)); fs.renameSync(bankFile + '.tmp', bankFile); }
-  function loadBank() {
-    let bank;
-    if (!fs.existsSync(bankFile)) {
-      // 初始为空：各组首次访问时由 ensureSeeds 生成自己的基础题副本
-      bank = { parts: seed.parts, questions: [], seededGroups: [] };
-    } else {
-      try { bank = JSON.parse(fs.readFileSync(bankFile, 'utf8')); } catch { throw fail('题库数据损坏，请检查 data/_bank.json', 500); }
+
+  // —— SQLite 数据层（node:sqlite，简历原文文件仍在磁盘上） ——
+  const db = new DatabaseSync(sqlitePath || path.join(dir, 'facetry.db'));
+  db.exec(`PRAGMA journal_mode=WAL;
+    CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, userId TEXT, name TEXT, role TEXT, phase TEXT, createdAt TEXT, updatedAt TEXT, data TEXT);
+    CREATE TABLE IF NOT EXISTS bank_questions(id TEXT PRIMARY KEY, part TEXT, groupId TEXT, custom INTEGER, userId TEXT, data TEXT);
+    CREATE TABLE IF NOT EXISTS bank_parts(key TEXT PRIMARY KEY, name TEXT, weight INTEGER, custom INTEGER, groupId TEXT);
+    CREATE TABLE IF NOT EXISTS bank_meta(id INTEGER PRIMARY KEY CHECK(id=1), seededGroups TEXT);
+    CREATE TABLE IF NOT EXISTS jds(id TEXT PRIMARY KEY, groupId TEXT, userId TEXT, data TEXT);
+    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, data TEXT);
+    CREATE TABLE IF NOT EXISTS auth(token TEXT PRIMARY KEY, userId TEXT, createdAt TEXT, data TEXT);
+    CREATE TABLE IF NOT EXISTS grants(userId TEXT PRIMARY KEY, deptIds TEXT);
+    CREATE TABLE IF NOT EXISTS org(id INTEGER PRIMARY KEY CHECK(id=1), data TEXT);
+    CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+    CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, sessionId TEXT, state TEXT, data TEXT);`);
+  const J = JSON.stringify, P = JSON.parse;
+  const replaceAll = (table, rows, insert) => { db.exec('BEGIN'); try { db.exec('DELETE FROM ' + table); for (const r of rows) insert(r); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; } };
+
+  // —— 老 JSON 文件数据一次性导入并改名备份 ——
+  (function importLegacy() {
+    if (db.prepare("SELECT v FROM meta WHERE k='migrated'").get()) return;
+    const files = fs.readdirSync(dir).filter(x => x.endsWith('.json'));
+    if (files.length) {
+      const read = f => { try { return P(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { return null; } };
+      const bank = read('_bank.json');
+      if (bank) {
+        for (const q of bank.questions || []) if (q.groupId === undefined) q.groupId = 'GLOBAL';
+        saveBank({ parts: bank.parts || {}, questions: bank.questions || [], seededGroups: bank.seededGroups || [] });
+      }
+      const users = read('_users.json');
+      if (users) replaceAll('users', Object.entries(users), ([k, v]) => db.prepare('INSERT INTO users(id, data) VALUES (?, ?)').run(k, J(v)));
+      const grants = read('_grants.json');
+      if (grants) replaceAll('grants', Object.entries(grants), ([k, v]) => db.prepare('INSERT INTO grants(userId, deptIds) VALUES (?, ?)').run(k, J(v)));
+      const jds = read('_jds.json');
+      if (jds) replaceAll('jds', jds.jds || [], j => db.prepare('INSERT INTO jds(id, groupId, userId, data) VALUES (?, ?, ?, ?)').run(j.id, j.groupId || '', j.userId || '', J(j)));
+      const org = read('_org.json');
+      if (org) db.prepare('INSERT INTO org(id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(J(org));
+      const meta = read('_meta.json');
+      if (meta) db.prepare("INSERT OR REPLACE INTO meta(k, v) VALUES('meta', ?)").run(J(meta));
+      const auth = read('_auth.json');
+      if (auth) replaceAll('auth', Object.entries(auth), ([k, v]) => db.prepare('INSERT INTO auth(token, userId, createdAt, data) VALUES (?, ?, ?, ?)').run(k, v.userId || '', v.createdAt || '', J(v)));
+      const jobArr = read('_jobs.json');
+      if (Array.isArray(jobArr)) replaceAll('jobs', jobArr, j => db.prepare('INSERT INTO jobs(id, sessionId, state, data) VALUES (?, ?, ?, ?)').run(j.id, j.sessionId || '', j.state || '', J(j)));
+      for (const f of files.filter(x => !x.startsWith('_'))) {
+        const s = read(f);
+        if (s && s.id) save(s);
+      }
+      for (const f of files) { try { fs.renameSync(path.join(dir, f), path.join(dir, f + '.legacy')); } catch {} }
+      console.log('已将旧 JSON 数据导入 SQLite（原文件改名为 *.json.legacy 备份）');
     }
-    // 迁移：老题库题目没有 groupId，视为全局共享
-    let dirty = false;
-    for (const q of bank.questions) if (q.groupId === undefined) { q.groupId = 'GLOBAL'; dirty = true; }
-    if (dirty || !fs.existsSync(bankFile)) saveBank(bank);
-    return bank;
+    db.prepare("INSERT OR REPLACE INTO meta(k, v) VALUES('migrated', '1')").run();
+  })();
+
+  // —— 数据访问（保持原有函数签名，路由层不变） ——
+  const loadUsers = () => { const out = {}; for (const r of db.prepare('SELECT id, data FROM users').all()) out[r.id] = P(r.data); return out; };
+  const saveUsers = users => replaceAll('users', Object.entries(users), ([k, v]) => db.prepare('INSERT INTO users(id, data) VALUES (?, ?)').run(k, J(v)));
+  const loadGrants = () => { const out = {}; for (const r of db.prepare('SELECT userId, deptIds FROM grants').all()) out[r.userId] = P(r.deptIds); return out; };
+  const saveGrants = grants => replaceAll('grants', Object.entries(grants), ([k, v]) => db.prepare('INSERT INTO grants(userId, deptIds) VALUES (?, ?)').run(k, J(v)));
+  const loadJds = () => ({ jds: db.prepare('SELECT data FROM jds').all().map(r => P(r.data)) });
+  const saveJds = store => replaceAll('jds', store.jds, j => db.prepare('INSERT INTO jds(id, groupId, userId, data) VALUES (?, ?, ?, ?)').run(j.id, j.groupId || '', j.userId || '', J(j)));
+  const loadOrg = () => { const r = db.prepare('SELECT data FROM org WHERE id=1').get(); return r ? P(r.data) : { depts: {}, fetchedAt: '' }; };
+  const saveOrg = org => db.prepare('INSERT INTO org(id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(J(org));
+  const loadMeta = () => { const r = db.prepare("SELECT v FROM meta WHERE k='meta'").get(); return r ? P(r.v) : { admins: [] }; };
+  const saveMeta = meta => db.prepare("INSERT OR REPLACE INTO meta(k, v) VALUES('meta', ?)").run(J(meta));
+  const PART_ORDER = ['A', 'B', 'E', 'F', 'C', 'D'];
+  function saveBank(bank) {
+    db.exec('BEGIN');
+    try {
+      db.exec('DELETE FROM bank_questions'); db.exec('DELETE FROM bank_parts');
+      const pq = db.prepare('INSERT INTO bank_questions(id, part, groupId, custom, userId, data) VALUES (?, ?, ?, ?, ?, ?)');
+      for (const q of bank.questions) pq.run(q.id, q.part || '', q.groupId || '', q.custom ? 1 : 0, q.userId || '', J(q));
+      const pp = db.prepare('INSERT INTO bank_parts(key, name, weight, custom, groupId) VALUES (?, ?, ?, ?, ?)');
+      for (const [k, p] of Object.entries(bank.parts)) pp.run(k, p.name, p.weight || 0, p.custom ? 1 : 0, p.groupId || '');
+      db.prepare('INSERT INTO bank_meta(id, seededGroups) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET seededGroups=excluded.seededGroups').run(J(bank.seededGroups || []));
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+  }
+  function loadBank() {
+    const parts = {};
+    for (const r of db.prepare('SELECT * FROM bank_parts').all()) parts[r.key] = { name: r.name, weight: r.weight, ...(r.custom ? { custom: true } : {}), ...(r.groupId ? { groupId: r.groupId } : {}) };
+    // 初始为空：内置种子分类；各组首次访问时由 ensureSeeds 生成自己的基础题副本
+    if (!Object.keys(parts).length) Object.assign(parts, P(J(seed.parts)));
+    const questions = db.prepare('SELECT data FROM bank_questions').all().map(r => P(r.data));
+    const meta = db.prepare('SELECT seededGroups FROM bank_meta WHERE id=1').get();
+    return { parts, questions, seededGroups: meta ? P(meta.seededGroups) : [] };
   }
   /** 每个最小用户组首次访问时生成组内共享的种子基础题副本；未识别组织的用户不发副本（识别后自动继承组内题库） */
   function ensureSeeds(bank, user) {
@@ -163,29 +230,28 @@ function createApp(options = {}) {
   }
   function requireAdmin(req) { const u = requireUser(req); if (!isAdmin(u.id)) throw fail('需要管理员权限', 403); return u; }
   function requireSuper(req) { const u = requireUser(req); if (!isSuper(u.id)) throw fail('需要超级管理员权限', 403); return u; }
-  const authFile = path.join(dir, '_auth.json'), oauthStates = new Map();
-  function saveAuth(auth) { fs.writeFileSync(authFile + '.tmp', JSON.stringify(auth)); fs.renameSync(authFile + '.tmp', authFile); }
-  function loadAuth() {
-    let auth = {};
-    try { auth = JSON.parse(fs.readFileSync(authFile, 'utf8')); } catch {}
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000; let dirty = false;
-    for (const [t, s] of Object.entries(auth)) { if (!s.createdAt || Date.parse(s.createdAt) < cutoff) { delete auth[t]; dirty = true; } }
-    if (dirty) saveAuth(auth);
-    return auth;
-  }
+  const oauthStates = new Map();
+  const AUTH_CUTOFF = () => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   function cookieToken(req) { const m = /(?:^|;\s*)zm_sess=([\w-]+)/.exec(req.headers.cookie || ''); return m && m[1]; }
-  function currentUser(req) { const t = cookieToken(req); if (!t) return null; const s = loadAuth()[t]; return s ? { id: s.userId, name: s.name, avatar: s.avatar, token: t } : null; }
+  function currentUser(req) {
+    const t = cookieToken(req);
+    if (!t) return null;
+    const r = db.prepare('SELECT data FROM auth WHERE token = ? AND createdAt > ?').get(t, AUTH_CUTOFF());
+    if (!r) return null;
+    const s = P(r.data);
+    return { id: s.userId, name: s.name, avatar: s.avatar, token: t };
+  }
   function requireUser(req) { const u = currentUser(req); if (!u) throw fail('请先登录', 401); return u; }
   function issueSession(res, userId, name, avatar) {
-    const auth = loadAuth(), token = crypto.randomBytes(24).toString('hex');
-    auth[token] = { userId, name, avatar, createdAt: new Date().toISOString() };
-    saveAuth(auth);
+    const token = crypto.randomBytes(24).toString('hex'), createdAt = new Date().toISOString();
+    db.prepare('INSERT INTO auth(token, userId, createdAt, data) VALUES (?, ?, ?, ?)').run(token, userId, createdAt, J({ userId, name, avatar, createdAt }));
+    db.prepare('DELETE FROM auth WHERE createdAt <= ?').run(AUTH_CUTOFF());
     res.setHeader('Set-Cookie', `zm_sess=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`);
     return { id: userId, name, avatar };
   }
   function adoptLegacy(userId) {
-    for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json') && !x.startsWith('_'))) {
-      try { const s = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); if (!s.userId) { s.userId = userId; save(s); } } catch (e) { console.error('历史数据迁移失败:', f, e.message); }
+    for (const r of db.prepare("SELECT id, data FROM sessions WHERE userId IS NULL OR userId = ''").all()) {
+      try { const s = P(r.data); s.userId = userId; save(s); } catch (e) { console.error('历史数据迁移失败:', r.id, e.message); }
     }
   }
   async function resolveDept(token, deptId, org, depth) {
@@ -224,7 +290,7 @@ function createApp(options = {}) {
         const resolved = [];
         for (const did of deptIds.slice(0, 20)) { const rec = await resolveDept(at.app_access_token, did, org, 0); if (rec) resolved.push(rec); }
         dirty = resolved.length > 0;
-        if (dirty) { org.fetchedAt = new Date().toISOString(); saveJSON(orgFile, org); }
+        if (dirty) { org.fetchedAt = new Date().toISOString(); saveOrg(org); }
         const maxDepth = Math.max(0, ...resolved.map(d => d.path.length));
         groups = resolved.filter(d => d.path.length === maxDepth).map(d => ({ id: d.id, name: d.name, pathName: d.pathName, path: d.path }));
         leaderOf = computeLeaderOf(ui.data.union_id || ui.data.open_id, groups, org);
@@ -232,9 +298,24 @@ function createApp(options = {}) {
       return { userId, name: ui.data.name || ui.data.en_name || '飞书用户', avatar: ui.data.avatar_url || '', groups, leaderOf };
     } catch (e) { console.error('飞书登录失败:', e.message); throw fail('飞书登录失败，请重试', 502); }
   } };
-  function get(sid) { if (!/^[\w-]+$/.test(sid) || sid.startsWith('_')) throw fail('无效编号'); const file = path.join(dir, sid + '.json'); if (!fs.existsSync(file)) throw fail('简历不存在', 404); return JSON.parse(fs.readFileSync(file, 'utf8')); }
-  function save(s) { s.updatedAt = new Date().toISOString(); const dest = path.join(dir, s.id + '.json'); fs.writeFileSync(dest + '.tmp', JSON.stringify(s)); fs.renameSync(dest + '.tmp', dest); return s; }
-  function config() { let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8')); } catch {} return { ...cfg, ...(options.config || {}) }; }
+  function get(sid) { if (!/^[\w-]+$/.test(sid) || sid.startsWith('_')) throw fail('无效编号'); const r = db.prepare('SELECT data FROM sessions WHERE id = ?').get(sid); if (!r) throw fail('简历不存在', 404); return P(r.data); }
+  function save(s) {
+    s.updatedAt = new Date().toISOString();
+    db.prepare('INSERT INTO sessions(id, userId, name, role, phase, createdAt, updatedAt, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET userId=excluded.userId, name=excluded.name, role=excluded.role, phase=excluded.phase, updatedAt=excluded.updatedAt, data=excluded.data')
+      .run(s.id, s.userId || '', s.name || '', s.role || '', s.phase || 'prepare', s.createdAt || s.updatedAt, s.updatedAt, J(s));
+    return s;
+  }
+  const listSessions = () => db.prepare('SELECT data FROM sessions').all().map(r => P(r.data));
+  function config() {
+    let cfg = {};
+    try { cfg = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8')); } catch {}
+    // 环境变量优先于 config.json（LLM 配置应放在环境变量中）
+    const env = {};
+    if (process.env.LLM_BASE_URL) env.baseUrl = process.env.LLM_BASE_URL;
+    if (process.env.LLM_API_KEY) env.apiKey = process.env.LLM_API_KEY;
+    if (process.env.LLM_MODEL) env.model = process.env.LLM_MODEL;
+    return { ...cfg, ...env, ...(options.config || {}) };
+  }
   async function llm(messages) {
     if (options.llm) return parseResult(await options.llm(messages));
     const cfg = config();
@@ -254,7 +335,7 @@ function createApp(options = {}) {
   }
   function send(res, code, data) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); }
   // —— 生成任务持久化：服务重启后自动继续未完成的 analyze/evaluate ——
-  function persistJobs() { saveJSON(jobsFile, [...jobs.values()]); }
+  function persistJobs() { replaceAll('jobs', [...jobs.values()], j => db.prepare('INSERT INTO jobs(id, sessionId, state, data) VALUES (?, ?, ?, ?)').run(j.id, j.sessionId || '', j.state || '', J(j))); }
   /** 岗位匹配：识别出的岗位方向与现有 JD 互相包含即视为同一岗位，自动关联 */
   function matchJd(role, jds) {
     const norm = s => String(s || '').toLowerCase().replace(/[\s（）()，,、·\-—_【】\[\]：:]/g, '');
@@ -326,7 +407,7 @@ function createApp(options = {}) {
     setTimeout(() => { jobs.delete(job.id); persistJobs(); }, 30 * 60 * 1000).unref();
   }
   // 恢复上次运行中未完成的任务
-  for (const j of loadJSON(jobsFile, [])) {
+  for (const j of db.prepare('SELECT data FROM jobs').all().map(r => P(r.data))) {
     if (!j || !j.id || !j.sessionId || Date.parse(j.startedAt || 0) < Date.now() - 30 * 60 * 1000) continue;
     jobs.set(j.id, j);
     if (j.state === 'running') { console.log('恢复未完成的生成任务:', j.type, j.sessionId); void executeJob(j); }
@@ -347,7 +428,8 @@ function createApp(options = {}) {
         for (const [st, exp] of oauthStates) if (exp < Date.now()) oauthStates.delete(st);
         const state = crypto.randomBytes(8).toString('hex');
         oauthStates.set(state, Date.now() + 10 * 60 * 1000);
-        const redirectUri = cfg.feishuRedirectUri || `http://${req.headers.host || '127.0.0.1:3220'}/api/auth/feishu/callback`;
+        const basePath = (process.env.BASE_PATH || '').replace(/\/+$/, '');
+        const redirectUri = cfg.feishuRedirectUri || `http://${req.headers.host || '127.0.0.1:8080'}${basePath}/api/auth/feishu/callback`;
         const location = 'https://open.feishu.cn/open-apis/authen/v1/authorize?app_id=' + encodeURIComponent(cfg.feishuAppId) + '&redirect_uri=' + encodeURIComponent(redirectUri) + '&state=' + state;
         res.writeHead(302, { Location: location }); return res.end();
       }
@@ -361,11 +443,11 @@ function createApp(options = {}) {
         // 用户目录（供分享与管理授权）+ 首个飞书用户自动成为管理员
         const users = loadUsers();
         users[user.userId] = { name: clip(user.name, 50) || '飞书用户', avatar: typeof user.avatar === 'string' ? user.avatar : '', groups: Array.isArray(user.groups) ? user.groups : [], leaderOf: Array.isArray(user.leaderOf) ? user.leaderOf : [], updatedAt: new Date().toISOString() };
-        saveJSON(usersFile, users);
+        saveUsers(users);
         if (!user.userId.startsWith('demo:')) {
           const meta = loadMeta();
           const configured = Array.isArray(config().admins) ? config().admins : [];
-          if (!meta.admins.length && !configured.length) { meta.admins.push(user.userId); saveJSON(metaFile, meta); }
+          if (!meta.admins.length && !configured.length) { meta.admins.push(user.userId); saveMeta(meta); }
         }
         issueSession(res, user.userId, clip(user.name, 50) || '飞书用户', typeof user.avatar === 'string' ? user.avatar : '');
         res.writeHead(302, { Location: '/' }); return res.end();
@@ -375,7 +457,7 @@ function createApp(options = {}) {
         if (!name) throw fail('请提供用户名');
         const user = issueSession(res, 'demo:' + name, name, '');
         const users = loadUsers();
-        if (!users[user.id]) { users[user.id] = { name: user.name, avatar: '', groups: [], updatedAt: new Date().toISOString() }; saveJSON(usersFile, users); }
+        if (!users[user.id]) { users[user.id] = { name: user.name, avatar: '', groups: [], updatedAt: new Date().toISOString() }; saveUsers(users); }
         return send(res, 200, { user });
       }
       if (p === '/api/auth/me' && method === 'GET') {
@@ -384,7 +466,7 @@ function createApp(options = {}) {
       }
       if (p === '/api/auth/logout' && method === 'POST') {
         const t = cookieToken(req);
-        if (t) { const auth = loadAuth(); if (auth[t]) { delete auth[t]; saveAuth(auth); } }
+        if (t) db.prepare('DELETE FROM auth WHERE token = ?').run(t);
         res.setHeader('Set-Cookie', 'zm_sess=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');
         res.writeHead(204, { 'Cache-Control': 'no-store' }); return res.end();
       }
@@ -532,7 +614,7 @@ function createApp(options = {}) {
         if (!title.trim() || !content.trim()) throw fail('岗位名称和 JD 内容不能为空');
         const store = loadJds(), group = primaryGroup(user.id);
         const jd = { id: id(), title: title.trim(), company: clip(b.company, 100), content, requirements: clip(b.requirements, 4000), tags: (Array.isArray(b.tags) ? b.tags : []).filter(x => typeof x === 'string').slice(0, 8).map(x => clip(x, 30)), userId: user.id, userName: user.name, groupId: group ? group.id : '', groupName: group ? group.name : '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-        store.jds.push(jd); saveJSON(jdsFile, store);
+        store.jds.push(jd); saveJds(store);
         return send(res, 201, jd);
       }
       const jm2 = p.match(/^\/api\/jds\/([\w-]+)$/);
@@ -547,7 +629,7 @@ function createApp(options = {}) {
         if (typeof b.content === 'string') { const c = clip(b.content, 20000); if (!c.trim()) throw fail('JD 内容不能为空'); jd.content = c; }
         if (typeof b.requirements === 'string') jd.requirements = clip(b.requirements, 4000);
         if (Array.isArray(b.tags)) jd.tags = b.tags.filter(x => typeof x === 'string').slice(0, 8).map(x => clip(x, 30));
-        jd.updatedAt = new Date().toISOString(); saveJSON(jdsFile, store);
+        jd.updatedAt = new Date().toISOString(); saveJds(store);
         return send(res, 200, jd);
       }
       if (jm2 && method === 'DELETE') {
@@ -555,7 +637,7 @@ function createApp(options = {}) {
         const store = loadJds(), index = store.jds.findIndex(j => j.id === jm2[1]);
         if (index === -1 || !canViewScoped(user, store.jds[index])) throw fail('岗位不存在', 404);
         if (!canEditScoped(user, store.jds[index])) throw fail('没有权限删除该岗位', 403);
-        store.jds.splice(index, 1); saveJSON(jdsFile, store);
+        store.jds.splice(index, 1); saveJds(store);
         res.writeHead(204, { 'Cache-Control': 'no-store' }); return res.end();
       }
       // —— 用户目录：用于简历分享的对象选择 ——
@@ -569,7 +651,7 @@ function createApp(options = {}) {
       if (p === '/api/admin/dashboard' && method === 'GET') {
         requireSuper(req);
         const users = loadUsers();
-        const sessions = fs.readdirSync(dir).filter(x => x.endsWith('.json') && !x.startsWith('_')).map(x => JSON.parse(fs.readFileSync(path.join(dir, x), 'utf8')));
+        const sessions = listSessions();
         const byUser = new Map();
         let evaluated = 0, scoredQuestions = 0, totalQuestions = 0, scoreSum = 0;
         for (const s of sessions) {
@@ -626,7 +708,7 @@ function createApp(options = {}) {
         const deptIds = [...new Set(b.deptIds.filter(x => typeof x === 'string').slice(0, 100))];
         const grants = loadGrants();
         if (deptIds.length) grants[b.userId] = deptIds; else delete grants[b.userId];
-        saveJSON(grantsFile, grants);
+        saveGrants(grants);
         return send(res, 200, { userId: b.userId, deptIds });
       }
       if (p === '/api/admin/admins' && method === 'PUT') {
@@ -638,7 +720,7 @@ function createApp(options = {}) {
         if (b.admin) set.add(b.userId); else set.delete(b.userId);
         const configured = Array.isArray(config().admins) ? config().admins : [];
         if (!set.size && !configured.length) throw fail('至少保留一名管理员');
-        meta.admins = [...set]; saveJSON(metaFile, meta);
+        meta.admins = [...set]; saveMeta(meta);
         return send(res, 200, { userId: b.userId, admin: !!b.admin });
       }
       if (p === '/api/admin/org/refresh' && method === 'POST') {
@@ -676,7 +758,7 @@ function createApp(options = {}) {
             return d;
           };
           for (const did of Object.keys(org.depts)) resolve(did, 0);
-          saveJSON(orgFile, org);
+          saveOrg(org);
           // 顺带补齐没有组织信息的用户（未识别组织），上限 50 人
           let syncedUsers = 0;
           const users = loadUsers(); let usersDirty = false;
@@ -703,7 +785,7 @@ function createApp(options = {}) {
             const leaderOf = computeLeaderOf(uid.slice(3), u.groups, org);
             if (JSON.stringify(leaderOf) !== JSON.stringify(u.leaderOf || [])) { u.leaderOf = leaderOf; usersDirty = true; }
           }
-          if (usersDirty) saveJSON(usersFile, users);
+          if (usersDirty) saveUsers(users);
           return send(res, 200, { depts: org.depts, fetchedAt: org.fetchedAt, syncedUsers });
         } catch (e) { console.error('组织架构同步失败:', e.message); throw fail('组织架构同步失败：' + (e.message.includes('99991672') || e.message.includes('permission') ? '请为应用开通 contact:department.base:readonly 权限' : '请检查飞书配置与网络'), 502); }
       }
@@ -712,7 +794,7 @@ function createApp(options = {}) {
         const users = loadUsers();
         const superView = isSuper(user.id);
         const runningJobs = new Map([...jobs.values()].filter(j => j.state === 'running').map(j => [j.sessionId, j.type]));
-        return send(res, 200, fs.readdirSync(dir).filter(x => x.endsWith('.json') && !x.startsWith('_')).map(x => JSON.parse(fs.readFileSync(path.join(dir, x), 'utf8'))).filter(x => x.userId === user.id || superView || canLeadView(user, x.userId) || (Array.isArray(x.shares) && x.shares.includes(user.id))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ sections, lines, text, evaluation, shares, ...s }) => { const questions = (sections || []).flatMap(x => x.questions).filter(q => !q.excluded); const scored = questions.filter(q => q.score !== null); const reallyShared = s.userId !== user.id && Array.isArray(shares) && shares.includes(user.id); const notOwn = s.userId !== user.id && !reallyShared; return { ...s, sharedBy: s.userId === user.id ? '' : (users[s.userId]?.name || '同事'), viaSuper: notOwn && superView, viaLeader: notOwn && !superView && canLeadView(user, s.userId), jobState: runningJobs.get(s.id) || null, questionCount: questions.length, scoredCount: scored.length, avgScore: scored.length ? Math.round(scored.reduce((a, q) => a + q.score, 0) / scored.length * 10) / 10 : null, hasEvaluation: !!evaluation, suggestion: evaluation ? clip(evaluation.suggestion, 200) : '' }; }));
+        return send(res, 200, listSessions().filter(x => x.userId === user.id || superView || canLeadView(user, x.userId) || (Array.isArray(x.shares) && x.shares.includes(user.id))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ sections, lines, text, evaluation, shares, ...s }) => { const questions = (sections || []).flatMap(x => x.questions).filter(q => !q.excluded); const scored = questions.filter(q => q.score !== null); const reallyShared = s.userId !== user.id && Array.isArray(shares) && shares.includes(user.id); const notOwn = s.userId !== user.id && !reallyShared; return { ...s, sharedBy: s.userId === user.id ? '' : (users[s.userId]?.name || '同事'), viaSuper: notOwn && superView, viaLeader: notOwn && !superView && canLeadView(user, s.userId), jobState: runningJobs.get(s.id) || null, questionCount: questions.length, scoredCount: scored.length, avgScore: scored.length ? Math.round(scored.reduce((a, q) => a + q.score, 0) / scored.length * 10) / 10 : null, hasEvaluation: !!evaluation, suggestion: evaluation ? clip(evaluation.suggestion, 200) : '' }; }));
       }
 
       if (p === '/api/upload' && method === 'POST') {
@@ -750,7 +832,7 @@ function createApp(options = {}) {
         if (!sm[2] && method === 'GET') return send(res, 200, s);
         if (!sm[2] && method === 'DELETE') {
           if (!owner) throw fail('只有所有者可删除', 403);
-          fs.unlinkSync(path.join(dir, s.id + '.json'));
+          db.prepare('DELETE FROM sessions WHERE id = ?').run(s.id);
           if (s.file) { const stored = path.join(dir, path.basename(s.file)); if (fs.existsSync(stored)) fs.unlinkSync(stored); }
           res.writeHead(204, { 'Cache-Control': 'no-store' }); return res.end();
         }
@@ -848,7 +930,9 @@ function createApp(options = {}) {
       res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' }); fs.createReadStream(file).pipe(res);
     } catch (e) { if (!res.headersSent) send(res, e.status || 500, { error: e.status ? e.message : '服务处理失败，请重试' }); else res.end(); }
   });
+  server._db = db; // 暴露给测试做数据种子/断言
+  server.on('close', () => { try { db.close(); } catch {} });
   return server;
 }
-if (require.main === module) { const port = Number(process.env.PORT) || 3220, host = process.env.HOST || '0.0.0.0'; createApp().listen(port, host, () => { const nets = require('os').networkInterfaces(); const lan = Object.values(nets).flat().filter(Boolean).find(n => n.family === 'IPv4' && !n.internal); console.log(`知马已启动：http://localhost:${port}${lan ? `（局域网：http://${lan.address}:${port}）` : ''}`); }); }
+if (require.main === module) { const port = Number(process.env.PORT) || 8080, host = process.env.HOST || '0.0.0.0'; createApp().listen(port, host, () => { const nets = require('os').networkInterfaces(); const lan = Object.values(nets).flat().filter(Boolean).find(n => n.family === 'IPv4' && !n.internal); console.log(`知马已启动：http://localhost:${port}${lan ? `（局域网：http://${lan.address}:${port}）` : ''}`); }); }
 module.exports = { createApp, normalizeOutline, normalizeQuestions };

@@ -10,7 +10,7 @@ const lines=[{id:'p2-l3',text:'知识库项目',page:2,y:.47,x:.12}];
 async function fixture(t,llm,opts) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facetry-test-'));
   const server=createApp({dataDir:dir,llm:llm||(()=>structuredClone(analysis)),...(opts||{})});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  t.after(async()=>{await new Promise(resolve=>server.close(resolve));const target=path.resolve(dir);if(target.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(target).startsWith('facetry-test-'))fs.rmSync(target,{recursive:true,force:true});});
+  t.after(async()=>{server.closeAllConnections?.();await new Promise(resolve=>server.close(resolve));const target=path.resolve(dir);if(target.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(target).startsWith('facetry-test-'))fs.rmSync(target,{recursive:true,force:true,maxRetries:8,retryDelay:150});});
   const base='http://127.0.0.1:'+server.address().port;
   const login=async(name='测试员')=>{const r=await fetch(base+'/api/auth/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});const data=await r.json();return {cookie:r.headers.get('set-cookie').split(';')[0],user:data.user,status:r.status};};
   const self=await login(),cookie=self.cookie;
@@ -19,7 +19,7 @@ async function fixture(t,llm,opts) {
   const upload=async(name='测试.txt',text='测试候选人\n知识库项目\n采用混合检索')=>{const r=await fetch(base+'/api/upload?name='+encodeURIComponent(name),{method:'POST',headers:{Cookie:cookie},body:text});return {status:r.status,data:await r.json()};};
   const poll=async jid=>{for(let n=0;n<300;n++){const {data}=await req('/api/jobs/'+jid);if(data.state!=='running')return data;await new Promise(r=>setTimeout(r,20));}throw new Error('job timeout');};
   const analyze=async s=>{const p='/api/sessions/'+s.id;const {data:job}=await req(p+'/analyze','POST',{lines,pageCount:2});assert.equal((await poll(job.id)).state,'done');return (await req(p)).data;};
-  return {req,reqAs,upload,poll,analyze,login,base,dir,cookie,user:self.user};
+  return {req,reqAs,upload,poll,analyze,login,base,dir,server,cookie,user:self.user};
 }
 test('source line determines exact page and coordinates, and invalid model output fails',()=>{
   const outline=normalizeOutline(analysis,lines,2);assert.equal(outline.sections[0].anchor.page,2);assert.equal(outline.sections[0].anchor.y,.47);assert.equal(outline.sections[0].anchor.matched,true);
@@ -39,7 +39,7 @@ test('sections are sorted top-to-bottom by anchor position',()=>{
 test('upload validates file type, PDF signature and empty files; secrets are not served',async t=>{
   const f=await fixture(t);assert.equal((await f.upload('bad.exe','x')).status,400);assert.equal((await f.upload('bad.pdf','not PDF')).status,400);assert.equal((await f.upload('empty.txt','')).status,400);assert.equal((await f.upload('bad.png','x')).status,400);
   assert.equal((await fetch(f.base+'/config.json')).status,404);assert.equal((await fetch(f.base+'/data')).status,404);
-  const result=await f.upload();assert.equal(result.status,201);const {data}=await f.req('/api/sessions/'+result.data.id);assert.equal(data.text,'测试候选人\n知识库项目\n采用混合检索');assert.ok(fs.existsSync(path.join(f.dir,result.data.id+'.json')));
+  const result=await f.upload();assert.equal(result.status,201);const {data}=await f.req('/api/sessions/'+result.data.id);assert.equal(data.text,'测试候选人\n知识库项目\n采用混合检索');assert.ok(f.server._db.prepare('SELECT id FROM sessions WHERE id=?').get(result.data.id));
 });
 test('DOCX content is extracted as text and malformed documents are rejected',async t=>{
   const f=await fixture(t),JSZip=require('jszip'),zip=new JSZip();
@@ -162,9 +162,9 @@ test('session list exposes questionCount and scoredCount excluding excluded ques
 });
 test('DELETE removes the session json and stored file',async t=>{
   const f=await fixture(t),{data:s}=await f.upload(),p='/api/sessions/'+s.id;
-  assert.ok(fs.existsSync(path.join(f.dir,s.file)));assert.ok(fs.existsSync(path.join(f.dir,s.id+'.json')));
+  assert.ok(fs.existsSync(path.join(f.dir,s.file)));assert.ok(f.server._db.prepare('SELECT id FROM sessions WHERE id=?').get(s.id));
   const response=await fetch(f.base+p,{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(response.status,204);
-  assert.ok(!fs.existsSync(path.join(f.dir,s.id+'.json')));assert.ok(!fs.existsSync(path.join(f.dir,s.file)));
+  assert.ok(!f.server._db.prepare('SELECT id FROM sessions WHERE id=?').get(s.id));assert.ok(!fs.existsSync(path.join(f.dir,s.file)));
   assert.equal((await f.req(p)).status,404);
   const again=await fetch(f.base+p,{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(again.status,404);
 });
@@ -180,15 +180,18 @@ test('duplicate requests share one job; model failures leave original resume int
 });
 test('interrupted running jobs resume on server start',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facetry-test-'));
-  t.after(async()=>{const target=path.resolve(dir);if(target.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(target).startsWith('facetry-test-'))fs.rmSync(target,{recursive:true,force:true});});
-  // 预置：一个用户会话 + 一份简历 + 一个"进行中"的出题任务（模拟服务中断前状态）
-  fs.writeFileSync(path.join(dir,'_auth.json'),JSON.stringify({tok:{userId:'demo:恢复',name:'恢复',avatar:'',createdAt:new Date().toISOString()}}));
+  t.after(async()=>{const target=path.resolve(dir);if(target.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(target).startsWith('facetry-test-')){try{fs.rmSync(target,{recursive:true,force:true,maxRetries:8,retryDelay:150});}catch{/* Windows 文件锁时序，临时目录残留无害 */}}});
+  const seed1=createApp({dataDir:dir,llm:()=>({})});
+  await new Promise(r=>seed1.listen(0,'127.0.0.1',r));
   const sid=crypto.randomUUID();
-  fs.writeFileSync(path.join(dir,sid+'.json'),JSON.stringify({id:sid,userId:'demo:恢复',fileName:'r.txt',file:sid+'.txt',name:'r',role:'',summary:'',text:'',sections:[],lines:[],pageCount:2,phase:'prepare',note:'',evaluation:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}));
-  fs.writeFileSync(path.join(dir,'_jobs.json'),JSON.stringify([{id:'job1',sessionId:sid,type:'analyze',state:'running',startedAt:new Date().toISOString(),payload:{role:'',lines,pageCount:2,images:[]}}]));
+  const session={id:sid,userId:'demo:恢复',fileName:'r.txt',file:sid+'.txt',name:'r',role:'',summary:'',text:'',sections:[],lines:[],pageCount:2,phase:'prepare',note:'',evaluation:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  seed1._db.prepare('INSERT INTO auth(token,userId,createdAt,data) VALUES (?,?,?,?)').run('tok','demo:恢复',new Date().toISOString(),JSON.stringify({userId:'demo:恢复',name:'恢复',avatar:'',createdAt:new Date().toISOString()}));
+  seed1._db.prepare('INSERT INTO sessions(id,userId,updatedAt,data) VALUES (?,?,?,?)').run(sid,'demo:恢复',session.updatedAt,JSON.stringify(session));
+  seed1._db.prepare('INSERT INTO jobs(id,sessionId,state,data) VALUES (?,?,?,?)').run('job1',sid,'running',JSON.stringify({id:'job1',sessionId:sid,type:'analyze',state:'running',startedAt:new Date().toISOString(),payload:{role:'',lines,pageCount:2,images:[]}}));
+  seed1.closeAllConnections?.();await new Promise(r=>seed1.close(r));
   const server=createApp({dataDir:dir,llm:()=>structuredClone(analysis)});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
-  t.after(()=>new Promise(r=>server.close(r)));
+  t.after(()=>{server.closeAllConnections?.();return new Promise(r=>server.close(r))});
   const base='http://127.0.0.1:'+server.address().port;
   for(let n=0;n<100;n++){const j=await(await fetch(base+'/api/jobs/job1',{headers:{Cookie:'zm_sess=tok'}})).json();if(j.state!=='running')break;await new Promise(r=>setTimeout(r,20));}
   const j=await(await fetch(base+'/api/jobs/job1',{headers:{Cookie:'zm_sess=tok'}})).json();
@@ -232,11 +235,11 @@ test('bank PATCH and DELETE return 404 for unknown ids',async t=>{
 test('bank storage file never leaks into session list or session routes',async t=>{
   const f=await fixture(t);
   await f.req('/api/bank');
-  assert.ok(fs.existsSync(path.join(f.dir,'_bank.json')));
+  assert.ok(fs.existsSync(path.join(f.dir,'facetry.db')));
   const {data:list}=await f.req('/api/sessions');assert.ok(Array.isArray(list));assert.ok(!list.some(s=>s&&s.parts));
   assert.equal((await f.req('/api/sessions/_bank')).status,400);
   const del=await fetch(f.base+'/api/sessions/_bank',{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(del.status,400);
-  assert.ok(fs.existsSync(path.join(f.dir,'_bank.json')));
+  assert.ok(fs.existsSync(path.join(f.dir,'facetry.db')));
 });
 test('unauthenticated requests to protected routes are rejected with 401',async t=>{
   const f=await fixture(t);
@@ -282,11 +285,11 @@ test('feishu login adopts legacy sessions without userId and leaves owned sessio
   const f=await fixture(t,undefined,{config:{feishuAppId:'cli_test',feishuAppSecret:'test_secret'},feishuClient:{exchange:async()=>({userId:'fs:boss',name:'管理员',avatar:''})}});
   const {data:mine}=await f.upload();
   const legacyId=crypto.randomUUID();
-  fs.writeFileSync(path.join(f.dir,legacyId+'.json'),JSON.stringify({id:legacyId,fileName:'旧简历.txt',file:legacyId+'.txt',name:'旧简历',role:'',summary:'',text:'',sections:[],lines:[],pageCount:1,phase:'prepare',note:'',evaluation:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}));
+  f.server._db.prepare('INSERT INTO sessions(id,userId,updatedAt,data) VALUES (?,?,?,?)').run(legacyId,'',new Date().toISOString(),JSON.stringify({id:legacyId,fileName:'旧简历.txt',file:legacyId+'.txt',name:'旧简历',role:'',summary:'',text:'',sections:[],lines:[],pageCount:1,phase:'prepare',note:'',evaluation:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}));
   const r=await fetch(f.base+'/api/auth/feishu',{redirect:'manual'}),state=new URL(r.headers.get('location')).searchParams.get('state');
   const cb=await fetch(f.base+'/api/auth/feishu/callback?code=c&state='+state,{redirect:'manual'});assert.equal(cb.status,302);
-  const legacy=JSON.parse(fs.readFileSync(path.join(f.dir,legacyId+'.json'),'utf8'));assert.equal(legacy.userId,'fs:boss');
-  const mineFile=JSON.parse(fs.readFileSync(path.join(f.dir,mine.id+'.json'),'utf8'));assert.equal(mineFile.userId,'demo:测试员');
+  const legacy=f.server._db.prepare('SELECT data FROM sessions WHERE id=?').get(legacyId);assert.equal(JSON.parse(legacy.data).userId,'fs:boss');
+  const mineFile=JSON.parse(f.server._db.prepare('SELECT data FROM sessions WHERE id=?').get(mine.id).data);assert.equal(mineFile.userId,'demo:测试员');
   const bossMe=await fetch(f.base+'/api/auth/me',{headers:{Cookie:cb.headers.get('set-cookie').split(';')[0]}});assert.equal((await bossMe.json()).user.id,'fs:boss');
   const bossList=await fetch(f.base+'/api/sessions',{headers:{Cookie:cb.headers.get('set-cookie').split(';')[0]}});const bossData=await bossList.json();
   assert.ok(bossData.some(x=>x.id===legacyId));assert.ok(!bossData.some(x=>x.id===mine.id));

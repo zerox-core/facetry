@@ -77,7 +77,7 @@ export default function App() {
       <header className="ws-bar sticky top-0 z-20 text-white">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
           <button onClick={() => enter('home')} className="flex shrink-0 cursor-pointer items-center gap-2">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fffdf9] p-0.5"><img src="/logo.png" alt="知马" className="h-full w-full object-contain" /></span>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fffdf9] p-0.5"><img src="logo.png" alt="知马" className="h-full w-full object-contain" /></span>
             <span className="hidden text-base font-semibold sm:inline">知马</span>
             <span className="ml-1 hidden rounded bg-white/10 px-1.5 py-0.5 text-xs text-white/60 md:inline">简历评审</span>
           </button>

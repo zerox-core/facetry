@@ -2,10 +2,14 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // 子路径部署（/apps/xxx）无尾斜杠时相对资源会解析错，先补 / 再加载
+      if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' + location.search + location.hash)
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>知马 · 简历评审工作台</title>
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="icon" type="image/png" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./favicon.png" />
   </head>
   <body>
     <div id="root"></div>

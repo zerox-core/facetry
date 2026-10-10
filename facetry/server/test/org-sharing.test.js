@@ -27,11 +27,13 @@ async function fixture(t, llm) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facetry-org-test-'));
   const server = createApp({ dataDir: dir, llm: llm || (() => ({ questions: [] })), config: { admins: ['fs:admin'] } });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  t.after(async () => { await new Promise(r => server.close(r)); const target = path.resolve(dir); if (target.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(target).startsWith('facetry-org-test-')) fs.rmSync(target, { recursive: true, force: true }); });
-  fs.writeFileSync(path.join(dir, '_users.json'), JSON.stringify(Object.fromEntries(Object.entries(USERS).map(([id, u]) => [id, { ...u, updatedAt: '2026-10-09T00:00:00.000Z' }]))));
-  fs.writeFileSync(path.join(dir, '_org.json'), JSON.stringify(ORG));
+  t.after(async () => { server.closeAllConnections?.(); await new Promise(r => server.close(r)); const target = path.resolve(dir); if (target.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(target).startsWith('facetry-org-test-')) { try { fs.rmSync(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* Windows 文件锁时序 */ } } });
   const now = new Date().toISOString();
-  fs.writeFileSync(path.join(dir, '_auth.json'), JSON.stringify(Object.fromEntries(Object.entries(TOKENS).map(([uid, tok]) => [tok, { userId: uid, name: USERS[uid].name, avatar: '', createdAt: now }]))));
+  const insUser = server._db.prepare('INSERT INTO users(id, data) VALUES (?, ?)');
+  for (const [id, u] of Object.entries(USERS)) insUser.run(id, JSON.stringify({ ...u, updatedAt: now }));
+  server._db.prepare('INSERT INTO org(id, data) VALUES (1, ?)').run(JSON.stringify(ORG));
+  const insAuth = server._db.prepare('INSERT INTO auth(token, userId, createdAt, data) VALUES (?, ?, ?, ?)');
+  for (const [uid, tok] of Object.entries(TOKENS)) insAuth.run(tok, uid, now, JSON.stringify({ userId: uid, name: USERS[uid].name, avatar: '', createdAt: now }));
   const base = 'http://127.0.0.1:' + server.address().port;
   const as = uid => {
     const cookie = 'zm_sess=' + TOKENS[uid];
@@ -253,11 +255,13 @@ test('super admin sees all orgs, all resumes read-only, and the dashboard', asyn
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facetry-org-test-'));
   const server = createApp({ dataDir: dir, llm: () => ({ questions: [] }), config: { admins: ['fs:admin'], superAdmins: ['fs:u2'] } });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  t.after(async () => { await new Promise(r => server.close(r)); const target = path.resolve(dir); if (target.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(target).startsWith('facetry-org-test-')) fs.rmSync(target, { recursive: true, force: true }); });
-  fs.writeFileSync(path.join(dir, '_users.json'), JSON.stringify(Object.fromEntries(Object.entries(USERS).map(([id, u]) => [id, { ...u, updatedAt: '2026-10-09T00:00:00.000Z' }]))));
-  fs.writeFileSync(path.join(dir, '_org.json'), JSON.stringify(ORG));
+  t.after(async () => { server.closeAllConnections?.(); await new Promise(r => server.close(r)); const target = path.resolve(dir); if (target.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(target).startsWith('facetry-org-test-')) { try { fs.rmSync(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* Windows 文件锁时序 */ } } });
   const now = new Date().toISOString();
-  fs.writeFileSync(path.join(dir, '_auth.json'), JSON.stringify(Object.fromEntries(Object.entries(TOKENS).map(([uid, tok]) => [tok, { userId: uid, name: USERS[uid].name, avatar: '', createdAt: now }]))));
+  const insUser = server._db.prepare('INSERT INTO users(id, data) VALUES (?, ?)');
+  for (const [id, u] of Object.entries(USERS)) insUser.run(id, JSON.stringify({ ...u, updatedAt: now }));
+  server._db.prepare('INSERT INTO org(id, data) VALUES (1, ?)').run(JSON.stringify(ORG));
+  const insAuth = server._db.prepare('INSERT INTO auth(token, userId, createdAt, data) VALUES (?, ?, ?, ?)');
+  for (const [uid, tok] of Object.entries(TOKENS)) insAuth.run(tok, uid, now, JSON.stringify({ userId: uid, name: USERS[uid].name, avatar: '', createdAt: now }));
   const base = 'http://127.0.0.1:' + server.address().port;
   const as = uid => async (p, method = 'GET', data) => {
     const r = await fetch(base + p, { method, headers: { 'Content-Type': 'application/json', Cookie: 'zm_sess=' + TOKENS[uid] }, ...(data !== undefined ? { body: JSON.stringify(data) } : {}) });

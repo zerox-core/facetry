@@ -1,0 +1,10 @@
+node_modules
+dist
+server/node_modules
+server/data
+server/config.json
+server/.env
+server/server.log
+design
+Dockerfile
+.dockerignore

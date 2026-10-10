@@ -32,7 +32,7 @@ export default function Login() {
     try {
       const s = await api.status()
       if (s.feishu) {
-        window.location.href = '/api/auth/feishu'
+        window.location.href = 'api/auth/feishu'
         return
       }
       setFeishuErr('飞书登录未配置，请联系管理员')
@@ -49,7 +49,7 @@ export default function Login() {
           {err && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</p>}
 
           <div className="mt-6">
-            <p className="text-center text-sm text-slate-600">使用<span className="font-medium text-slate-900">飞书账号</span>授权登录，点击按钮跳转飞书确认即可</p>
+            <p className="text-center text-sm leading-6 text-slate-600">使用<span className="font-medium text-slate-900">飞书账号</span>授权登录，<br />点击按钮跳转飞书确认即可</p>
             {feishuErr && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{feishuErr}</p>}
             <Btn className="mt-5 w-full justify-center" disabled={feishuBusy} onClick={() => void feishuLogin()}>
               <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden><path d="M3 5.5 10.5 3l6.5 6-6.5 8L3 14.5z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
@@ -62,7 +62,7 @@ export default function Login() {
   return (
     <div className="login-desk relative flex min-h-screen flex-col overflow-hidden px-6 text-white sm:px-10">
       <header className="relative z-30 flex h-16 shrink-0 items-center gap-2">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#fffdf9] p-0.5"><img src="/logo.png" alt="知马" className="h-full w-full object-contain" /></span>
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#fffdf9] p-0.5"><img src="logo.png" alt="知马" className="h-full w-full object-contain" /></span>
         <span className="text-lg font-semibold">知马</span>
         <span className="ml-1 rounded px-1.5 py-0.5 text-xs text-slate-300 ring-1 ring-white/15">简历评审工作台</span>
         <button onClick={() => setOpen(!open)} className="ml-auto hidden h-9 cursor-pointer rounded-lg bg-amber-400 px-5 text-sm font-semibold text-[#1d2939] transition hover:bg-amber-300 md:block">{open ? '收起登录' : '登录'}</button>
@@ -90,7 +90,7 @@ export default function Login() {
           {/* 登录卡：在纸后，closed 时只露出右侧书签 */}
           <div
             onClick={(e) => { e.stopPropagation(); setOpen(true) }}
-            className={`absolute right-0 top-12 z-0 w-[360px] rounded-xl bg-white px-8 pb-7 pt-8 text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.1),0_30px_60px_-20px_rgba(0,0,0,0.55)] transition-all duration-500 ease-[cubic-bezier(.2,.8,.2,1)] ${open ? 'z-20 translate-x-[200px] rotate-[0.6deg]' : 'group cursor-pointer translate-x-0 hover:translate-x-[16px]'}`}
+            className={`absolute right-0 top-12 z-0 w-[300px] rounded-xl bg-white px-7 pb-9 pt-10 text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.1),0_30px_60px_-20px_rgba(0,0,0,0.55)] transition-all duration-500 ease-[cubic-bezier(.2,.8,.2,1)] ${open ? 'z-20 translate-x-[140px] rotate-[0.6deg]' : 'group cursor-pointer translate-x-0 hover:translate-x-[16px]'}`}
           >
             <span className="absolute inset-x-0 top-0 h-1 rounded-t-xl bg-amber-400" />
             {/* 书签：从纸后伸出的登录入口 */}

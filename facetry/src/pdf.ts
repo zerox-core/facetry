@@ -25,11 +25,13 @@ export type DocData = {
 const MAX_PAGES = 20
 
 async function loadPdf(url: string): Promise<DocData> {
+  // pdfjs 的 cMap/字体在 worker 内 fetch，相对路径会按 worker 脚本地址解析，这里基于页面地址生成绝对 URL
+  const publicBase = new URL('.', document.baseURI).href
   const doc = await pdfjs.getDocument({
     url,
-    cMapUrl: '/pdfjs/cmaps/',
+    cMapUrl: publicBase + 'pdfjs/cmaps/',
     cMapPacked: true,
-    standardFontDataUrl: '/pdfjs/standard_fonts/',
+    standardFontDataUrl: publicBase + 'pdfjs/standard_fonts/',
   }).promise
   const pageCount = doc.numPages
   if (pageCount > MAX_PAGES) throw new Error(`当前支持 ${MAX_PAGES} 页以内的简历，请精简文件后重新上传`)

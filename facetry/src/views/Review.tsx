@@ -177,7 +177,7 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
     setDoc(null)
     setDocError('')
     // 同一 docKey 共享缓存的解析 Promise，StrictMode 双调用不会重复解析也不会互相取消
-    loadDocumentCached(docKey, `/files/${file}`, session?.text || '')
+    loadDocumentCached(docKey, `files/${file}`, session?.text || '')
       .then((d) => alive && setDoc(d))
       .catch((e) => alive && setDocError(e instanceof Error ? e.message : '简历暂时无法预览'))
     return () => {
