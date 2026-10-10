@@ -5,6 +5,7 @@ import { bankSearchCls, filterBank, PartCapsules } from '../components/BankBits'
 import { Chip } from '../components/Chip'
 import { ConfirmModal } from '../components/Modal'
 import { toast } from '../components/Toast'
+import { Select } from '../components/Select'
 import { Btn, Card, SectionHead, Spinner } from '../components/ui'
 import type { BankQuestion, BankQuestionInput, GeneratedQuestion, JobDescription } from '../types'
 import { invalidateBank, shortPartName, useBank } from './shared'
@@ -116,15 +117,14 @@ function GenerateModal({
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
           <label className={`block ${lab}`}>
             岗位 JD
-            <select value={jdId} onChange={(e) => setJdId(e.target.value)} className={`mt-1 h-10 ${field}`}>
-              <option value="">— 粘贴 JD 内容 —</option>
-              {jds.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.title}
-                  {j.company ? ` · ${j.company}` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <Select
+                value={jdId}
+                placeholder="— 粘贴 JD 内容 —"
+                onChange={setJdId}
+                options={[{ value: '', label: '— 粘贴 JD 内容 —' }, ...jds.map((j) => ({ value: j.id, label: j.title, hint: j.company || undefined }))]}
+              />
+            </div>
           </label>
           {!jdId && (
             <label className={`block ${lab}`}>
@@ -157,20 +157,18 @@ function GenerateModal({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium text-slate-900">{q.title}</span>
-                        <select
+                        <Select
+                          size="sm"
+                          className="w-36"
                           value={partSel[i] ?? 'CUST'}
-                          onChange={(e) => setPartSel((s) => ({ ...s, [i]: e.target.value }))}
-                          className="h-7 rounded-md border border-slate-200 bg-white px-1.5 text-xs outline-none focus:border-blue-500"
-                        >
-                          {parts.map((p) => (
-                            <option key={p.key} value={p.key}>
-                              {p.name}
-                            </option>
-                          ))}
-                          <option value="CUST">自定义</option>
-                          {q.partName && !q.part && <option value="__SUGGESTED__">＋ 新分类：{q.partName}</option>}
-                          <option value="__NEW__">＋ 新分类…</option>
-                        </select>
+                          onChange={(val) => setPartSel((s) => ({ ...s, [i]: val }))}
+                          options={[
+                            ...parts.map((p) => ({ value: p.key, label: p.name })),
+                            ...(!parts.some((p) => p.key === 'CUST') ? [{ value: 'CUST', label: '自定义' }] : []),
+                            ...(q.partName && !q.part ? [{ value: '__SUGGESTED__', label: `＋ 新分类：${q.partName}` }] : []),
+                            { value: '__NEW__', label: '＋ 新分类…' },
+                          ]}
+                        />
                       </div>
                       <p className="mt-0.5 text-xs leading-5 text-slate-500">{q.q}</p>
                       {(partSel[i] === '__NEW__') && (
@@ -293,16 +291,18 @@ function QuestionFormModal({
         <div className="mt-4 space-y-3">
           <label className={`block ${lab}`}>
             分类
-            <select value={v.part} onChange={set('part')} className={`mt-1 h-10 ${field}`}>
-              {parts.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.name}
-                </option>
-              ))}
-              <option value="CUST">自定义</option>
-              <option value="__NEW__">＋ 新分类…</option>
-              <option value="">未分类（存入自定义）</option>
-            </select>
+            <div className="mt-1">
+              <Select
+                value={v.part}
+                onChange={(val) => setV({ ...v, part: val })}
+                options={[
+                  ...parts.map((p) => ({ value: p.key, label: p.name })),
+                  ...(!parts.some((p) => p.key === 'CUST') ? [{ value: 'CUST', label: '自定义' }] : []),
+                  { value: '__NEW__', label: '＋ 新分类…' },
+                  { value: '', label: '未分类（存入自定义）' },
+                ]}
+              />
+            </div>
           </label>
           {v.part === '__NEW__' && (
             <label className={`block ${lab}`}>
@@ -312,15 +312,14 @@ function QuestionFormModal({
           )}
           <label className={`block ${lab}`}>
             所属岗位
-            <select value={v.jdId} onChange={set('jdId')} className={`mt-1 h-10 ${field}`}>
-              <option value="">通用题（不关联岗位）</option>
-              {jds.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.title}
-                  {j.company ? ` · ${j.company}` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <Select
+                value={v.jdId}
+                placeholder="通用题（不关联岗位）"
+                onChange={(val) => setV({ ...v, jdId: val })}
+                options={[{ value: '', label: '通用题（不关联岗位）' }, ...jds.map((j) => ({ value: j.id, label: j.title, hint: j.company || undefined }))]}
+              />
+            </div>
           </label>
           <label className={`block ${lab}`}>
             标题
@@ -455,6 +454,8 @@ export default function Bank() {
   const [editing, setEditing] = useState<BankQuestion | null>(null)
   const [removing, setRemoving] = useState<BankQuestion | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [renamingPart, setRenamingPart] = useState(false)
+  const [partNewName, setPartNewName] = useState('')
 
   // 岗位库「AI 出题」跳转而来时自动打开生成弹窗并预选该 JD
   useEffect(() => {
@@ -580,19 +581,17 @@ export default function Bank() {
           )}
           {/* 岗位导航 */}
           <aside className="ws-rise lg:sticky lg:top-20 lg:self-start" style={rise(1)}>
-            <select
-              value={jdFilter}
-              onChange={(e) => setJdFilter(e.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 lg:hidden"
-            >
-              <option value="ALL">全部题目（{bank.questions.length}）</option>
-              <option value="">通用题（{jdGroups.common}）</option>
-              {jdGroups.jds.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.title}（{g.count}）
-                </option>
-              ))}
-            </select>
+            <div className="lg:hidden">
+              <Select
+                value={jdFilter}
+                onChange={setJdFilter}
+                options={[
+                  { value: 'ALL', label: `全部题目（${bank.questions.length}）` },
+                  { value: '', label: `通用题（${jdGroups.common}）` },
+                  ...jdGroups.jds.map((g) => ({ value: g.id, label: `${g.title}（${g.count}）` })),
+                ]}
+              />
+            </div>
             <Card className="hidden p-2 lg:block">
               {navItem('ALL', '全部题目', bank.questions.length)}
               <div className="mt-2 px-3 pb-1 text-xs font-medium text-slate-400">通用</div>
@@ -605,6 +604,21 @@ export default function Bank() {
           <div className="min-w-0 space-y-6">
             <div className="ws-rise flex flex-wrap items-center gap-3" style={rise(2)}>
               <PartCapsules bank={bank} value={part} onChange={setPart} />
+              {part && bank.parts.some((p) => p.key === part) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPartNewName(bank.parts.find((p) => p.key === part)?.name || '')
+                    setRenamingPart(true)
+                  }}
+                  className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full bg-white px-3 text-xs text-slate-500 shadow-sm hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                >
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                  </svg>
+                  重命名
+                </button>
+              )}
               <div className="flex-1" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索标题、题干或答案…" className={bankSearchCls} />
             </div>
@@ -672,6 +686,47 @@ export default function Bank() {
             void reload(true)
           }}
         />
+      )}
+
+      {renamingPart && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-[#1d2939]/50" onClick={() => setRenamingPart(false)} />
+          <div className="ws-paper login-fade relative w-full max-w-xs rounded-xl p-5" role="dialog" aria-modal="true">
+            <h3 className="text-base font-semibold text-slate-900">重命名分类</h3>
+            <input
+              value={partNewName}
+              onChange={(e) => setPartNewName(e.target.value)}
+              maxLength={20}
+              autoFocus
+              placeholder="分类名称"
+              className={`mt-3 ${field}`}
+            />
+            <p className="mt-2 text-xs text-slate-400">该分类下所有题目的分类名将一并更新</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Btn variant="ghost" onClick={() => setRenamingPart(false)}>
+                取消
+              </Btn>
+              <Btn
+                disabled={!partNewName.trim()}
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      await api.renameBankPart(part, partNewName.trim())
+                      invalidateBank()
+                      toast('分类已重命名')
+                      setRenamingPart(false)
+                      await reload(true)
+                    } catch (e) {
+                      toast(e instanceof Error ? e.message : '重命名失败，请重试')
+                    }
+                  })()
+                }}
+              >
+                保存
+              </Btn>
+            </div>
+          </div>
+        </div>
       )}
 
       <ConfirmModal

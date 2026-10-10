@@ -8,11 +8,12 @@ import { kindLabels, PdfViewer } from '../components/PdfViewer'
 import { formToPatch, QuestionCard, QuestionForm } from '../components/QuestionCard'
 import { ScoreDots } from '../components/ScoreDots'
 import { SectionSheet } from '../components/SectionSheet'
+import { Select } from '../components/Select'
 import { toast } from '../components/Toast'
 import { Btn, Card, Label, Spinner } from '../components/ui'
 import { captureImages, evictDocument, loadDocumentCached, type DocData } from '../pdf'
 import { useReviewSession } from '../store'
-import type { BankQuestion, Job, Phase, Session } from '../types'
+import type { BankQuestion, Job, JobDescription, Phase, Session } from '../types'
 import { shortPartName, useMediaQuery } from './shared'
 
 const phases: [Phase, string][] = [
@@ -21,7 +22,7 @@ const phases: [Phase, string][] = [
   ['review', '评价'],
 ]
 
-/** 任务轮询期间的步骤提示（按时间推进，仅作进度反馈） */
+/** 任务进度：analyze 拆成两次模型调用，job.stage 为服务端真实阶段；前两步是客户端本地解析 */
 function JobProgress({ job }: { job: Job }) {
   const steps =
     job.type === 'analyze'
@@ -32,7 +33,15 @@ function JobProgress({ job }: { job: Job }) {
     const t = setInterval(() => setTick((n) => n + 1), 1500)
     return () => clearInterval(t)
   }, [])
-  const current = Math.min(Math.floor(tick / 3), steps.length - 1)
+  // 服务端已上报真实阶段时以它为准；未上报时前两步（本地）按时间走
+  const stageIdx = job.stage ? (job.stage === 'outline' ? 2 : 3) : null
+  const current = stageIdx ?? Math.min(Math.floor(tick / 3), stageIdx === null && job.type === 'analyze' ? 1 : steps.length - 1)
+  const hint =
+    job.type === 'analyze'
+      ? job.stage === 'questions'
+        ? '提纲已就绪，正在按板块生成问题…'
+        : '正在通读简历、划分板块并锚定原文位置…'
+      : '通常需要 1–3 分钟，你可以先阅读左侧简历'
   return (
     <div className="py-4">
       <div className="mb-5 flex items-center justify-center gap-2 text-sm font-medium text-slate-900">
@@ -55,7 +64,7 @@ function JobProgress({ job }: { job: Job }) {
           </li>
         ))}
       </ol>
-      <p className="mt-5 text-center text-xs text-slate-400">通常需要 1–3 分钟，你可以先阅读左侧简历</p>
+      <p className="mt-5 text-center text-xs text-slate-400">{hint}</p>
     </div>
   )
 }
@@ -144,6 +153,18 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
   const [pickerFor, setPickerFor] = useState<string | null>(null)
   const [newSectionTitle, setNewSectionTitle] = useState('')
   const [confirmRegen, setConfirmRegen] = useState(false)
+  const [confirmReanalyze, setConfirmReanalyze] = useState(false)
+  const [jds, setJds] = useState<JobDescription[] | null>(null)
+  // 准备阶段才需要岗位库（关联 JD / 出题岗位）
+  useEffect(() => {
+    if (session?.phase === 'prepare' && jds === null) {
+      void api
+        .listJds()
+        .then((r) => setJds(r.jds))
+        .catch(() => setJds([]))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.phase])
   // 窄屏（手机 / iPad 竖屏）：上下堆叠 + 点标记弹底部抽屉
   const narrow = useMediaQuery('(max-width: 1023px)')
 
@@ -205,7 +226,7 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
   const canEvaluate = activeQuestions.some((q) => q.score !== null || q.note.trim()) || session.note.trim().length > 0
   const running = !!job
 
-  const analyze = () => {
+  const analyze = (force = false) => {
     if (!doc) {
       toast('简历尚未加载完成，请稍候')
       return
@@ -216,7 +237,7 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
       toast('简历内容尚未加载，请稍后重试')
       return
     }
-    void runJob(api.analyze(session.id, { role: role.trim() || undefined, lines, pageCount: doc.pageCount, images }))
+    void runJob(api.analyze(session.id, { role: role.trim() || undefined, lines, pageCount: doc.pageCount, images, force: force || undefined }))
   }
 
   const locateSection = (sectionId: string) => {
@@ -267,9 +288,40 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
         </button>
         <span className="hidden h-4 w-px bg-slate-200 sm:inline" />
         <h2 className="text-lg font-semibold text-slate-900">{session.name || '待解析'}</h2>
-        {session.role && <span className="text-sm text-slate-500">{session.role}</span>}
+        {session.phase === 'prepare' ? (
+          session.jdId ? (
+            <span className="flex items-center gap-1.5 rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+              岗位：{session.role}
+              <button
+                type="button"
+                aria-label="取消岗位关联"
+                title="取消岗位关联"
+                onClick={() => patch({ jdId: '' })}
+                className="cursor-pointer hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              >
+                ✕
+              </button>
+            </span>
+          ) : (
+            <Select
+              size="sm"
+              className="w-44"
+              value=""
+              placeholder="关联岗位库 JD…"
+              onChange={(v) => v && patch({ jdId: v })}
+              options={(jds || []).map((j) => ({ value: j.id, label: j.title }))}
+            />
+          )
+        ) : (
+          session.role && <span className="text-sm text-slate-500">{session.role}</span>
+        )}
         <Chip>{session.fileName}</Chip>
         <div className="flex-1" />
+        {session.phase === 'prepare' && session.sections.length > 0 && (
+          <Btn variant="ghost" className="h-8 px-3 text-xs" disabled={running} onClick={() => setConfirmReanalyze(true)}>
+            ↻ 重新识别生成
+          </Btn>
+        )}
         {saveLabel && (
           <span className={`text-xs ${saveState === 'error' ? 'text-red-500' : 'text-slate-400'}`}>{saveLabel}</span>
         )}
@@ -348,15 +400,27 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
                   <p className="mt-1.5 text-sm text-slate-500">为项目经历生成有针对性的问题、追问和评分参考，直接标注在简历原文上。</p>
                   {jobError && <p className="login-fade mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">{jobError}</p>}
                   <div className="mt-5 text-left">
-                    <Label>本次面试岗位（可选）</Label>
-                    <input
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
-                      placeholder="例如：AI 应用工程师"
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none"
-                    />
+                    <Label>本次面试岗位</Label>
+                    {(jds || []).length > 0 && (
+                      <div className="mt-1">
+                        <Select
+                          value={session.jdId || ''}
+                          placeholder="从岗位库选择…"
+                          onChange={(v) => v && patch({ jdId: v })}
+                          options={(jds || []).map((j) => ({ value: j.id, label: j.title, hint: j.company || undefined }))}
+                        />
+                      </div>
+                    )}
+                    {!session.jdId && (
+                      <input
+                        value={role}
+                        onChange={(e) => setRole(e.target.value)}
+                        placeholder="或手动填写岗位方向（可留空，识别后自动匹配岗位库）"
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none"
+                      />
+                    )}
                   </div>
-                  <Btn variant="accent" className="mt-4 w-full" disabled={!doc || running} onClick={analyze}>
+                  <Btn variant="accent" className="mt-4 w-full" disabled={!doc || running} onClick={() => analyze()}>
                     {jobError ? '重试：AI 生成面试问题' : doc ? 'AI 生成面试问题' : '正在打开简历…'}
                   </Btn>
                   <p className="mt-3 text-xs text-slate-400">生成时，简历内容将发送至已配置的模型服务</p>
@@ -554,7 +618,7 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
                       </span>
                     ) : sec.anchor && sec.anchor.matched !== false ? (
                       <span className="text-xs text-slate-400 tabular-nums">已锚定 · 第 {sec.anchor.page} 页</span>
-                    ) : (
+                    ) : session.phase === 'prepare' ? (
                       <button
                         type="button"
                         onClick={() => setPlacingFor(sec.id)}
@@ -562,13 +626,14 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
                       >
                         位置待校准 · 点击放置
                       </button>
-                    )}
+                    ) : null}
                   </div>
                   {sec.questions.map((q) => (
                     <QuestionCard
                       key={q.id}
                       q={q}
                       index={qIndex.get(q.id) || 0}
+                      phase={session.phase}
                       onPatch={(p) => patch({ question: p })}
                       onRemove={() => patch({ removeQuestion: { id: q.id } })}
                       onHover={(inside) => setHoverSectionId(inside ? sec.id : null)}
@@ -585,7 +650,7 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
                         onCancel={() => setAddingFor(null)}
                       />
                     </Card>
-                  ) : (
+                  ) : session.phase === 'prepare' ? (
                     <button
                       type="button"
                       onClick={() => setChooserFor(sec.id)}
@@ -593,7 +658,7 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
                     >
                       + 加题
                     </button>
-                  )}
+                  ) : null}
                 </section>
               ))}
               {addingFor === '__new__' ? (
@@ -617,7 +682,7 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
                     onCancel={() => setAddingFor(null)}
                   />
                 </Card>
-              ) : (
+              ) : session.phase === 'prepare' ? (
                 <button
                   type="button"
                   onClick={() => setAddingFor('__new__')}
@@ -625,7 +690,7 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
                 >
                   + 加板块
                 </button>
-              )}
+              ) : null}
             </>
           )}
         </div>
@@ -652,11 +717,25 @@ export default function Review({ sessionId, go }: { sessionId: string; go: Go })
           section={sheetSection}
           index={sheetSectionIndex + 1}
           qIndex={qIndex}
+          phase={session.phase}
           onPatch={(p) => patch({ question: p })}
           onRemove={(id) => patch({ removeQuestion: { id } })}
           onClose={() => setActiveSectionId(null)}
         />
       )}
+
+      <ConfirmModal
+        open={confirmReanalyze}
+        title="重新 AI 识别生成题目？"
+        body="将基于已缓存的简历提纲重新生成题目（原文标注位置保持不变），现有题目、评分与面试备注会清空。此操作不可撤销。"
+        confirmLabel="重新生成"
+        danger
+        onConfirm={() => {
+          setConfirmReanalyze(false)
+          analyze(true)
+        }}
+        onCancel={() => setConfirmReanalyze(false)}
+      />
 
       <ConfirmModal
         open={confirmRegen}
