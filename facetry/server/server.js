@@ -78,11 +78,10 @@ function createApp(options = {}) {
   const jobs = new Map();
 
   // —— SQLite 数据层（node:sqlite，简历原文文件仍在磁盘上） ——
-  // 连接调用直接读取 process.env.SQLITE_PATH（平台契约：/data/app.db）；options.dataDir 仅供测试注入临时目录；
-  // 文件不存在时由 node:sqlite 创建，已存在则原样打开，绝不清空
-  const db = new DatabaseSync(options.dataDir ? path.join(options.dataDir, 'app.db') : (process.env.SQLITE_PATH || '/data/app.db'));
+  // 连接调用直接读取 process.env.SQLITE_PATH（平台契约：/data/app.db）；文件不存在时由 node:sqlite 创建，已存在则原样打开，绝不清空
+  const db = new DatabaseSync(process.env.SQLITE_PATH || '/data/app.db');
   // 数据库存有简历、会话令牌等敏感数据，限制为仅属主可读写
-  if (process.platform !== 'win32') { try { fs.chmodSync(options.dataDir ? path.join(options.dataDir, 'app.db') : (process.env.SQLITE_PATH || '/data/app.db'), 0o600); } catch {} }
+  if (process.platform !== 'win32') { try { fs.chmodSync(process.env.SQLITE_PATH || '/data/app.db', 0o600); } catch {} }
   db.exec(`PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, userId TEXT, name TEXT, role TEXT, phase TEXT, createdAt TEXT, updatedAt TEXT, data TEXT);
     CREATE TABLE IF NOT EXISTS bank_questions(id TEXT PRIMARY KEY, part TEXT, groupId TEXT, custom INTEGER, userId TEXT, data TEXT);

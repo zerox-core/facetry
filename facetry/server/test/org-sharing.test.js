@@ -25,9 +25,11 @@ const TOKENS = { 'fs:u1': 't1', 'fs:u2': 't2', 'fs:u3': 't3', 'fs:admin': 'ta' }
 
 async function fixture(t, llm) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facetry-org-test-'));
+  // 数据库连接固定读取 process.env.SQLITE_PATH（平台契约），测试通过环境变量注入临时库并复原
+  const prevDb = process.env.SQLITE_PATH; process.env.SQLITE_PATH = path.join(dir, 'app.db');
   const server = createApp({ dataDir: dir, llm: llm || (() => ({ questions: [] })), config: { admins: ['fs:admin'] } });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  t.after(async () => { server.closeAllConnections?.(); await new Promise(r => server.close(r)); const target = path.resolve(dir); if (target.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(target).startsWith('facetry-org-test-')) { try { fs.rmSync(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* Windows 文件锁时序 */ } } });
+  t.after(async () => { server.closeAllConnections?.(); await new Promise(r => server.close(r)); if (prevDb === undefined) delete process.env.SQLITE_PATH; else process.env.SQLITE_PATH = prevDb; const target = path.resolve(dir); if (target.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(target).startsWith('facetry-org-test-')) { try { fs.rmSync(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* Windows 文件锁时序 */ } } });
   const now = new Date().toISOString();
   const insUser = server._db.prepare('INSERT INTO users(id, data) VALUES (?, ?)');
   for (const [id, u] of Object.entries(USERS)) insUser.run(id, JSON.stringify({ ...u, updatedAt: now }));
@@ -253,9 +255,10 @@ test('bank parts can be renamed and questions follow', async t => {
 
 test('super admin sees all orgs, all resumes read-only, and the dashboard', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facetry-org-test-'));
+  const prevDb = process.env.SQLITE_PATH; process.env.SQLITE_PATH = path.join(dir, 'app.db');
   const server = createApp({ dataDir: dir, llm: () => ({ questions: [] }), config: { admins: ['fs:admin'], superAdmins: ['fs:u2'] } });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  t.after(async () => { server.closeAllConnections?.(); await new Promise(r => server.close(r)); const target = path.resolve(dir); if (target.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(target).startsWith('facetry-org-test-')) { try { fs.rmSync(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* Windows 文件锁时序 */ } } });
+  t.after(async () => { server.closeAllConnections?.(); await new Promise(r => server.close(r)); if (prevDb === undefined) delete process.env.SQLITE_PATH; else process.env.SQLITE_PATH = prevDb; const target = path.resolve(dir); if (target.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(target).startsWith('facetry-org-test-')) { try { fs.rmSync(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* Windows 文件锁时序 */ } } });
   const now = new Date().toISOString();
   const insUser = server._db.prepare('INSERT INTO users(id, data) VALUES (?, ?)');
   for (const [id, u] of Object.entries(USERS)) insUser.run(id, JSON.stringify({ ...u, updatedAt: now }));
