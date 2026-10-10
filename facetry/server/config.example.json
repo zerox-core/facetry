@@ -1,7 +1,7 @@
 {
   "feishuAppId": "cli_...",
   "feishuAppSecret": "...",
-  "feishuRedirectUri": "http://127.0.0.1:3220/api/auth/feishu/callback",
+  "feishuRedirectUri": "http://127.0.0.1:8080/api/auth/feishu/callback",
   "admins": ["fs:on_ union_id 或 demo:姓名"],
   "superAdmins": ["fs:on_ union_id"],
   "_llm_note": "LLM 配置（baseUrl/apiKey/model）不在此文件，改放环境变量 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL；支持在 server/.env 中填写（参考 .env.example），环境变量优先于本文件。",

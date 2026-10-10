@@ -3,6 +3,7 @@ dist/
 
 # local config with secrets (use config.example.json instead)
 config.json
+.env
 
 # runtime data
 interview-site/data/
