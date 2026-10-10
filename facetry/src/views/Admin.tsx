@@ -494,6 +494,16 @@ export default function Admin({ me, go }: { me: AuthUser; go: Go }) {
     }
   }
 
+  const toggleSuper = async (u: AdminUser) => {
+    try {
+      await api.adminSetSuper(u.id, !u.isSuper)
+      toast(u.isSuper ? `已撤销 ${u.name} 的超管权限` : `已将 ${u.name} 设为超管`)
+      await reload()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '操作失败，请重试')
+    }
+  }
+
   const kw = search.trim().toLowerCase()
   const users = (overview?.users || []).filter((u) => !kw || u.name.toLowerCase().includes(kw) || u.groupName.toLowerCase().includes(kw))
 
@@ -586,6 +596,18 @@ export default function Admin({ me, go }: { me: AuthUser; go: Go }) {
                 >
                   {u.isAdmin ? '撤销管理员' : '设为管理员'}
                 </button>
+                {me.isSuper && (
+                  <button
+                    type="button"
+                    onClick={() => void toggleSuper(u)}
+                    title={u.isSuper ? '撤销超管' : '设为超管'}
+                    className={`h-8 cursor-pointer rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 ${
+                      u.isSuper ? 'border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    {u.isSuper ? '撤销超管' : '设为超管'}
+                  </button>
+                )}
               </li>
             ))}
             {!users.length && <li className="px-5 py-10 text-center text-sm text-slate-400">没有匹配的用户</li>}

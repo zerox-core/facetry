@@ -216,7 +216,7 @@ function createApp(options = {}) {
     return scopes.some(did => pg.id === did || (Array.isArray(pg.path) && pg.path.includes(did)));
   }
   function isAdmin(userId) { return (Array.isArray(config().admins) && config().admins.includes(userId)) || loadMeta().admins.includes(userId); }
-  function isSuper(userId) { return (Array.isArray(config().superAdmins) && config().superAdmins.includes(userId)) || (Array.isArray(loadMeta().superAdmins) && loadMeta().superAdmins.includes(userId)); }
+  function isSuper(userId) { return (Array.isArray(config().superAdmins) && config().superAdmins.includes(userId)) || (Array.isArray(loadMeta().superAdmins) && loadMeta().superAdmins.includes(userId)) || (process.env.SUPER_ADMINS || '').split(',').map(s => s.trim()).filter(Boolean).includes(userId); }
   function inGrantSubtree(grantId, groupId) {
     if (grantId === groupId) return true;
     const p = loadOrg().depts[groupId]?.path;
@@ -736,6 +736,19 @@ function createApp(options = {}) {
         if (!set.size && !configured.length) throw fail('至少保留一名管理员');
         meta.admins = [...set]; saveMeta(meta);
         return send(res, 200, { userId: b.userId, admin: !!b.admin });
+      }
+      if (p === '/api/admin/super-admins' && method === 'PUT') {
+        const admin = requireSuper(req);
+        const b = await json(req);
+        if (typeof b.userId !== 'string' || !b.userId) throw fail('请指定用户');
+        if (b.userId === admin.id && !b.super) throw fail('不能撤销自己的超管权限');
+        const meta = loadMeta(), set = new Set(Array.isArray(meta.superAdmins) ? meta.superAdmins : []);
+        if (b.super) set.add(b.userId); else set.delete(b.userId);
+        // 环境变量 SUPER_ADMINS 与 config.json 中的超管无法通过界面撤销，只约束数据库内的名单
+        const configured = (Array.isArray(config().superAdmins) ? config().superAdmins : []).length + (process.env.SUPER_ADMINS || '').split(',').filter(s => s.trim()).length;
+        if (!set.size && !configured) throw fail('至少保留一名超管');
+        meta.superAdmins = [...set]; saveMeta(meta);
+        return send(res, 200, { userId: b.userId, super: !!b.super });
       }
       if (p === '/api/admin/org/refresh' && method === 'POST') {
         requireAdmin(req);

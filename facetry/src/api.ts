@@ -90,6 +90,9 @@ export const api = {
 
   adminSetAdmin: (userId: string, admin: boolean) =>
     request<{ userId: string; admin: boolean }>('api/admin/admins', { method: 'PUT', ...json({ userId, admin }) }),
+
+  adminSetSuper: (userId: string, isSuper: boolean) =>
+    request<{ userId: string; super: boolean }>('api/admin/super-admins', { method: 'PUT', ...json({ userId, super: isSuper }) }),
 }
 
 const MAX_SIZE = 20 * 1024 * 1024

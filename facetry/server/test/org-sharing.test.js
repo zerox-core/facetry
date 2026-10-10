@@ -424,3 +424,32 @@ test('admins can grant and revoke admin; self-revoke and last-admin are protecte
   assert.equal(revoke.status, 200);
   assert.equal((await f.u2('/api/admin/overview')).status, 403);
 });
+
+test('super admins can grant and revoke super; self-revoke and last-super are protected', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facetry-org-test-'));
+  const prevDb = process.env.SQLITE_PATH; process.env.SQLITE_PATH = path.join(dir, 'app.db');
+  const server = createApp({ dataDir: dir, llm: () => ({ questions: [] }), config: { admins: ['fs:admin'], superAdmins: ['fs:u2'] } });
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  t.after(async () => { server.closeAllConnections?.(); await new Promise(r => server.close(r)); if (prevDb === undefined) delete process.env.SQLITE_PATH; else process.env.SQLITE_PATH = prevDb; const target = path.resolve(dir); if (target.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(target).startsWith('facetry-org-test-')) { try { fs.rmSync(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* Windows 文件锁时序 */ } } });
+  const now = new Date().toISOString();
+  const insUser = server._db.prepare('INSERT INTO users(id, data) VALUES (?, ?)');
+  for (const [id, u] of Object.entries(USERS)) insUser.run(id, JSON.stringify({ ...u, updatedAt: now }));
+  const insAuth = server._db.prepare('INSERT INTO auth(token, userId, createdAt, data) VALUES (?, ?, ?, ?)');
+  for (const [uid, tok] of Object.entries(TOKENS)) insAuth.run(tok, uid, now, JSON.stringify({ userId: uid, name: USERS[uid].name, avatar: '', createdAt: now }));
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const as = uid => (data) => fetch(base + '/api/admin/super-admins', { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: 'zm_sess=' + TOKENS[uid] }, body: JSON.stringify(data) }).then(r => r.status);
+  // 非超管无权操作
+  assert.equal(await as('fs:u1')({ userId: 'fs:u3', super: true }), 403);
+  // 超管任命 u3 为超管（写入数据库 meta）
+  assert.equal(await as('fs:u2')({ userId: 'fs:u3', super: true }), 200);
+  // u3 成为超管后可以任命其他超管
+  assert.equal(await as('fs:u3')({ userId: 'fs:u1', super: true }), 200);
+  // 不能撤销自己
+  assert.equal(await as('fs:u3')({ userId: 'fs:u3', super: false }), 400);
+  // 正常撤销 u1
+  assert.equal(await as('fs:u2')({ userId: 'fs:u1', super: false }), 200);
+  // 撤销 u3 后数据库名单为空，但 config 中的 fs:u2 仍在，允许
+  assert.equal(await as('fs:u2')({ userId: 'fs:u3', super: false }), 200);
+  // u3 已不再是超管
+  assert.equal(await as('fs:u3')({ userId: 'fs:u1', super: true }), 403);
+});
