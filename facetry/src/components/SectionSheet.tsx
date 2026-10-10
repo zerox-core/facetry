@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import type { QuestionPatch, Section } from '../types'
+import type { Phase, QuestionPatch, Section } from '../types'
 import { Chip } from './Chip'
 import { kindLabels } from './PdfViewer'
 import { QuestionCard } from './QuestionCard'
@@ -9,13 +9,14 @@ type Props = {
   /** 板块序号（与 PDF 标记一致，1 起） */
   index: number
   qIndex: Map<string, number>
+  phase: Phase
   onPatch: (patch: QuestionPatch) => void
   onRemove: (questionId: string) => void
   onClose: () => void
 }
 
 /** 窄屏（<lg）点标记弹出的底部抽屉：完整题目卡，评分/编辑/备注与右侧面板一致 */
-export function SectionSheet({ section, index, qIndex, onPatch, onRemove, onClose }: Props) {
+export function SectionSheet({ section, index, qIndex, phase, onPatch, onRemove, onClose }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -53,6 +54,7 @@ export function SectionSheet({ section, index, qIndex, onPatch, onRemove, onClos
                 key={q.id}
                 q={q}
                 index={qIndex.get(q.id) || 0}
+                phase={phase}
                 onPatch={onPatch}
                 onRemove={() => onRemove(q.id)}
                 onHover={() => {}}

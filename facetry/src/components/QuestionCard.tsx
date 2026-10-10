@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { NewQuestion, Question, QuestionPatch } from '../types'
+import type { NewQuestion, Phase, Question, QuestionPatch } from '../types'
 import { Chip } from './Chip'
 import { ConfirmModal } from './Modal'
 import { ScoreDots } from './ScoreDots'
@@ -82,16 +82,20 @@ type CardProps = {
   q: Question
   /** 全局题号（1 起） */
   index: number
+  /** 阶段规则：准备阶段可编辑题目但不能打分；面试阶段可打分但不能改题目内容 */
+  phase: Phase
   onPatch: (patch: QuestionPatch) => void
   onRemove: () => void
   onHover: (inside: boolean) => void
 }
 
-export function QuestionCard({ q, index, onPatch, onRemove, onHover }: CardProps) {
+export function QuestionCard({ q, index, phase, onPatch, onRemove, onHover }: CardProps) {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const num = `Q${String(index).padStart(2, '0')}`
+  const canScore = phase === 'interview'
+  const canEdit = phase === 'prepare'
 
   if (q.excluded) {
     return (
@@ -105,13 +109,15 @@ export function QuestionCard({ q, index, onPatch, onRemove, onHover }: CardProps
           <span className="text-xs font-semibold text-slate-400 tabular-nums">{num}</span>
           <Chip>已隐藏</Chip>
           <p className="min-w-0 flex-1 truncate text-sm text-slate-500">{q.q}</p>
-          <button
-            type="button"
-            onClick={() => onPatch({ id: q.id, excluded: false })}
-            className="shrink-0 cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-          >
-            恢复
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => onPatch({ id: q.id, excluded: false })}
+              className="shrink-0 cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            >
+              恢复
+            </button>
+          )}
         </div>
       </article>
     )
@@ -124,6 +130,7 @@ export function QuestionCard({ q, index, onPatch, onRemove, onHover }: CardProps
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
       onKeyDown={(e) => {
+        if (!canScore) return
         const t = e.target as HTMLElement
         if (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') return
         const n = Number(e.key)
@@ -145,6 +152,23 @@ export function QuestionCard({ q, index, onPatch, onRemove, onHover }: CardProps
           </div>
           <h3 className="mt-1.5 text-[15px] font-semibold leading-6 text-slate-900">{q.q}</h3>
         </div>
+        {/* 删除常驻可见，不展开也能删（仅准备阶段） */}
+        {canEdit && (
+          <button
+            type="button"
+            aria-label="删除此题"
+            title="删除此题"
+            onClick={(e) => {
+              e.stopPropagation()
+              setConfirming(true)
+            }}
+            className="mt-0.5 shrink-0 cursor-pointer rounded-md p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14 M10 11v6 M14 11v6" />
+            </svg>
+          </button>
+        )}
         <svg
           viewBox="0 0 24 24"
           className={`mt-1 h-4 w-4 shrink-0 text-slate-400 transition-transform duration-300 ${open ? 'rotate-180' : ''}`}
@@ -159,10 +183,12 @@ export function QuestionCard({ q, index, onPatch, onRemove, onHover }: CardProps
         </svg>
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3 pl-7">
-        <ScoreDots value={q.score} onChange={(score) => onPatch({ id: q.id, score })} />
-        <span className="text-xs text-slate-400">按 1–5 键快速评分</span>
-      </div>
+      {canScore && (
+        <div className="mt-3 flex items-center justify-between gap-3 pl-7">
+          <ScoreDots value={q.score} onChange={(score) => onPatch({ id: q.id, score })} />
+          <span className="text-xs text-slate-400">按 1–5 键快速评分</span>
+        </div>
+      )}
 
       {open && !editing && (
         <div className="login-fade mt-4 space-y-3 border-t border-slate-100 pt-4 pl-7">
@@ -188,45 +214,49 @@ export function QuestionCard({ q, index, onPatch, onRemove, onHover }: CardProps
               </ul>
             </div>
           )}
-          <div>
-            <div className="mb-1 text-xs font-medium text-slate-500">面试备注</div>
-            <textarea
-              key={q.id}
-              defaultValue={q.note}
-              rows={3}
-              maxLength={10000}
-              placeholder="记下关键回答、观察或待验证的细节…"
-              onBlur={(e) => {
-                if (e.target.value !== q.note) onPatch({ id: q.id, note: e.target.value })
-              }}
-              className={inputCls}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex gap-3">
+          {canScore && (
+            <div>
+              <div className="mb-1 text-xs font-medium text-slate-500">面试备注</div>
+              <textarea
+                key={q.id}
+                defaultValue={q.note}
+                rows={3}
+                maxLength={10000}
+                placeholder="记下关键回答、观察或待验证的细节…"
+                onBlur={(e) => {
+                  if (e.target.value !== q.note) onPatch({ id: q.id, note: e.target.value })
+                }}
+                className={inputCls}
+              />
+            </div>
+          )}
+          {canEdit && (
+            <div className="flex items-center justify-between">
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                >
+                  编辑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPatch({ id: q.id, excluded: true })}
+                  className="cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                >
+                  隐藏此题
+                </button>
+              </div>
               <button
                 type="button"
-                onClick={() => setEditing(true)}
-                className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                onClick={() => setConfirming(true)}
+                className="cursor-pointer text-xs font-medium text-red-500 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               >
-                编辑
-              </button>
-              <button
-                type="button"
-                onClick={() => onPatch({ id: q.id, excluded: true })}
-                className="cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-              >
-                隐藏此题
+                删除
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              className="cursor-pointer text-xs font-medium text-red-500 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-            >
-              删除
-            </button>
-          </div>
+          )}
         </div>
       )}
 
