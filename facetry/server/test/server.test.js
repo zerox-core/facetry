@@ -9,7 +9,7 @@ const analysis = { name:'测试候选人',role:'工程师',summary:'测试',sect
 const lines=[{id:'p2-l3',text:'知识库项目',page:2,y:.47,x:.12}];
 async function fixture(t,llm,opts) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facetry-test-'));
-  const server=createApp({dataDir:dir,llm:llm||(()=>structuredClone(analysis)),...(opts||{})});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const server=createApp({dataDir:dir,llm:llm||(()=>structuredClone(analysis)),allowDemoLogin:true,...(opts||{})});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(async()=>{server.closeAllConnections?.();await new Promise(resolve=>server.close(resolve));const target=path.resolve(dir);if(target.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(target).startsWith('facetry-test-'))fs.rmSync(target,{recursive:true,force:true,maxRetries:8,retryDelay:150});});
   const base='http://127.0.0.1:'+server.address().port;
   const login=async(name='测试员')=>{const r=await fetch(base+'/api/auth/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});const data=await r.json();return {cookie:r.headers.get('set-cookie').split(';')[0],user:data.user,status:r.status};};
@@ -250,6 +250,14 @@ test('unauthenticated requests to protected routes are rejected with 401',async 
   assert.equal((await fetch(f.base+'/api/auth/me')).status,401);
   assert.equal((await fetch(f.base+'/api/status')).status,200);
   assert.equal((await fetch(f.base+'/api/auth/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'  '})})).status,400);
+});
+test('demo login is disabled unless explicitly allowed',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facetry-test-'));
+  const server=createApp({dataDir:dir,llm:()=>structuredClone(analysis)});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{server.closeAllConnections?.();await new Promise(resolve=>server.close(resolve));fs.rmSync(dir,{recursive:true,force:true,maxRetries:8,retryDelay:150});});
+  const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/auth/demo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'测试员'})});
+  assert.equal(r.status,403);
+  assert.equal(r.headers.get('set-cookie'),null);
 });
 test('demo login issues a cookie and sessions are isolated per user',async t=>{
   const f=await fixture(t);assert.equal(f.user.id,'demo:测试员');

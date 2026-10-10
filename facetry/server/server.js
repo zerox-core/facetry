@@ -65,7 +65,13 @@ function normalizeQuestions(result, outline) {
 function createApp(options = {}) {
   const root = __dirname;
   // SQLITE_PATH（平台注入 /data/app.db）决定数据库位置，上传的简历附件与数据库同目录持久化
-  const sqlitePath = process.env.SQLITE_PATH || '';
+  // 安全校验：路径规范化后必须落在 /data 持久化目录内，防止环境变量误配导致数据写到其他位置
+  let sqlitePath = '';
+  if (process.env.SQLITE_PATH) {
+    sqlitePath = path.resolve(process.env.SQLITE_PATH);
+    const allowedDir = path.resolve('/data');
+    if (!sqlitePath.startsWith(allowedDir + path.sep)) throw new Error('SQLITE_PATH 必须位于 /data 目录内（平台固定注入 /data/app.db）');
+  }
   const dir = options.dataDir || (sqlitePath ? path.dirname(sqlitePath) : path.join(root, 'data'));
   fs.mkdirSync(dir, { recursive: true });
   const distDir = path.resolve(root, '..', 'dist');
@@ -73,6 +79,8 @@ function createApp(options = {}) {
 
   // —— SQLite 数据层（node:sqlite，简历原文文件仍在磁盘上） ——
   const db = new DatabaseSync(sqlitePath || path.join(dir, 'facetry.db'));
+  // 数据库存有简历、会话令牌等敏感数据，限制为仅属主可读写
+  if (process.platform !== 'win32') { try { fs.chmodSync(sqlitePath || path.join(dir, 'facetry.db'), 0o600); } catch {} }
   db.exec(`PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, userId TEXT, name TEXT, role TEXT, phase TEXT, createdAt TEXT, updatedAt TEXT, data TEXT);
     CREATE TABLE IF NOT EXISTS bank_questions(id TEXT PRIMARY KEY, part TEXT, groupId TEXT, custom INTEGER, userId TEXT, data TEXT);
@@ -453,6 +461,8 @@ function createApp(options = {}) {
         res.writeHead(302, { Location: '/' }); return res.end();
       }
       if (p === '/api/auth/demo' && method === 'POST') {
+        // 演示登录仅用于本地开发与测试；生产部署不得设置 ENABLE_DEMO_LOGIN
+        if (process.env.ENABLE_DEMO_LOGIN !== 'true' && !options.allowDemoLogin) throw fail('演示登录未启用', 403);
         const b = await json(req), name = clip(b.name, 50).trim();
         if (!name) throw fail('请提供用户名');
         const user = issueSession(res, 'demo:' + name, name, '');
