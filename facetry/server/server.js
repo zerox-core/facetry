@@ -2,7 +2,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { ANALYZE, EVALUATE, BANKGEN } = require('./prompts');
+const { OUTLINE, GENERATE, EVALUATE, BANKGEN } = require('./prompts');
 const seed = require('./bank-seed');
 
 const id = () => crypto.randomUUID();
@@ -21,20 +21,41 @@ function parseResult(content) {
   try { return JSON.parse(content); } catch {}
   try { return JSON.parse(String(content).match(/\{[\s\S]*\}/)?.[0]); } catch { throw fail('模型返回的格式不完整，请重试', 502); }
 }
-function normalizeAnalysis(result, lines, pages) {
-  if (!Array.isArray(result.sections) || !result.sections.length) throw fail('没有识别到可出题的简历内容，请换用清晰的 PDF 或 Word 文件', 422);
-  const normalized = s => String(s || '').replace(/\s+/g, '').toLowerCase();
-  const sections = result.sections.slice(0, 12).map(s => {
-    const a = s.anchor || {};
-    const quote = normalized(a.quote);
-    const line = lines.find(l => l.id === a.lineId) || (quote.length > 2 ? lines.find(l => normalized(l.text).includes(quote) || (normalized(l.text).length > 3 && quote.includes(normalized(l.text)))) : null);
-    const page = Math.max(1, Math.min(pages, Number(a.page) || 1));
-    const anchor = line ? { lineId: line.id, page: line.page, y: line.y, x: line.x || 0.1, quote: line.text, matched: true } : { page, y: Math.max(0.03, Math.min(0.94, Number(a.y) || 0.2)), x: 0.1, quote: clip(a.quote), matched: false };
-    return { id: id(), title: clip(s.title, 100) || '简历经历', kind: ['project', 'experience', 'skills', 'education'].includes(s.kind) ? s.kind : 'experience', anchor,
-      questions: (Array.isArray(s.questions) ? s.questions : []).filter(q => typeof q.q === 'string' && q.q.trim()).slice(0, 4).map(q => ({ id: id(), type: clip(q.type, 30) || '经历深挖', q: clip(q.q), point: clip(q.point), followUp: clip(q.followUp), expected: (Array.isArray(q.expected) ? q.expected : [q.expected]).filter(x => typeof x === 'string').map(x => clip(x)), excluded: false, score: null, note: '' })) };
-  }).filter(s => s.questions.length);
-  if (!sections.length) throw fail('模型未生成有效题目，请重试', 422);
-  return { name: clip(result.name, 80), role: clip(result.role, 100), summary: clip(result.summary), sections };
+const normText = s => String(s || '').replace(/\s+/g, '').toLowerCase();
+function resolveAnchor(a, lines, pages) {
+  const quote = normText(a.quote);
+  const line = lines.find(l => l.id === a.lineId) || (quote.length > 2 ? lines.find(l => normText(l.text).includes(quote) || (normText(l.text).length > 3 && quote.includes(normText(l.text)))) : null);
+  const page = Math.max(1, Math.min(pages, Number(a.page) || 1));
+  return line ? { lineId: line.id, page: line.page, y: line.y, x: line.x || 0.1, quote: line.text, matched: true } : { page, y: Math.max(0.03, Math.min(0.94, Number(a.y) || 0.2)), x: 0.1, quote: clip(a.quote), matched: false };
+}
+const sortByPosition = sections => sections.sort((a, b) => (a.anchor?.page ?? 1) - (b.anchor?.page ?? 1) || (a.anchor?.y ?? 0) - (b.anchor?.y ?? 0));
+function normalizeQuestion(q) {
+  return { id: id(), type: clip(q.type, 30) || '经历深挖', q: clip(q.q), point: clip(q.point), followUp: clip(q.followUp), expected: (Array.isArray(q.expected) ? q.expected : [q.expected]).filter(x => typeof x === 'string').map(x => clip(x)), excluded: false, score: null, note: '' };
+}
+/** 第一阶段：结构提纲（板块 + 锚点），不带题目；按版面从上到下排序 */
+function normalizeOutline(result, lines, pages) {
+  if (!Array.isArray(result.sections) || !result.sections.length) throw fail('没有识别到简历内容，请换用清晰的 PDF 或 Word 文件', 422);
+  const sections = result.sections.slice(0, 20).map(s => ({ id: id(), title: clip(s.title, 100) || '简历经历', kind: ['project', 'experience', 'skills', 'education'].includes(s.kind) ? s.kind : 'experience', anchor: resolveAnchor(s.anchor || {}, lines, pages) }));
+  return { name: clip(result.name, 80), role: clip(result.role, 100), summary: clip(result.summary), sections: sortByPosition(sections) };
+}
+/** 第二阶段：题目挂到提纲板块上（按标题逐字/包含匹配），匹配不到的进自定义板块 */
+function normalizeQuestions(result, outline) {
+  const norm = t => String(t || '').replace(/\s+/g, '');
+  const byTitle = new Map(outline.map(s => [norm(s.title), s]));
+  const remaining = new Set(outline.map(s => s.id));
+  const out = [];
+  for (const sec of (Array.isArray(result.sections) ? result.sections : []).slice(0, 20)) {
+    const qs = (Array.isArray(sec.questions) ? sec.questions : []).filter(q => typeof q.q === 'string' && q.q.trim()).slice(0, 4).map(normalizeQuestion);
+    if (!qs.length) continue;
+    const target = byTitle.get(norm(sec.title)) || outline.find(s => { const a = norm(s.title), b = norm(sec.title); return a && b && (a.includes(b) || b.includes(a)); });
+    if (target && remaining.has(target.id)) { out.push({ ...target, questions: qs }); remaining.delete(target.id); }
+    else if (target) { out.find(o => o.id === target.id).questions.push(...qs); }
+    else out.push({ id: id(), title: clip(sec.title, 100) || '补充问题', kind: 'custom', anchor: null, questions: qs });
+  }
+  if (!out.length) throw fail('模型未生成有效题目，请重试', 422);
+  const order = new Map(outline.map((s, i) => [s.id, i]));
+  out.sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999));
+  return out;
 }
 
 function createApp(options = {}) {
@@ -46,7 +67,7 @@ function createApp(options = {}) {
   const dataFile = name => path.join(dir, name);
   function loadJSON(file, fallback) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; } }
   function saveJSON(file, obj) { fs.writeFileSync(file + '.tmp', JSON.stringify(obj)); fs.renameSync(file + '.tmp', file); }
-  const usersFile = dataFile('_users.json'), grantsFile = dataFile('_grants.json'), jdsFile = dataFile('_jds.json'), orgFile = dataFile('_org.json'), metaFile = dataFile('_meta.json');
+  const usersFile = dataFile('_users.json'), grantsFile = dataFile('_grants.json'), jdsFile = dataFile('_jds.json'), orgFile = dataFile('_org.json'), metaFile = dataFile('_meta.json'), jobsFile = dataFile('_jobs.json');
   const loadUsers = () => loadJSON(usersFile, {});
   const loadGrants = () => loadJSON(grantsFile, {});
   const loadJds = () => loadJSON(jdsFile, { jds: [] });
@@ -99,13 +120,33 @@ function createApp(options = {}) {
   // —— 组织架构与可见性：最小用户组内共享 JD 与题库；管理员可单独授权某用户查看某组织子树 ——
   function userGroups(userId) { return loadUsers()[userId]?.groups || []; }
   function primaryGroup(userId) { return userGroups(userId)[0] || null; }
+  /** 计算用户负责的部门：其所在部门路径上 leader_user_id 等于自己的部门 */
+  function computeLeaderOf(unionId, groups, org) {
+    const out = new Set();
+    for (const g of groups || []) {
+      for (const did of g.path || []) {
+        if (org.depts[did]?.leaderId === unionId) out.add(did);
+      }
+      if (org.depts[g.id]?.leaderId === unionId) out.add(g.id);
+    }
+    return [...out];
+  }
+  /** 负责人视角：能查看其负责部门（含子部门）成员的简历 */
+  function canLeadView(user, ownerId) {
+    const scopes = loadUsers()[user.id]?.leaderOf || [];
+    if (!scopes.length) return false;
+    const pg = primaryGroup(ownerId);
+    if (!pg) return false;
+    return scopes.some(did => pg.id === did || (Array.isArray(pg.path) && pg.path.includes(did)));
+  }
   function isAdmin(userId) { return (Array.isArray(config().admins) && config().admins.includes(userId)) || loadMeta().admins.includes(userId); }
+  function isSuper(userId) { return (Array.isArray(config().superAdmins) && config().superAdmins.includes(userId)) || (Array.isArray(loadMeta().superAdmins) && loadMeta().superAdmins.includes(userId)); }
   function inGrantSubtree(grantId, groupId) {
     if (grantId === groupId) return true;
     const p = loadOrg().depts[groupId]?.path;
     return Array.isArray(p) && p.includes(grantId);
   }
-  /** 组内容可见性：全局 / 本人创建 / 同最小组成员 / 被授权的组织子树 */
+  /** 组内容可见性：全局 / 本人创建 / 同最小组成员 / 被授权的组织子树（超管走管理台 group 参数查看，不影响普通视图） */
   function canViewScoped(user, item) {
     if (item.groupId === 'GLOBAL') return true;
     if (!item.groupId) return item.userId === user.id;
@@ -121,6 +162,7 @@ function createApp(options = {}) {
     return item.userId === user.id || userGroups(user.id).some(g => g.id === item.groupId);
   }
   function requireAdmin(req) { const u = requireUser(req); if (!isAdmin(u.id)) throw fail('需要管理员权限', 403); return u; }
+  function requireSuper(req) { const u = requireUser(req); if (!isSuper(u.id)) throw fail('需要超级管理员权限', 403); return u; }
   const authFile = path.join(dir, '_auth.json'), oauthStates = new Map();
   function saveAuth(auth) { fs.writeFileSync(authFile + '.tmp', JSON.stringify(auth)); fs.renameSync(authFile + '.tmp', authFile); }
   function loadAuth() {
@@ -149,13 +191,13 @@ function createApp(options = {}) {
   async function resolveDept(token, deptId, org, depth) {
     if (org.depts[deptId]) return org.depts[deptId];
     if (depth > 10) return null;
-    const r = await fetch('https://open.feishu.cn/open-apis/contact/v3/departments/' + encodeURIComponent(deptId) + '?department_id_type=open_department_id', { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(15000) });
+    const r = await fetch('https://open.feishu.cn/open-apis/contact/v3/departments/' + encodeURIComponent(deptId) + '?department_id_type=open_department_id&user_id_type=union_id', { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(15000) });
     const j = await r.json().catch(() => ({}));
     const d = j?.data?.department;
     if (!d) return null;
     const parent = d.parent_department_id && d.parent_department_id !== '0' ? d.parent_department_id : '';
     const parentInfo = parent ? await resolveDept(token, parent, org, depth + 1) : null;
-    const rec = { id: deptId, name: d.name || deptId, parentId: parent, path: [...(parentInfo ? parentInfo.path : []), deptId], pathName: [...(parentInfo ? parentInfo.pathName.split(' / ') : []), d.name || deptId].join(' / ') };
+    const rec = { id: deptId, name: d.name || deptId, parentId: parent, leaderId: d.leader_user_id || '', path: [...(parentInfo ? parentInfo.path : []), deptId], pathName: [...(parentInfo ? parentInfo.pathName.split(' / ') : []), d.name || deptId].join(' / ') };
     org.depts[deptId] = rec;
     return rec;
   }
@@ -173,7 +215,7 @@ function createApp(options = {}) {
       if (!uiRes.ok || ui.code !== 0 || !ui.data || (!ui.data.union_id && !ui.data.open_id)) throw new Error('user_info: ' + JSON.stringify(ui));
       const userId = 'fs:' + (ui.data.union_id || ui.data.open_id);
       // 拉取组织架构：用户所在部门及其路径，最深层即「最小用户组」
-      let groups = [];
+      let groups = [], leaderOf = [];
       try {
         const udRes = await fetch('https://open.feishu.cn/open-apis/contact/v3/users/' + encodeURIComponent(ui.data.union_id || ui.data.open_id) + '?user_id_type=union_id&department_id_type=open_department_id', { headers: { Authorization: 'Bearer ' + at.app_access_token }, signal: AbortSignal.timeout(15000) });
         const ud = await udRes.json().catch(() => ({}));
@@ -185,8 +227,9 @@ function createApp(options = {}) {
         if (dirty) { org.fetchedAt = new Date().toISOString(); saveJSON(orgFile, org); }
         const maxDepth = Math.max(0, ...resolved.map(d => d.path.length));
         groups = resolved.filter(d => d.path.length === maxDepth).map(d => ({ id: d.id, name: d.name, pathName: d.pathName, path: d.path }));
+        leaderOf = computeLeaderOf(ui.data.union_id || ui.data.open_id, groups, org);
       } catch (e) { console.error('组织架构获取失败（需 contact 相关权限）:', e.message); }
-      return { userId, name: ui.data.name || ui.data.en_name || '飞书用户', avatar: ui.data.avatar_url || '', groups };
+      return { userId, name: ui.data.name || ui.data.en_name || '飞书用户', avatar: ui.data.avatar_url || '', groups, leaderOf };
     } catch (e) { console.error('飞书登录失败:', e.message); throw fail('飞书登录失败，请重试', 502); }
   } };
   function get(sid) { if (!/^[\w-]+$/.test(sid) || sid.startsWith('_')) throw fail('无效编号'); const file = path.join(dir, sid + '.json'); if (!fs.existsSync(file)) throw fail('简历不存在', 404); return JSON.parse(fs.readFileSync(file, 'utf8')); }
@@ -196,14 +239,99 @@ function createApp(options = {}) {
     if (options.llm) return parseResult(await options.llm(messages));
     const cfg = config();
     if (!cfg.baseUrl || !cfg.model || !cfg.apiKey) throw fail('请先在 server/config.json 中配置大模型接口', 503);
-    let response;
-    try { response = await fetch(cfg.baseUrl.replace(/\/+$/, '') + '/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.apiKey }, body: JSON.stringify({ model: cfg.model, messages, response_format: { type: 'json_object' }, max_tokens: 12000, temperature: 0.3 }), signal: AbortSignal.timeout(240000) }); }
-    catch (e) { throw fail(e.name === 'TimeoutError' ? '模型响应超时，请稍后重试' : '无法连接模型服务，请检查配置和网络', 502); }
-    if (!response.ok) throw fail('模型服务返回错误（' + response.status + '），请稍后重试', 502);
-    const data = await response.json();
-    return parseResult(data.choices?.[0]?.message?.content);
+    // 网络层故障与格式不完整各自动重试一次；不限制 max_tokens，让模型完整输出
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let response;
+      try { response = await fetch(cfg.baseUrl.replace(/\/+$/, '') + '/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.apiKey }, body: JSON.stringify({ model: cfg.model, messages, response_format: { type: 'json_object' }, temperature: 0.3 }), signal: AbortSignal.timeout(600000) }); }
+      catch (e) { lastErr = fail(e.name === 'TimeoutError' ? '模型响应超时，请稍后重试' : '无法连接模型服务，请检查配置和网络', 502); continue; }
+      if (!response.ok) { const e = fail('模型服务返回错误（' + response.status + '），请稍后重试', 502); if (response.status >= 500) { lastErr = e; continue; } throw e; }
+      const data = await response.json();
+      try { return parseResult(data.choices?.[0]?.message?.content); }
+      catch (e) { lastErr = e; }
+    }
+    throw lastErr || fail('模型返回的格式不完整，请重试', 502);
   }
   function send(res, code, data) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); }
+  // —— 生成任务持久化：服务重启后自动继续未完成的 analyze/evaluate ——
+  function persistJobs() { saveJSON(jobsFile, [...jobs.values()]); }
+  /** 岗位匹配：识别出的岗位方向与现有 JD 互相包含即视为同一岗位，自动关联 */
+  function matchJd(role, jds) {
+    const norm = s => String(s || '').toLowerCase().replace(/[\s（）()，,、·\-—_【】\[\]：:]/g, '');
+    const r = norm(role);
+    if (!r) return null;
+    for (const j of jds) {
+      const t = norm(j.title);
+      if (t && (t.includes(r) || r.includes(t))) return j;
+    }
+    return null;
+  }
+  async function executeJob(job) {
+    const b = job.payload || {};
+    try {
+      if (job.type === 'analyze') {
+        const s0 = get(job.sessionId);
+        // 重新生成时用已缓存的原文行（客户端无需重新解析简历）
+        const lines = (b.lines || []).length ? b.lines : (s0.lines || []);
+        const pages = (b.pageCount || s0.pageCount) || 1, images = b.images || [];
+        const owner = { id: s0.userId };
+        // 题库参考：组内公共题 + 岗位 JD 专属题（岗位题优先），供模型结合简历改写复用
+        const bankQs = loadBank().questions.filter(q => canViewScoped(owner, q));
+        const refQs = [...(s0.jdId ? bankQs.filter(q => q.jdId === s0.jdId) : []), ...bankQs.filter(q => !q.jdId)].slice(0, 40);
+        const bankRef = refQs.length ? '\n\n题库参考（约六成题目从中选取高相关度的并结合简历改写，保持考察方向，不要照抄）：\n' + refQs.map(q => `[${q.partName}] ${q.title ? q.title + '：' : ''}${clip(q.q, 200)}`).join('\n') : '';
+        const linesText = lines.map(l => `[${l.id} 页${l.page} y=${l.y.toFixed(3)}] ${l.text}`).join('\n');
+        // 阶段一：结构提纲（带锚点）。重新生成时复用已缓存提纲，只重新出题，标注位置不变
+        const reuseOutline = b.force === true && Array.isArray(s0.outline) && s0.outline.length;
+        let outline, meta = null;
+        if (reuseOutline) {
+          outline = s0.outline;
+        } else {
+          job.stage = 'outline'; persistJobs();
+          const content = [{ type: 'text', text: `目标岗位：${clip(b.role, 100) || '按简历求职方向'}\n页数：${pages}\n以下为带定位的原文行：\n` + linesText }, ...images.map(image => ({ type: 'image_url', image_url: { url: image } }))];
+          meta = normalizeOutline(await llm([{ role: 'system', content: OUTLINE }, { role: 'user', content }]), lines, pages);
+          outline = meta.sections;
+        }
+        // 阶段二：按提纲生成题目
+        job.stage = 'questions'; persistJobs();
+        const genContent = [{ type: 'text', text: `目标岗位：${clip(b.role, 100) || s0.role || '按简历求职方向'}\n板块提纲（返回的 section title 必须与下列标题逐字一致）：\n` + outline.map(o => `- ${o.title}`).join('\n') + `\n以下为带定位的原文行：\n` + linesText + bankRef }, ...images.map(image => ({ type: 'image_url', image_url: { url: image } }))];
+        const genResult = await llm([{ role: 'system', content: GENERATE }, { role: 'user', content: genContent }]);
+        const sections = normalizeQuestions(genResult, outline);
+        const s = get(job.sessionId);
+        if (meta) {
+          // 岗位以现有 JD 为准：显式关联 > 匹配现有 JD（自动关联）> 用户手填 > 留空待补（模型猜测的方向不直接展示）
+          const visible = loadJds().jds.filter(j => canViewScoped({ id: s.userId }, j));
+          let jd = s.jdId ? visible.find(j => j.id === s.jdId) : null;
+          if (!jd) jd = matchJd(clip(b.role, 100) || meta.role, visible);
+          const role = jd ? jd.title : clip(b.role, 100);
+          Object.assign(s, { name: meta.name || s.name, role, summary: meta.summary, outline, lines, pageCount: pages });
+          if (jd) s.jdId = jd.id;
+        }
+        s.sections = sections; s.evaluation = null; save(s);
+      } else {
+        let s = get(job.sessionId);
+        const records = s.sections.flatMap(sec => sec.questions.filter(q => !q.excluded).map(q => ({ ...q, section: sec.title })));
+        const snapshot = JSON.stringify({ records, note: s.note });
+        const questionLabels = new Map(s.sections.flatMap(sec => sec.questions).map((q, i) => [q.id, 'Q' + String(i + 1).padStart(2, '0')]));
+        const evaluation = await llm([{ role: 'system', content: EVALUATE }, { role: 'user', content: JSON.stringify({ name: s.name, role: s.role, totalQuestions: records.length, scoredCount: records.filter(q => q.score !== null).length, records: records.filter(q => q.score !== null || q.note.trim()).map(q => ({ ...q, id: questionLabels.get(q.id) })), note: s.note }) }]);
+        if (!evaluation || typeof evaluation.overall !== 'string' || !evaluation.overall.trim() || typeof evaluation.suggestion !== 'string' || !Array.isArray(evaluation.strengths) || !Array.isArray(evaluation.weaknesses)) throw fail('评价内容不完整，请重试', 502);
+        s = get(s.id);
+        const current = s.sections.flatMap(sec => sec.questions.filter(q => !q.excluded).map(q => ({ ...q, section: sec.title })));
+        if (JSON.stringify({ records: current, note: s.note }) !== snapshot) throw fail('生成期间记录有更新，请根据最新记录重新生成', 409);
+        s.evaluation = { overall: clip(evaluation.overall, 6000), suggestion: clip(evaluation.suggestion, 6000), strengths: evaluation.strengths.map(x => clip(x)).filter(Boolean), weaknesses: evaluation.weaknesses.map(x => clip(x)).filter(Boolean), nextSteps: (Array.isArray(evaluation.nextSteps) ? evaluation.nextSteps : []).map(x => clip(x)).filter(Boolean), evidence: [...new Set((Array.isArray(evaluation.evidence) ? evaluation.evidence : []).map(x => records.find(q => q.id === x || questionLabels.get(q.id) === x)?.id).filter(Boolean))], generatedAt: new Date().toISOString() }; save(s);
+      }
+      job.state = 'done';
+    } catch (e) { job.state = 'error'; job.error = e.message; }
+    delete job.payload;
+    persistJobs();
+    setTimeout(() => { jobs.delete(job.id); persistJobs(); }, 30 * 60 * 1000).unref();
+  }
+  // 恢复上次运行中未完成的任务
+  for (const j of loadJSON(jobsFile, [])) {
+    if (!j || !j.id || !j.sessionId || Date.parse(j.startedAt || 0) < Date.now() - 30 * 60 * 1000) continue;
+    jobs.set(j.id, j);
+    if (j.state === 'running') { console.log('恢复未完成的生成任务:', j.type, j.sessionId); void executeJob(j); }
+  }
+  const publicJob = j => { const { payload, ...pub } = j; return pub; };
   const server = http.createServer(async (req, res) => {
     try {
       if (req.headers.origin) {
@@ -232,7 +360,7 @@ function createApp(options = {}) {
         adoptLegacy(user.userId);
         // 用户目录（供分享与管理授权）+ 首个飞书用户自动成为管理员
         const users = loadUsers();
-        users[user.userId] = { name: clip(user.name, 50) || '飞书用户', avatar: typeof user.avatar === 'string' ? user.avatar : '', groups: Array.isArray(user.groups) ? user.groups : [], updatedAt: new Date().toISOString() };
+        users[user.userId] = { name: clip(user.name, 50) || '飞书用户', avatar: typeof user.avatar === 'string' ? user.avatar : '', groups: Array.isArray(user.groups) ? user.groups : [], leaderOf: Array.isArray(user.leaderOf) ? user.leaderOf : [], updatedAt: new Date().toISOString() };
         saveJSON(usersFile, users);
         if (!user.userId.startsWith('demo:')) {
           const meta = loadMeta();
@@ -252,7 +380,7 @@ function createApp(options = {}) {
       }
       if (p === '/api/auth/me' && method === 'GET') {
         const u = requireUser(req);
-        return send(res, 200, { user: { id: u.id, name: u.name, avatar: u.avatar, isAdmin: isAdmin(u.id) }, groups: userGroups(u.id) });
+        return send(res, 200, { user: { id: u.id, name: u.name, avatar: u.avatar, isAdmin: isAdmin(u.id), isSuper: isSuper(u.id) }, groups: userGroups(u.id) });
       }
       if (p === '/api/auth/logout' && method === 'POST') {
         const t = cookieToken(req);
@@ -263,6 +391,19 @@ function createApp(options = {}) {
       if (p === '/api/bank' && method === 'GET') {
         const user = requireUser(req);
         const bank = loadBank();
+        // 超管可通过管理台按组查看（只读），不影响普通视图
+        const groupView = url.searchParams.get('group');
+        if (groupView !== null && isSuper(user.id)) {
+          const parts = PART_ORDER.filter(k => bank.parts[k]).map(k => ({ key: k, name: bank.parts[k].name, weight: bank.parts[k].weight }));
+          for (const [k, p2] of Object.entries(bank.parts)) {
+            if (PART_ORDER.includes(k)) continue;
+            if ((p2.groupId || '') !== groupView) continue;
+            parts.push({ key: k, name: p2.name, weight: p2.weight || 0 });
+          }
+          if (bank.questions.some(q => q.custom)) parts.push({ key: 'CUST', name: '自定义', weight: 0 });
+          const questions = bank.questions.filter(q => (q.groupId || '') === groupView).map(q => ({ ...q, readonly: true }));
+          return send(res, 200, { parts, questions });
+        }
         if (ensureSeeds(bank, user)) saveBank(bank);
         const group = primaryGroup(user.id);
         const scopeId = group ? group.id : '';
@@ -328,6 +469,21 @@ function createApp(options = {}) {
         return send(res, 200, { questions });
       }
       const bm = p.match(/^\/api\/bank\/([\w-]+)$/);
+      const pm = p.match(/^\/api\/bank\/parts\/([\w-]+)$/);
+      if (pm && method === 'PATCH') {
+        const user = requireUser(req);
+        const bank = loadBank(), b = await json(req);
+        const part = bank.parts[pm[1]];
+        if (!part) throw fail('分类不存在', 404);
+        const group = primaryGroup(user.id);
+        if (part.groupId && part.groupId !== (group ? group.id : '') && !isAdmin(user.id)) throw fail('没有权限修改该分类', 403);
+        const name = clip(b.name, 20).trim();
+        if (!name) throw fail('分类名称不能为空');
+        part.name = name;
+        for (const q of bank.questions) if (q.part === pm[1]) q.partName = name;
+        saveBank(bank);
+        return send(res, 200, { key: pm[1], name });
+      }
       if (bm && method === 'PATCH') {
         const user = requireUser(req);
         const bank = loadBank(), b = await json(req);
@@ -361,6 +517,11 @@ function createApp(options = {}) {
       // —— 岗位 JD：按创建者最小用户组共享 ——
       if (p === '/api/jds' && method === 'GET') {
         const user = requireUser(req);
+        const groupView = url.searchParams.get('group');
+        if (groupView !== null && isSuper(user.id)) {
+          const jds = loadJds().jds.filter(j => (j.groupId || '') === groupView).map(j => ({ ...j, readonly: true })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+          return send(res, 200, { jds });
+        }
         const jds = loadJds().jds.filter(j => canViewScoped(user, j)).map(j => ({ ...j, readonly: !canEditScoped(user, j) })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
         return send(res, 200, { jds });
       }
@@ -404,10 +565,57 @@ function createApp(options = {}) {
         return send(res, 200, { users });
       }
       // —— 管理：授权与组织架构 ——
+      // —— 超管数据看板：全组织简历、面试、题库、岗位汇总 ——
+      if (p === '/api/admin/dashboard' && method === 'GET') {
+        requireSuper(req);
+        const users = loadUsers();
+        const sessions = fs.readdirSync(dir).filter(x => x.endsWith('.json') && !x.startsWith('_')).map(x => JSON.parse(fs.readFileSync(path.join(dir, x), 'utf8')));
+        const byUser = new Map();
+        let evaluated = 0, scoredQuestions = 0, totalQuestions = 0, scoreSum = 0;
+        for (const s of sessions) {
+          const active = (s.sections || []).flatMap(x => x.questions).filter(q => !q.excluded);
+          const scored = active.filter(q => q.score !== null);
+          totalQuestions += active.length; scoredQuestions += scored.length; scoreSum += scored.reduce((a, q) => a + q.score, 0);
+          if (s.evaluation) evaluated++;
+          const u = byUser.get(s.userId) || { userId: s.userId, name: users[s.userId]?.name || s.userId, sessions: 0, questions: 0, scored: 0, evaluated: 0 };
+          u.sessions++; u.questions += active.length; u.scored += scored.length; if (s.evaluation) u.evaluated++;
+          byUser.set(s.userId, u);
+        }
+        const bank = loadBank();
+        const bankByGroup = new Map();
+        for (const q of bank.questions) {
+          const k = q.groupId || '';
+          const g = bankByGroup.get(k) || { groupId: k, groupName: q.groupName || '个人题目', total: 0, custom: 0 };
+          g.total++; if (q.custom) g.custom++;
+          bankByGroup.set(k, g);
+        }
+        const jds = loadJds().jds;
+        const jdByGroup = new Map();
+        for (const j of jds) {
+          const k = j.groupId || '';
+          const g = jdByGroup.get(k) || { groupId: k, groupName: j.groupName || '个人岗位', count: 0 };
+          g.count++;
+          jdByGroup.set(k, g);
+        }
+        const recent = [...sessions].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')).slice(0, 10).map(s => {
+          const active = (s.sections || []).flatMap(x => x.questions).filter(q => !q.excluded);
+          const scored = active.filter(q => q.score !== null);
+          return { id: s.id, name: s.name, role: s.role, ownerName: users[s.userId]?.name || s.userId, phase: s.phase, updatedAt: s.updatedAt, questionCount: active.length, scoredCount: scored.length, avgScore: scored.length ? Math.round(scored.reduce((a, q) => a + q.score, 0) / scored.length * 10) / 10 : null, hasEvaluation: !!s.evaluation };
+        });
+        return send(res, 200, {
+          userCount: Object.keys(users).length,
+          sessions: { total: sessions.length, evaluated, byPhase: { prepare: sessions.filter(s => s.phase === 'prepare').length, interview: sessions.filter(s => s.phase === 'interview').length, review: sessions.filter(s => s.phase === 'review').length } },
+          questions: { total: totalQuestions, scored: scoredQuestions, avgScore: scoredQuestions ? Math.round(scoreSum / scoredQuestions * 10) / 10 : null },
+          byUser: [...byUser.values()].sort((a, b) => b.sessions - a.sessions),
+          bank: { total: bank.questions.length, byGroup: [...bankByGroup.values()].sort((a, b) => b.total - a.total) },
+          jds: { total: jds.length, byGroup: [...jdByGroup.values()].sort((a, b) => b.count - a.count) },
+          recent,
+        });
+      }
       if (p === '/api/admin/overview' && method === 'GET') {
         requireAdmin(req);
         const grants = loadGrants(), org = loadOrg();
-        const users = Object.entries(loadUsers()).map(([uid, u]) => ({ id: uid, name: u.name || uid, avatar: u.avatar || '', groupName: (u.groups && u.groups[0]?.pathName) || '', isAdmin: isAdmin(uid), grants: grants[uid] || [] })).sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+        const users = Object.entries(loadUsers()).map(([uid, u]) => ({ id: uid, name: u.name || uid, avatar: u.avatar || '', groupName: (u.groups && u.groups[0]?.pathName) || '', isAdmin: isAdmin(uid), isSuper: isSuper(uid), grants: grants[uid] || [] })).sort((a, b) => a.name.localeCompare(b.name, 'zh'));
         return send(res, 200, { users, depts: org.depts, fetchedAt: org.fetchedAt || '' });
       }
       if (p === '/api/admin/grants' && method === 'PUT') {
@@ -444,14 +652,14 @@ function createApp(options = {}) {
           const org = { depts: {}, fetchedAt: new Date().toISOString() };
           let pageToken = '';
           for (let guard = 0; guard < 50; guard++) {
-            const u = 'https://open.feishu.cn/open-apis/contact/v3/departments?department_id_type=open_department_id&parent_department_id=0&fetch_child=true&page_size=50' + (pageToken ? '&page_token=' + encodeURIComponent(pageToken) : '');
+            const u = 'https://open.feishu.cn/open-apis/contact/v3/departments?department_id_type=open_department_id&user_id_type=union_id&parent_department_id=0&fetch_child=true&page_size=50' + (pageToken ? '&page_token=' + encodeURIComponent(pageToken) : '');
             const r = await fetch(u, { headers: { Authorization: 'Bearer ' + at.app_access_token }, signal: AbortSignal.timeout(15000) });
             const j = await r.json();
             if (!r.ok || j.code !== 0) throw new Error('departments: ' + JSON.stringify(j).slice(0, 300));
             for (const d of j.data?.items || []) {
               const did = d.open_department_id || d.department_id;
               if (!did) continue;
-              org.depts[did] = { id: did, name: d.name || did, parentId: d.parent_department_id && d.parent_department_id !== '0' ? d.parent_department_id : '', path: [], pathName: '' };
+              org.depts[did] = { id: did, name: d.name || did, parentId: d.parent_department_id && d.parent_department_id !== '0' ? d.parent_department_id : '', leaderId: d.leader_user_id || '', path: [], pathName: '' };
             }
             if (!j.data?.has_more) break;
             pageToken = j.data.page_token || '';
@@ -489,6 +697,12 @@ function createApp(options = {}) {
               }
             } catch (e) { console.error('同步用户组织失败:', uid, e.message); }
           }
+          // 依据本次刷新的部门负责人信息，重算所有用户的 leaderOf（无需额外请求）
+          for (const [uid, u] of Object.entries(users)) {
+            if (!uid.startsWith('fs:') || !(u.groups && u.groups.length)) continue;
+            const leaderOf = computeLeaderOf(uid.slice(3), u.groups, org);
+            if (JSON.stringify(leaderOf) !== JSON.stringify(u.leaderOf || [])) { u.leaderOf = leaderOf; usersDirty = true; }
+          }
           if (usersDirty) saveJSON(usersFile, users);
           return send(res, 200, { depts: org.depts, fetchedAt: org.fetchedAt, syncedUsers });
         } catch (e) { console.error('组织架构同步失败:', e.message); throw fail('组织架构同步失败：' + (e.message.includes('99991672') || e.message.includes('permission') ? '请为应用开通 contact:department.base:readonly 权限' : '请检查飞书配置与网络'), 502); }
@@ -496,7 +710,9 @@ function createApp(options = {}) {
       if (p === '/api/sessions' && method === 'GET') {
         const user = requireUser(req);
         const users = loadUsers();
-        return send(res, 200, fs.readdirSync(dir).filter(x => x.endsWith('.json') && !x.startsWith('_')).map(x => JSON.parse(fs.readFileSync(path.join(dir, x), 'utf8'))).filter(x => x.userId === user.id || (Array.isArray(x.shares) && x.shares.includes(user.id))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ sections, lines, text, evaluation, shares, ...s }) => { const questions = (sections || []).flatMap(x => x.questions).filter(q => !q.excluded); const scored = questions.filter(q => q.score !== null); return { ...s, sharedBy: s.userId === user.id ? '' : (users[s.userId]?.name || '同事'), questionCount: questions.length, scoredCount: scored.length, avgScore: scored.length ? Math.round(scored.reduce((a, q) => a + q.score, 0) / scored.length * 10) / 10 : null, hasEvaluation: !!evaluation, suggestion: evaluation ? clip(evaluation.suggestion, 200) : '' }; }));
+        const superView = isSuper(user.id);
+        const runningJobs = new Map([...jobs.values()].filter(j => j.state === 'running').map(j => [j.sessionId, j.type]));
+        return send(res, 200, fs.readdirSync(dir).filter(x => x.endsWith('.json') && !x.startsWith('_')).map(x => JSON.parse(fs.readFileSync(path.join(dir, x), 'utf8'))).filter(x => x.userId === user.id || superView || canLeadView(user, x.userId) || (Array.isArray(x.shares) && x.shares.includes(user.id))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ sections, lines, text, evaluation, shares, ...s }) => { const questions = (sections || []).flatMap(x => x.questions).filter(q => !q.excluded); const scored = questions.filter(q => q.score !== null); const reallyShared = s.userId !== user.id && Array.isArray(shares) && shares.includes(user.id); const notOwn = s.userId !== user.id && !reallyShared; return { ...s, sharedBy: s.userId === user.id ? '' : (users[s.userId]?.name || '同事'), viaSuper: notOwn && superView, viaLeader: notOwn && !superView && canLeadView(user, s.userId), jobState: runningJobs.get(s.id) || null, questionCount: questions.length, scoredCount: scored.length, avgScore: scored.length ? Math.round(scored.reduce((a, q) => a + q.score, 0) / scored.length * 10) / 10 : null, hasEvaluation: !!evaluation, suggestion: evaluation ? clip(evaluation.suggestion, 200) : '' }; }));
       }
 
       if (p === '/api/upload' && method === 'POST') {
@@ -511,18 +727,26 @@ function createApp(options = {}) {
         let text = '';
         if (ext === '.txt') text = file.toString('utf8').slice(0, 60000);
         if (ext === '.docx') { try { text = (await require('mammoth').extractRawText({ buffer: file })).value.slice(0, 60000); } catch { throw fail('Word 文件无法解析，请导出为 PDF 后上传'); } }
+        // 选择的岗位 JD：岗位信息从 JD 带出；未选则留空待后续补充（先校验再写文件）
+        let jdId = '', role = '';
+        const jdParam = url.searchParams.get('jd') || '';
+        if (jdParam) {
+          const jd = loadJds().jds.find(j => j.id === jdParam);
+          if (!jd || !canViewScoped(user, jd)) throw fail('岗位 JD 不存在', 404);
+          jdId = jd.id; role = jd.title;
+        }
         const sid = id(), storedExt = ext === '.jpeg' ? '.jpg' : ext;
         fs.writeFileSync(path.join(dir, sid + storedExt), file);
-        return send(res, 201, save({ id: sid, userId: user.id, fileName: name, file: sid + storedExt, name: name.replace(/\.[^.]+$/, ''), role: '', summary: '', text, sections: [], lines: [], pageCount: 1, phase: 'prepare', note: '', evaluation: null, createdAt: new Date().toISOString() }));
+        return send(res, 201, save({ id: sid, userId: user.id, fileName: name, file: sid + storedExt, name: name.replace(/\.[^.]+$/, ''), role, summary: '', text, sections: [], lines: [], pageCount: 1, phase: 'prepare', note: '', evaluation: null, ...(jdId ? { jdId } : {}), createdAt: new Date().toISOString() }));
       }
       const jm = p.match(/^\/api\/jobs\/([\w-]+)$/);
-      if (jm && method === 'GET') { const job = jobs.get(jm[1]); if (!job) throw fail('任务已结束或服务已重启，请重试', 404); return send(res, 200, job); }
+      if (jm && method === 'GET') { const job = jobs.get(jm[1]); if (!job) throw fail('任务已结束或服务已重启，请重试', 404); return send(res, 200, publicJob(job)); }
       const sm = p.match(/^\/api\/sessions\/([\w-]+)(?:\/(analyze|evaluate))?$/);
       if (sm) {
         let s = get(sm[1]);
         const user = requireUser(req);
-        const owner = s.userId === user.id, shared = !owner && Array.isArray(s.shares) && s.shares.includes(user.id);
-        if (!owner && !shared) throw fail('简历不存在', 404);
+        const owner = s.userId === user.id, shared = !owner && Array.isArray(s.shares) && s.shares.includes(user.id), superView = !owner && !shared && isSuper(user.id), leaderView = !owner && !shared && !superView && canLeadView(user, s.userId);
+        if (!owner && !shared && !superView && !leaderView) throw fail('简历不存在', 404);
         if (!sm[2] && method === 'GET') return send(res, 200, s);
         if (!sm[2] && method === 'DELETE') {
           if (!owner) throw fail('只有所有者可删除', 403);
@@ -531,7 +755,19 @@ function createApp(options = {}) {
           res.writeHead(204, { 'Cache-Control': 'no-store' }); return res.end();
         }
         if (!sm[2] && method === 'PATCH') {
+          if (superView || leaderView) throw fail('仅可查看，不能修改他人的面试记录', 403);
           const b = await json(req);
+          if (typeof b.role === 'string' || 'jdId' in b) {
+            if (!owner) throw fail('只有所有者可修改岗位信息', 403);
+            if ('jdId' in b) {
+              if (!b.jdId) { delete s.jdId; }
+              else {
+                const jd = loadJds().jds.find(j => j.id === b.jdId);
+                if (!jd || !canViewScoped(user, jd)) throw fail('岗位 JD 不存在', 404);
+                s.jdId = jd.id; s.role = jd.title; // 关联 JD 后岗位名以 JD 为准
+              }
+            } else if (typeof b.role === 'string') { s.role = clip(b.role, 100); }
+          }
           if (b.shares !== undefined) {
             if (!owner) throw fail('只有所有者可调整分享', 403);
             if (!Array.isArray(b.shares)) throw fail('分享格式不正确');
@@ -578,36 +814,22 @@ function createApp(options = {}) {
           const b = await json(req);
           if (sm[2] === 'evaluate' && s.evaluation && !b.force) throw fail('已生成综合评价，如需覆盖请确认重新生成', 409);
           const existing = [...jobs.values()].find(j => j.sessionId === s.id && j.state === 'running');
-          if (existing) return send(res, 202, existing);
-          if (sm[2] === 'analyze' && s.sections.length) throw fail('该简历已生成题目。请重新上传以建立新的面试记录', 409);
+          if (existing) return send(res, 202, publicJob(existing));
+          if (sm[2] === 'analyze' && s.sections.length && !b.force) throw fail('该简历已生成题目。如需重新识别，请在准备阶段使用「重新识别生成」', 409);
           const lines = (Array.isArray(b.lines) ? b.lines : []).slice(0, 2000).map(l => ({ id: clip(l.id, 40), text: clip(l.text, 1500), page: Math.max(1, Math.min(20, Number(l.page) || 1)), y: Math.max(0, Math.min(1, Number(l.y) || 0)), x: Math.max(0, Math.min(1, Number(l.x) || 0)) }));
-          const pages = Math.max(1, Math.min(20, Math.floor(Number(b.pageCount) || 1)));
+          // 重新生成时客户端可不带原文行，回落到首次分析缓存的 lines
+          const effLines = lines.length ? lines : (s.lines || []);
+          const pages = Math.max(1, Math.min(20, Math.floor(Number(b.pageCount) || s.pageCount || 1)));
           const images = (Array.isArray(b.images) ? b.images : []).filter(x => typeof x === 'string' && /^data:image\/(jpeg|png);base64,/.test(x)).slice(0, 20);
           const records = s.sections.flatMap(sec => sec.questions.filter(q => !q.excluded).map(q => ({ ...q, section: sec.title })));
-          if (sm[2] === 'analyze' && !lines.length && !images.length) throw fail('简历内容尚未加载，请稍后重试');
+          if (sm[2] === 'analyze' && !effLines.length && !images.length) throw fail('简历内容尚未加载，请稍后重试');
           if (sm[2] === 'evaluate' && !records.some(q => q.score !== null || q.note.trim()) && !s.note.trim()) throw fail('请先记录评分或面试观察，再生成综合评价');
-          const job = { id: id(), sessionId: s.id, type: sm[2], state: 'running', startedAt: new Date().toISOString() }; jobs.set(job.id, job);
-          send(res, 202, job);
-          (async () => {
-            try {
-              if (job.type === 'analyze') {
-                const content = [{ type: 'text', text: `目标岗位：${clip(b.role, 100) || '按简历求职方向'}\n页数：${pages}\n以下为带定位的原文行：\n` + lines.map(l => `[${l.id} 页${l.page} y=${l.y.toFixed(3)}] ${l.text}`).join('\n') }, ...images.map(image => ({ type: 'image_url', image_url: { url: image } }))];
-                const result = normalizeAnalysis(await llm([{ role: 'system', content: ANALYZE }, { role: 'user', content }]), lines, pages);
-                s = get(s.id); Object.assign(s, result, { name: result.name || s.name, role: clip(b.role, 100) || result.role, lines, pageCount: pages }); save(s);
-              } else {
-                const snapshot = JSON.stringify({ records, note: s.note });
-                const questionLabels = new Map(s.sections.flatMap(sec => sec.questions).map((q, i) => [q.id, 'Q' + String(i + 1).padStart(2, '0')]));
-                const evaluation = await llm([{ role: 'system', content: EVALUATE }, { role: 'user', content: JSON.stringify({ name: s.name, role: s.role, totalQuestions: records.length, scoredCount: records.filter(q => q.score !== null).length, records: records.filter(q => q.score !== null || q.note.trim()).map(q => ({ ...q, id: questionLabels.get(q.id) })), note: s.note }) }]);
-                if (!evaluation || typeof evaluation.overall !== 'string' || !evaluation.overall.trim() || typeof evaluation.suggestion !== 'string' || !Array.isArray(evaluation.strengths) || !Array.isArray(evaluation.weaknesses)) throw fail('评价内容不完整，请重试', 502);
-                s = get(s.id);
-                const current = s.sections.flatMap(sec => sec.questions.filter(q => !q.excluded).map(q => ({ ...q, section: sec.title })));
-                if (JSON.stringify({ records: current, note: s.note }) !== snapshot) throw fail('生成期间记录有更新，请根据最新记录重新生成', 409);
-                s.evaluation = { overall: clip(evaluation.overall, 6000), suggestion: clip(evaluation.suggestion, 6000), strengths: evaluation.strengths.map(x => clip(x)).filter(Boolean), weaknesses: evaluation.weaknesses.map(x => clip(x)).filter(Boolean), nextSteps: (Array.isArray(evaluation.nextSteps) ? evaluation.nextSteps : []).map(x => clip(x)).filter(Boolean), evidence: [...new Set((Array.isArray(evaluation.evidence) ? evaluation.evidence : []).map(x => records.find(q => q.id === x || questionLabels.get(q.id) === x)?.id).filter(Boolean))], generatedAt: new Date().toISOString() }; save(s);
-              }
-              job.state = 'done';
-            } catch (e) { job.state = 'error'; job.error = e.message; }
-            setTimeout(() => jobs.delete(job.id), 30 * 60 * 1000).unref();
-          })(); return;
+          const job = { id: id(), sessionId: s.id, type: sm[2], state: 'running', startedAt: new Date().toISOString(), payload: { role: clip(b.role, 100), lines: effLines, pageCount: pages, images, force: b.force === true } };
+          jobs.set(job.id, job);
+          persistJobs();
+          send(res, 202, publicJob(job));
+          void executeJob(job);
+          return;
         }
       }
       if (method !== 'GET') throw fail('接口不存在', 404);
@@ -616,7 +838,7 @@ function createApp(options = {}) {
         const name = p.slice(7); if (!/^[\w-]+\.(pdf|docx|txt|png|jpg)$/.test(name)) throw fail('文件不存在', 404);
         const user = requireUser(req);
         const owner = get(name.replace(/\.[^.]+$/, ''));
-        if (owner.userId !== user.id && !(Array.isArray(owner.shares) && owner.shares.includes(user.id))) throw fail('文件不存在', 404);
+        if (owner.userId !== user.id && !(Array.isArray(owner.shares) && owner.shares.includes(user.id)) && !isSuper(user.id) && !canLeadView(user, owner.userId)) throw fail('文件不存在', 404);
         file = path.join(dir, name);
       } else {
         file = path.resolve(distDir, '.' + (p === '/' ? '/index.html' : p));
@@ -629,4 +851,4 @@ function createApp(options = {}) {
   return server;
 }
 if (require.main === module) { const port = Number(process.env.PORT) || 3220, host = process.env.HOST || '0.0.0.0'; createApp().listen(port, host, () => { const nets = require('os').networkInterfaces(); const lan = Object.values(nets).flat().filter(Boolean).find(n => n.family === 'IPv4' && !n.internal); console.log(`知马已启动：http://localhost:${port}${lan ? `（局域网：http://${lan.address}:${port}）` : ''}`); }); }
-module.exports = { createApp, normalizeAnalysis };
+module.exports = { createApp, normalizeOutline, normalizeQuestions };

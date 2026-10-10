@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { createApp, normalizeAnalysis } = require('../server');
+const { createApp, normalizeOutline, normalizeQuestions } = require('../server');
 const analysis = { name:'测试候选人',role:'工程师',summary:'测试',sections:[{title:'知识库项目',kind:'project',anchor:{lineId:'p2-l3',quote:'知识库项目',page:1,y:.1},questions:[{q:'混合检索带来了什么收益？',point:'证据',followUp:'怎样验证？',expected:['对照实验'],type:'技术取舍'},{q:'如何处理失败？',point:'可靠性',followUp:'举例',expected:['案例'],type:'经历深挖'}]}] };
 const lines=[{id:'p2-l3',text:'知识库项目',page:2,y:.47,x:.12}];
 async function fixture(t,llm,opts) {
@@ -17,14 +17,24 @@ async function fixture(t,llm,opts) {
   const req=async(p,method='GET',data)=>{const r=await fetch(base+p,{method,headers:{'Content-Type':'application/json',Cookie:cookie},...(data!==undefined?{body:JSON.stringify(data)}:{})});return {status:r.status,data:r.status===204?null:await r.json()};};
   const reqAs=(other)=>(p,method='GET',data)=>fetch(base+p,{method,headers:{'Content-Type':'application/json',Cookie:other.cookie},...(data!==undefined?{body:JSON.stringify(data)}:{})}).then(async r=>({status:r.status,data:r.status===204?null:await r.json()}));
   const upload=async(name='测试.txt',text='测试候选人\n知识库项目\n采用混合检索')=>{const r=await fetch(base+'/api/upload?name='+encodeURIComponent(name),{method:'POST',headers:{Cookie:cookie},body:text});return {status:r.status,data:await r.json()};};
-  const poll=async jid=>{for(let n=0;n<100;n++){const {data}=await req('/api/jobs/'+jid);if(data.state!=='running')return data;await new Promise(r=>setTimeout(r,10));}throw new Error('job timeout');};
+  const poll=async jid=>{for(let n=0;n<300;n++){const {data}=await req('/api/jobs/'+jid);if(data.state!=='running')return data;await new Promise(r=>setTimeout(r,20));}throw new Error('job timeout');};
   const analyze=async s=>{const p='/api/sessions/'+s.id;const {data:job}=await req(p+'/analyze','POST',{lines,pageCount:2});assert.equal((await poll(job.id)).state,'done');return (await req(p)).data;};
   return {req,reqAs,upload,poll,analyze,login,base,dir,cookie,user:self.user};
 }
 test('source line determines exact page and coordinates, and invalid model output fails',()=>{
-  const r=normalizeAnalysis(analysis,lines,2);assert.equal(r.sections[0].anchor.page,2);assert.equal(r.sections[0].anchor.y,.47);assert.equal(r.sections[0].anchor.matched,true);
-  assert.throws(()=>normalizeAnalysis({sections:[]},lines,2));assert.throws(()=>normalizeAnalysis({sections:[{questions:[]}]},lines,2));
-  const fallback=structuredClone(analysis);fallback.sections[0].anchor={quote:'无匹配',page:99,y:20};const anchor=normalizeAnalysis(fallback,lines,2).sections[0].anchor;assert.equal(anchor.page,2);assert.equal(anchor.y,.94);assert.equal(anchor.matched,false);
+  const outline=normalizeOutline(analysis,lines,2);assert.equal(outline.sections[0].anchor.page,2);assert.equal(outline.sections[0].anchor.y,.47);assert.equal(outline.sections[0].anchor.matched,true);
+  const withQs=normalizeQuestions(analysis,outline.sections);assert.equal(withQs[0].questions.length,2);
+  assert.throws(()=>normalizeOutline({sections:[]},lines,2));assert.throws(()=>normalizeQuestions({sections:[{title:'知识库项目',questions:[]}]},outline.sections));
+  const fallback=structuredClone(analysis);fallback.sections[0].anchor={quote:'无匹配',page:99,y:20};const anchor=normalizeOutline(fallback,lines,2).sections[0].anchor;assert.equal(anchor.page,2);assert.equal(anchor.y,.94);assert.equal(anchor.matched,false);
+});
+test('sections are sorted top-to-bottom by anchor position',()=>{
+  const mk=(title,quote,page,y)=>({title,kind:'project',anchor:{quote,page,y},questions:[{q:title+'的问题',point:'',followUp:'',expected:[],type:'经历深挖'}]});
+  const multi={name:'x',role:'',summary:'',sections:[mk('第三个','项目三',2,.8),mk('第一个','项目一',1,.2),mk('第二个','项目二',1,.6)]};
+  const more=[{id:'p1-l1',text:'项目一',page:1,y:.2,x:.1},{id:'p1-l2',text:'项目二',page:1,y:.6,x:.1},{id:'p2-l1',text:'项目三',page:2,y:.8,x:.1}];
+  const outline=normalizeOutline(multi,more,2);
+  assert.deepEqual(outline.sections.map(s=>s.title),['第一个','第二个','第三个']);
+  const withQs=normalizeQuestions(multi,outline.sections);
+  assert.deepEqual(withQs.map(s=>s.title),['第一个','第二个','第三个']);
 });
 test('upload validates file type, PDF signature and empty files; secrets are not served',async t=>{
   const f=await fixture(t);assert.equal((await f.upload('bad.exe','x')).status,400);assert.equal((await f.upload('bad.pdf','not PDF')).status,400);assert.equal((await f.upload('empty.txt','')).status,400);assert.equal((await f.upload('bad.png','x')).status,400);
@@ -75,9 +85,44 @@ test('removeQuestion removes the question and cleans up the empty section',async
   const {data:afterAll}=await f.req(p,'PATCH',{removeQuestion:{id:sec.questions[1].id}});
   assert.equal(afterAll.sections.length,0);
 });
+test('analyze prefers linked or matched JD title; unmatched model role is left empty',async t=>{
+  const f=await fixture(t);
+  const jdA=(await f.req('/api/jds','POST',{title:'AI 管培生',content:'JD'})).data;
+  const jdB=(await f.req('/api/jds','POST',{title:'后端工程师',content:'JD'})).data;
+  // 显式关联优先（模型识别为"工程师"也以 JD 为准）
+  let s=(await f.upload('a.txt','候选人甲')).data,p='/api/sessions/'+s.id;
+  assert.equal((await f.req(p,'PATCH',{jdId:jdA.id})).data.role,'AI 管培生');
+  let r=await f.analyze(s);assert.equal(r.role,'AI 管培生');assert.equal(r.jdId,jdA.id);
+  // 未关联但模型岗位匹配现有 JD（"工程师" ⊂ "后端工程师"）→ 自动关联
+  s=(await f.upload('b.txt','候选人乙')).data;r=await f.analyze(s);
+  assert.equal(r.role,'后端工程师');assert.equal(r.jdId,jdB.id);
+  // 匹配不上且未手填 → 留空待补（模型识别为"区块链架构师"，与现有 JD 不匹配）
+  const f2=await fixture(t,messages=>{if(!messages[0].content.includes('综合评价')){const a=structuredClone(analysis);a.role='区块链架构师';return a;}return {overall:'评价',strengths:[],weaknesses:[],suggestion:'建议',nextSteps:[],evidence:[]};});
+  await f2.req('/api/jds','POST',{title:'AI 管培生',content:'JD'});
+  s=(await f2.upload('c.txt','候选人丙')).data;r=await f2.analyze(s);
+  assert.equal(r.role,'');assert.ok(!r.jdId);
+  // 取消关联
+  assert.equal((await f.req(p,'PATCH',{jdId:''})).status,200);
+  assert.ok(!(await f.req(p)).data.jdId);
+  // 不存在的 JD
+  assert.equal((await f.req(p,'PATCH',{jdId:'nope'})).status,404);
+});
+
+test('re-analyze reuses cached outline and keeps anchors stable',async t=>{
+  const f=await fixture(t),{data:s}=await f.upload(),p='/api/sessions/'+s.id;
+  const r=await f.analyze(s);
+  const anchorId=r.sections[0].id,anchorY=r.sections[0].anchor.y;
+  assert.ok((await f.req(p)).data.outline);
+  const j=await f.req(p+'/analyze','POST',{force:true});
+  assert.equal((await f.poll(j.data.id)).state,'done');
+  const fresh=(await f.req(p)).data;
+  assert.equal(fresh.sections[0].id,anchorId);
+  assert.equal(fresh.sections[0].anchor.y,anchorY);
+});
+
 test('evaluation excludes removed questions, uses recorded evidence, and invalidates on edits',async t=>{
   let captured;
-  const f=await fixture(t,messages=>{if(messages[0].content.includes('提取姓名'))return structuredClone(analysis);captured=JSON.parse(messages[1].content);return {overall:'依据记录的观察',strengths:['能提供实验依据'],weaknesses:['部分未验证'],suggestion:'进一步面试',nextSteps:['核实职责'],evidence:captured.records.map(r=>r.id)};});
+  const f=await fixture(t,messages=>{if(!messages[0].content.includes('综合评价'))return structuredClone(analysis);captured=JSON.parse(messages[1].content);return {overall:'依据记录的观察',strengths:['能提供实验依据'],weaknesses:['部分未验证'],suggestion:'进一步面试',nextSteps:['核实职责'],evidence:captured.records.map(r=>r.id)};});
   const {data:s}=await f.upload(),p='/api/sessions/'+s.id;let j=await f.req(p+'/analyze','POST',{lines,pageCount:2});await f.poll(j.data.id);
   assert.equal((await f.req(p+'/evaluate','POST',{})).status,400);
   const {data:r}=await f.req(p),[q1,q2]=r.sections[0].questions;
@@ -85,8 +130,24 @@ test('evaluation excludes removed questions, uses recorded evidence, and invalid
   j=await f.req(p+'/evaluate','POST',{});assert.equal((await f.poll(j.data.id)).state,'done');assert.equal(captured.records.length,1);assert.equal(captured.records[0].id,'Q01');assert.equal(captured.scoredCount,1);assert.deepEqual((await f.req(p)).data.evaluation.evidence,[q1.id]);
   assert.equal((await f.req(p)).data.evaluation.overall,'依据记录的观察');await f.req(p,'PATCH',{question:{id:q1.id,note:'新证据'}});assert.equal((await f.req(p)).data.evaluation,null);
 });
+test('re-analyze requires force and clears previous questions and evaluation',async t=>{
+  const f=await fixture(t,messages=>{if(!messages[0].content.includes('综合评价'))return structuredClone(analysis);return {overall:'评价',strengths:[],weaknesses:[],suggestion:'建议',nextSteps:[],evidence:[]};});
+  const {data:s}=await f.upload(),p='/api/sessions/'+s.id;
+  const r=await f.analyze(s),qid=r.sections[0].questions[0].id;
+  await f.req(p,'PATCH',{question:{id:qid,score:4,note:'旧记录'}});
+  let j=await f.req(p+'/evaluate','POST',{});assert.equal((await f.poll(j.data.id)).state,'done');
+  assert.ok((await f.req(p)).data.evaluation);
+  assert.equal((await f.req(p+'/analyze','POST',{lines})).status,409);
+  j=await f.req(p+'/analyze','POST',{lines,pageCount:2,force:true});assert.equal(j.status,202);
+  assert.equal((await f.poll(j.data.id)).state,'done');
+  const fresh=(await f.req(p)).data;
+  assert.equal(fresh.sections[0].questions[0].score,null);
+  assert.ok(fresh.sections[0].questions[0].id!==qid);
+  assert.equal(fresh.evaluation,null);
+});
+
 test('existing evaluation requires force to regenerate',async t=>{
-  const f=await fixture(t,messages=>{if(messages[0].content.includes('提取姓名'))return structuredClone(analysis);return {overall:'评价',strengths:['优势'],weaknesses:['不足'],suggestion:'建议',nextSteps:[],evidence:[]};});
+  const f=await fixture(t,messages=>{if(!messages[0].content.includes('综合评价'))return structuredClone(analysis);return {overall:'评价',strengths:['优势'],weaknesses:['不足'],suggestion:'建议',nextSteps:[],evidence:[]};});
   const {data:s}=await f.upload(),p='/api/sessions/'+s.id;const r=await f.analyze(s),qid=r.sections[0].questions[0].id;
   await f.req(p,'PATCH',{question:{id:qid,score:4}});
   let j=await f.req(p+'/evaluate','POST',{});assert.equal((await f.poll(j.data.id)).state,'done');assert.ok((await f.req(p)).data.evaluation);
@@ -117,8 +178,27 @@ test('duplicate requests share one job; model failures leave original resume int
   let finish;const pending=new Promise(resolve=>finish=resolve);const f=await fixture(t,async()=>{await pending;throw new Error('上游故障');});
   const {data:s}=await f.upload(),p='/api/sessions/'+s.id;const first=await f.req(p+'/analyze','POST',{lines,pageCount:2});const second=await f.req(p+'/analyze','POST',{lines,pageCount:2});assert.equal(first.data.id,second.data.id);finish();assert.equal((await f.poll(first.data.id)).state,'error');const {data:remaining}=await f.req(p);assert.equal(remaining.sections.length,0);assert.ok(remaining.text.includes('知识库项目'));
 });
+test('interrupted running jobs resume on server start',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facetry-test-'));
+  t.after(async()=>{const target=path.resolve(dir);if(target.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(target).startsWith('facetry-test-'))fs.rmSync(target,{recursive:true,force:true});});
+  // 预置：一个用户会话 + 一份简历 + 一个"进行中"的出题任务（模拟服务中断前状态）
+  fs.writeFileSync(path.join(dir,'_auth.json'),JSON.stringify({tok:{userId:'demo:恢复',name:'恢复',avatar:'',createdAt:new Date().toISOString()}}));
+  const sid=crypto.randomUUID();
+  fs.writeFileSync(path.join(dir,sid+'.json'),JSON.stringify({id:sid,userId:'demo:恢复',fileName:'r.txt',file:sid+'.txt',name:'r',role:'',summary:'',text:'',sections:[],lines:[],pageCount:2,phase:'prepare',note:'',evaluation:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}));
+  fs.writeFileSync(path.join(dir,'_jobs.json'),JSON.stringify([{id:'job1',sessionId:sid,type:'analyze',state:'running',startedAt:new Date().toISOString(),payload:{role:'',lines,pageCount:2,images:[]}}]));
+  const server=createApp({dataDir:dir,llm:()=>structuredClone(analysis)});
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  t.after(()=>new Promise(r=>server.close(r)));
+  const base='http://127.0.0.1:'+server.address().port;
+  for(let n=0;n<100;n++){const j=await(await fetch(base+'/api/jobs/job1',{headers:{Cookie:'zm_sess=tok'}})).json();if(j.state!=='running')break;await new Promise(r=>setTimeout(r,20));}
+  const j=await(await fetch(base+'/api/jobs/job1',{headers:{Cookie:'zm_sess=tok'}})).json();
+  assert.equal(j.state,'done');assert.ok(!('payload' in j));
+  const s=await(await fetch(base+'/api/sessions/'+sid,{headers:{Cookie:'zm_sess=tok'}})).json();
+  assert.equal(s.sections.length,1);assert.equal(s.sections[0].questions.length,2);
+});
+
 test('evaluation does not overwrite newer interview evidence',async t=>{
-  let finish;const f=await fixture(t,async messages=>{if(messages[0].content.includes('提取姓名'))return structuredClone(analysis);return await new Promise(resolve=>finish=()=>resolve({overall:'旧评价',strengths:[],weaknesses:[],suggestion:'继续'}));});
+  let finish;const f=await fixture(t,async messages=>{if(!messages[0].content.includes('综合评价'))return structuredClone(analysis);return await new Promise(resolve=>finish=()=>resolve({overall:'旧评价',strengths:[],weaknesses:[],suggestion:'继续'}));});
   const {data:s}=await f.upload(),p='/api/sessions/'+s.id;let j=await f.req(p+'/analyze','POST',{lines,pageCount:2});await f.poll(j.data.id);const {data:r}=await f.req(p),qid=r.sections[0].questions[0].id;
   await f.req(p,'PATCH',{question:{id:qid,score:4}});j=await f.req(p+'/evaluate','POST',{});await f.req(p,'PATCH',{question:{id:qid,note:'生成期间的新记录'}});finish();assert.equal((await f.poll(j.data.id)).state,'error');assert.equal((await f.req(p)).data.evaluation,null);
 });

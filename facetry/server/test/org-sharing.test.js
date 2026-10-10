@@ -16,7 +16,7 @@ const ORG = {
   fetchedAt: '2026-10-09T00:00:00.000Z',
 };
 const USERS = {
-  'fs:u1': { name: '张三', avatar: '', groups: [{ id: 'g1', name: 'AI应用创新组', pathName: '研究院 / AI应用创新组', path: ['p1', 'g1'] }] },
+  'fs:u1': { name: '张三', avatar: '', groups: [{ id: 'g1', name: 'AI应用创新组', pathName: '研究院 / AI应用创新组', path: ['p1', 'g1'] }], leaderOf: ['g1'] },
   'fs:u2': { name: '李四', avatar: '', groups: [{ id: 'g2', name: '品牌组', pathName: '营销总部 / 品牌组', path: ['p2', 'g2'] }] },
   'fs:u3': { name: '王五', avatar: '', groups: [] },
   'fs:admin': { name: '管理员', avatar: '', groups: [{ id: 'g1', name: 'AI应用创新组', pathName: '研究院 / AI应用创新组', path: ['p1', 'g1'] }] },
@@ -232,6 +232,149 @@ test('custom bank parts are created by name and reused across questions', async 
   assert.equal(moved.data.part, 'B');
   const back = await f.u2('/api/bank/' + q2.id, 'PATCH', { part: 'Docker 部署' });
   assert.equal(back.data.part, q2.part);
+});
+
+test('bank parts can be renamed and questions follow', async t => {
+  const f = await fixture(t);
+  await f.u1('/api/bank'); // 触发 g1 种子副本
+  const r = await f.u1('/api/bank/parts/A', 'PATCH', { name: 'Part A · 通用基础' });
+  assert.equal(r.status, 200);
+  const { data: bank } = await f.u1('/api/bank');
+  assert.equal(bank.parts.find(p => p.key === 'A').name, 'Part A · 通用基础');
+  assert.ok(bank.questions.filter(q => q.part === 'A').every(q => q.partName === 'Part A · 通用基础'));
+  assert.equal((await f.u1('/api/bank/parts/A', 'PATCH', { name: '  ' })).status, 400);
+  assert.equal((await f.u1('/api/bank/parts/NOPE', 'PATCH', { name: 'x' })).status, 404);
+  // 别组无权改本组的自定义分类
+  const { data: q1 } = await f.u1('/api/bank', 'POST', { title: 'x', q: 'y', part: '组内分类' });
+  assert.equal((await f.u2('/api/bank/parts/' + q1.part, 'PATCH', { name: '篡改' })).status, 403);
+});
+
+test('super admin sees all orgs, all resumes read-only, and the dashboard', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facetry-org-test-'));
+  const server = createApp({ dataDir: dir, llm: () => ({ questions: [] }), config: { admins: ['fs:admin'], superAdmins: ['fs:u2'] } });
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  t.after(async () => { await new Promise(r => server.close(r)); const target = path.resolve(dir); if (target.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(target).startsWith('facetry-org-test-')) fs.rmSync(target, { recursive: true, force: true }); });
+  fs.writeFileSync(path.join(dir, '_users.json'), JSON.stringify(Object.fromEntries(Object.entries(USERS).map(([id, u]) => [id, { ...u, updatedAt: '2026-10-09T00:00:00.000Z' }]))));
+  fs.writeFileSync(path.join(dir, '_org.json'), JSON.stringify(ORG));
+  const now = new Date().toISOString();
+  fs.writeFileSync(path.join(dir, '_auth.json'), JSON.stringify(Object.fromEntries(Object.entries(TOKENS).map(([uid, tok]) => [tok, { userId: uid, name: USERS[uid].name, avatar: '', createdAt: now }]))));
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const as = uid => async (p, method = 'GET', data) => {
+    const r = await fetch(base + p, { method, headers: { 'Content-Type': 'application/json', Cookie: 'zm_sess=' + TOKENS[uid] }, ...(data !== undefined ? { body: JSON.stringify(data) } : {}) });
+    return { status: r.status, data: r.status === 204 ? null : await r.json().catch(() => ({})) };
+  };
+  const u1 = as('fs:u1'), u2 = as('fs:u2'), u3 = as('fs:u3');
+  // u1(g1) 建 JD、题目、简历
+  await u1('/api/jds', 'POST', { title: 'AI 工程师', content: 'JD' });
+  await u1('/api/bank', 'POST', { title: '组内题', q: '题干' });
+  const up = await fetch(base + '/api/upload?name=c.txt', { method: 'POST', headers: { Cookie: 'zm_sess=t1' }, body: '候选人' });
+  const s = await up.json();
+  // 超管普通视图只看自己组的内容
+  assert.equal((await u2('/api/jds')).data.jds.length, 0);
+  assert.ok(!(await u2('/api/bank')).data.questions.some(q => q.title === '组内题'));
+  // 通过管理台 group 参数可查看其他组内容（只读）
+  const jdsG1 = await u2('/api/jds?group=g1');
+  assert.equal(jdsG1.status, 200);
+  assert.equal(jdsG1.data.jds.length, 1);
+  assert.equal(jdsG1.data.jds[0].readonly, true);
+  const bankG1 = await u2('/api/bank?group=g1');
+  assert.equal(bankG1.status, 200);
+  const g1q = bankG1.data.questions.find(q => q.title === '组内题');
+  assert.ok(g1q); assert.equal(g1q.readonly, true);
+  // 非超管的 group 参数被忽略（回落到普通视图）
+  assert.ok(!(await u1('/api/bank?group=g2')).data.questions.some(q => (q.groupId || '') === 'g2' && q.title === '组内题'));
+  assert.ok((await u1('/api/jds?group=g2')).data.jds.every(j => j.groupId === 'g1'));
+  // 超管可见所有人的简历列表与详情，但只读
+  const list = (await u2('/api/sessions')).data;
+  assert.ok(list.some(x => x.id === s.id && x.sharedBy === '张三' && x.viaSuper));
+  assert.equal((await u2('/api/sessions/' + s.id)).status, 200);
+  assert.equal((await fetch(base + '/files/' + s.file, { headers: { Cookie: 'zm_sess=t2' } })).status, 200);
+  // 但只读：不能改他人的面试记录
+  assert.equal((await u2('/api/sessions/' + s.id, 'PATCH', { note: 'x' })).status, 403);
+  assert.equal((await u2('/api/sessions/' + s.id + '/evaluate', 'POST', {})).status, 403);
+  // 看板仅超管可见
+  const dash = await u2('/api/admin/dashboard');
+  assert.equal(dash.status, 200);
+  assert.equal(dash.data.sessions.total, 1);
+  assert.equal(dash.data.bank.byGroup.length >= 2, true); // g1 副本 + g2 副本
+  assert.equal(dash.data.jds.total, 1);
+  assert.ok(dash.data.byUser.some(u => u.userId === 'fs:u1'));
+  assert.equal((await u1('/api/admin/dashboard')).status, 403);
+  assert.equal((await u3('/api/admin/dashboard')).status, 403);
+  // me 返回 isSuper
+  assert.equal((await u2('/api/auth/me')).data.user.isSuper, true);
+  assert.equal((await u1('/api/auth/me')).data.user.isSuper, false);
+});
+
+test('upload with a jd fills role from the JD; invalid jd is rejected', async t => {
+  const f = await fixture(t);
+  const { data: jd } = await f.u1('/api/jds', 'POST', { title: 'AI 管培生（信息方向）', content: 'JD' });
+  const ok = await fetch(f.base + '/api/upload?name=r.txt&jd=' + jd.id, { method: 'POST', headers: { Cookie: 'zm_sess=t1' }, body: '候选人' });
+  assert.equal(ok.status, 201);
+  const s = await ok.json();
+  assert.equal(s.role, 'AI 管培生（信息方向）');
+  assert.equal(s.jdId, jd.id);
+  const bad = await fetch(f.base + '/api/upload?name=r2.txt&jd=nope', { method: 'POST', headers: { Cookie: 'zm_sess=t1' }, body: '候选人' });
+  assert.equal(bad.status, 404);
+  const plain = await fetch(f.base + '/api/upload?name=r3.txt', { method: 'POST', headers: { Cookie: 'zm_sess=t1' }, body: '候选人' });
+  assert.equal((await plain.json()).role, '');
+  // 别组的 JD 不能用
+  const { data: jd2 } = await f.u2('/api/jds', 'POST', { title: '品牌专员', content: 'JD' });
+  const cross = await fetch(f.base + '/api/upload?name=r4.txt&jd=' + jd2.id, { method: 'POST', headers: { Cookie: 'zm_sess=t1' }, body: '候选人' });
+  assert.equal(cross.status, 404);
+});
+
+test('group leader sees group members resumes read-only', async t => {
+  const f = await fixture(t);
+  // 管理员（同组 g1 成员）上传简历
+  const up = await fetch(f.base + '/api/upload?name=m.txt', { method: 'POST', headers: { Cookie: 'zm_sess=ta' }, body: '候选人乙' });
+  const s = await up.json();
+  // 负责人 u1（g1 负责人）可见，标记 viaLeader，只读
+  const list = await f.u1('/api/sessions');
+  const item = list.data.find(x => x.id === s.id);
+  assert.ok(item);
+  assert.equal(item.viaLeader, true);
+  assert.equal(item.sharedBy, '管理员');
+  assert.equal((await f.u1('/api/sessions/' + s.id)).status, 200);
+  assert.equal((await fetch(f.base + '/files/' + s.file, { headers: { Cookie: 'zm_sess=t1' } })).status, 200);
+  assert.equal((await f.u1('/api/sessions/' + s.id, 'PATCH', { note: 'x' })).status, 403);
+  assert.equal((await f.u1('/api/sessions/' + s.id + '/evaluate', 'POST', {})).status, 403);
+  // 普通组员（非负责人）不可见
+  assert.ok(!(await f.u3('/api/sessions')).data.some(x => x.id === s.id));
+  assert.equal((await f.u3('/api/sessions/' + s.id)).status, 404);
+  // 别组负责人（u2 不是 g1 负责人）不可见
+  assert.equal((await f.u2('/api/sessions/' + s.id)).status, 404);
+});
+
+test('analyze feeds group bank as reference with JD-linked questions first', async t => {
+  let captured;
+  const f = await fixture(t, async messages => {
+    // 两阶段：提纲调用 + 出题调用；题库参考注入在出题调用里
+    if (messages[0].content.includes('板块提纲')) {
+      captured = Array.isArray(messages[1].content) ? messages[1].content.find(c => c.type === 'text')?.text : messages[1].content;
+    }
+    if (!messages[0].content.includes('综合评价')) {
+      return { name: 'x', role: '', summary: '', sections: [{ title: '项目', kind: 'project', anchor: { quote: '项目', page: 1, y: 0.1 }, questions: [{ q: '问题？', point: '', followUp: '', expected: [], type: '经历深挖' }] }] };
+    }
+    return { overall: 'x', suggestion: 'x', strengths: [], weaknesses: [] };
+  });
+  const { data: jd } = await f.u1('/api/jds', 'POST', { title: 'AI 工程师', content: 'JD' });
+  await f.u1('/api/bank', 'POST', { title: '岗位专属题', q: '岗位题题干', jdId: jd.id });
+  await f.u1('/api/bank', 'POST', { title: '通用公共题', q: '通用题干' });
+  await f.u2('/api/bank', 'POST', { title: '别组的题', q: '别组题干' });
+  const up = await fetch(f.base + '/api/upload?name=r.txt&jd=' + jd.id, { method: 'POST', headers: { Cookie: 'zm_sess=t1' }, body: '候选人\n项目' });
+  const s = await up.json();
+  const { data: job } = await f.u1('/api/sessions/' + s.id + '/analyze', 'POST', { lines: [{ id: 'p1-l1', text: '项目', page: 1, y: 0.1, x: 0.1 }], pageCount: 1 });
+  for (let n = 0; n < 100; n++) {
+    const j = await f.u1('/api/jobs/' + job.id);
+    if (j.data.state !== 'running') break;
+    await new Promise(r => setTimeout(r, 20));
+  }
+  assert.ok(captured.includes('题库参考'));
+  assert.ok(captured.includes('岗位题题干'));
+  assert.ok(captured.includes('通用题干'));
+  assert.ok(!captured.includes('别组题干'));
+  assert.ok(captured.indexOf('岗位题题干') < captured.indexOf('通用题干'));
 });
 
 test('user directory powers the share picker', async t => {

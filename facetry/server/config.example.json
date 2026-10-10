@@ -6,5 +6,6 @@
   "feishuAppSecret": "...",
   "feishuRedirectUri": "http://127.0.0.1:3220/api/auth/feishu/callback",
   "admins": ["fs:on_ union_id 或 demo:姓名"],
-  "_admins_note": "admins 为管理员（用户 id 列表）。不配置时，首个飞书登录的用户自动成为管理员。管理员可单独授权某用户查看指定组织（含子部门）的 JD 与题库。"
+  "superAdmins": ["fs:on_ union_id"],
+  "_admins_note": "admins 为管理员（用户 id 列表）。不配置时，首个飞书登录的用户自动成为管理员。管理员可单独授权某用户查看指定组织（含子部门）的 JD 与题库。superAdmins 为超级管理员：可查看所有组织的 JD、题库与所有人的简历、面试记录（只读），并可见数据看板；只能通过此配置授予。"
 }
