@@ -1,9 +1,0 @@
-虚构测试简历
-林知远
-求职方向：AI 应用工程师
-项目经历：企业知识库问答系统
-使用 Python、FastAPI、Milvus 与 LangChain 构建 RAG，结合 BM25 混合检索与重排，将检索准确率由 72% 提升到 91%，服务 500 位内部用户。
-项目经历：数据分析 Agent
-使用 TypeScript、Python、PostgreSQL 实现自然语言查询和报告。设计只读 SQL 工具与异常重试机制，生成报告耗时缩短 60%。
-专业技能
-Python、TypeScript、Docker、RAG、Agent 工具调用。

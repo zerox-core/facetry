@@ -1,8 +1,0 @@
-{
-  "baseUrl": "https://你的OpenAI兼容接口/v1",
-  "apiKey": "sk-...",
-  "model": "模型名",
-  "interviewers": [
-    { "username": "admin", "password": "admin123", "name": "面试官" }
-  ]
-}
