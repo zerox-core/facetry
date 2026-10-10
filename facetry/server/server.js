@@ -78,10 +78,11 @@ function createApp(options = {}) {
   const jobs = new Map();
 
   // —— SQLite 数据层（node:sqlite，简历原文文件仍在磁盘上） ——
-  // 连接调用直接读取 process.env.SQLITE_PATH（平台契约：/data/app.db）；文件不存在时由 node:sqlite 创建，已存在则原样打开，绝不清空
-  const db = new DatabaseSync(process.env.SQLITE_PATH || (options.dataDir ? path.join(options.dataDir, 'app.db') : '/data/app.db'));
+  // 连接调用直接读取 process.env.SQLITE_PATH（平台契约：/data/app.db）；options.dataDir 仅供测试注入临时目录；
+  // 文件不存在时由 node:sqlite 创建，已存在则原样打开，绝不清空
+  const db = new DatabaseSync(options.dataDir ? path.join(options.dataDir, 'app.db') : (process.env.SQLITE_PATH || '/data/app.db'));
   // 数据库存有简历、会话令牌等敏感数据，限制为仅属主可读写
-  if (process.platform !== 'win32') { try { fs.chmodSync(process.env.SQLITE_PATH || (options.dataDir ? path.join(options.dataDir, 'app.db') : '/data/app.db'), 0o600); } catch {} }
+  if (process.platform !== 'win32') { try { fs.chmodSync(options.dataDir ? path.join(options.dataDir, 'app.db') : (process.env.SQLITE_PATH || '/data/app.db'), 0o600); } catch {} }
   db.exec(`PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, userId TEXT, name TEXT, role TEXT, phase TEXT, createdAt TEXT, updatedAt TEXT, data TEXT);
     CREATE TABLE IF NOT EXISTS bank_questions(id TEXT PRIMARY KEY, part TEXT, groupId TEXT, custom INTEGER, userId TEXT, data TEXT);
@@ -425,6 +426,25 @@ function createApp(options = {}) {
     if (j.state === 'running') { console.log('恢复未完成的生成任务:', j.type, j.sessionId); void executeJob(j); }
   }
   const publicJob = j => { const { payload, ...pub } = j; return pub; };
+  // —— 一次性数据迁移导入：仅在设置 IMPORT_TOKEN 环境变量时开放，迁移完成后应移除该变量 ——
+  const importToken = process.env.IMPORT_TOKEN || '';
+  function requireImportToken(req) {
+    const a = Buffer.from(String(req.headers['x-import-token'] || '')), b = Buffer.from(importToken);
+    if (!importToken || a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw fail('导入接口未启用或令牌不正确', 403);
+  }
+  // 允许导入的表与列白名单（jobs 为运行时任务表，不迁移）
+  const IMPORT_TABLES = {
+    sessions: ['id', 'userId', 'name', 'role', 'phase', 'createdAt', 'updatedAt', 'data'],
+    bank_questions: ['id', 'part', 'groupId', 'custom', 'userId', 'data'],
+    bank_parts: ['key', 'name', 'weight', 'custom', 'groupId'],
+    bank_meta: ['id', 'seededGroups'],
+    jds: ['id', 'groupId', 'userId', 'data'],
+    users: ['id', 'data'],
+    grants: ['userId', 'deptIds'],
+    org: ['id', 'data'],
+    meta: ['k', 'v'],
+    auth: ['token', 'userId', 'createdAt', 'data'],
+  };
   const server = http.createServer(async (req, res) => {
     try {
       if (req.headers.origin) {
@@ -433,6 +453,33 @@ function createApp(options = {}) {
         if (req.headers.origin !== `http://${req.headers.host}` && !['localhost', '127.0.0.1'].includes(originHost)) throw fail('不允许跨来源请求', 403);
       }
       const url = new URL(req.url, 'http://localhost'), p = decodeURIComponent(url.pathname), method = req.method;
+      // 数据迁移导入：INSERT OR REPLACE 逐行写入，重复执行不会清空或翻倍已有数据
+      if (p === '/api/admin/import' && method === 'POST') {
+        requireImportToken(req);
+        const b = await json(req);
+        const cols = IMPORT_TABLES[String(b.table || '')];
+        if (!cols || !Array.isArray(b.rows)) throw fail('导入格式不正确');
+        const stmt = db.prepare(`INSERT OR REPLACE INTO ${b.table}(${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`);
+        db.exec('BEGIN');
+        try {
+          for (const row of b.rows) {
+            if (!row || typeof row !== 'object') throw fail('导入格式不正确');
+            stmt.run(...cols.map(c => row[c] === undefined || row[c] === null ? null : typeof row[c] === 'object' ? JSON.stringify(row[c]) : row[c]));
+          }
+          db.exec('COMMIT');
+        } catch (e) { db.exec('ROLLBACK'); throw e; }
+        return send(res, 200, { table: b.table, imported: b.rows.length });
+      }
+      // 迁移简历附件：文件名沿用上传时生成的会话 id，只能落在数据目录
+      if (p === '/api/admin/import-file' && method === 'POST') {
+        requireImportToken(req);
+        const name = clip(url.searchParams.get('name'), 200);
+        if (!/^[\w-]+\.(pdf|docx|txt|png|jpg)$/.test(name)) throw fail('文件名不合法');
+        const file = await body(req, 25 * 1024 * 1024);
+        if (!file.length) throw fail('文件为空');
+        fs.writeFileSync(path.join(dir, name), file);
+        return send(res, 201, { name, size: file.length });
+      }
       if (p === '/api/status') return send(res, 200, { configured: !!(config().apiKey && config().model && config().baseUrl), feishu: !!(config().feishuAppId && config().feishuAppSecret) });
       if (p === '/api/auth/feishu' && method === 'GET') {
         const cfg = config();
