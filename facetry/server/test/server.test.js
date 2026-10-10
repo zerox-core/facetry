@@ -235,11 +235,11 @@ test('bank PATCH and DELETE return 404 for unknown ids',async t=>{
 test('bank storage file never leaks into session list or session routes',async t=>{
   const f=await fixture(t);
   await f.req('/api/bank');
-  assert.ok(fs.existsSync(path.join(f.dir,'facetry.db')));
+  assert.ok(fs.existsSync(path.join(f.dir,'app.db')));
   const {data:list}=await f.req('/api/sessions');assert.ok(Array.isArray(list));assert.ok(!list.some(s=>s&&s.parts));
   assert.equal((await f.req('/api/sessions/_bank')).status,400);
   const del=await fetch(f.base+'/api/sessions/_bank',{method:'DELETE',headers:{Cookie:f.cookie}});assert.equal(del.status,400);
-  assert.ok(fs.existsSync(path.join(f.dir,'facetry.db')));
+  assert.ok(fs.existsSync(path.join(f.dir,'app.db')));
 });
 test('unauthenticated requests to protected routes are rejected with 401',async t=>{
   const f=await fixture(t);

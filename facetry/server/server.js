@@ -64,23 +64,24 @@ function normalizeQuestions(result, outline) {
 
 function createApp(options = {}) {
   const root = __dirname;
-  // SQLITE_PATH（平台注入 /data/app.db）决定数据库位置，上传的简历附件与数据库同目录持久化
-  // 安全校验：路径规范化后必须落在 /data 持久化目录内，防止环境变量误配导致数据写到其他位置
-  let sqlitePath = '';
-  if (process.env.SQLITE_PATH) {
-    sqlitePath = path.resolve(process.env.SQLITE_PATH);
-    const allowedDir = path.resolve('/data');
-    if (!sqlitePath.startsWith(allowedDir + path.sep)) throw new Error('SQLITE_PATH 必须位于 /data 目录内（平台固定注入 /data/app.db）');
+  // 运行数据库统一读取平台注入的 SQLITE_PATH（平台固定值 /data/app.db）；
+  // 生产环境下路径规范化后必须落在 /data 内，防止环境变量误配写到其他位置；
+  // 本地开发不注入时在 server/.env 中设置 SQLITE_PATH 指向本地文件（参考 .env.example），测试经 options.dataDir 注入临时目录
+  if (process.env.SQLITE_PATH && process.env.NODE_ENV === 'production') {
+    const resolved = path.resolve(process.env.SQLITE_PATH);
+    if (!resolved.startsWith(path.resolve('/data') + path.sep)) throw new Error('SQLITE_PATH 必须位于 /data 目录内（平台固定注入 /data/app.db）');
   }
-  const dir = options.dataDir || (sqlitePath ? path.dirname(sqlitePath) : path.join(root, 'data'));
+  // 上传的简历附件与数据库同目录持久化（平台为 /data）
+  const dir = options.dataDir || path.dirname(process.env.SQLITE_PATH || '/data/app.db');
   fs.mkdirSync(dir, { recursive: true });
   const distDir = path.resolve(root, '..', 'dist');
   const jobs = new Map();
 
   // —— SQLite 数据层（node:sqlite，简历原文文件仍在磁盘上） ——
-  const db = new DatabaseSync(sqlitePath || path.join(dir, 'facetry.db'));
+  // 连接调用直接读取 process.env.SQLITE_PATH（平台契约：/data/app.db）；文件不存在时由 node:sqlite 创建，已存在则原样打开，绝不清空
+  const db = new DatabaseSync(process.env.SQLITE_PATH || (options.dataDir ? path.join(options.dataDir, 'app.db') : '/data/app.db'));
   // 数据库存有简历、会话令牌等敏感数据，限制为仅属主可读写
-  if (process.platform !== 'win32') { try { fs.chmodSync(sqlitePath || path.join(dir, 'facetry.db'), 0o600); } catch {} }
+  if (process.platform !== 'win32') { try { fs.chmodSync(process.env.SQLITE_PATH || (options.dataDir ? path.join(options.dataDir, 'app.db') : '/data/app.db'), 0o600); } catch {} }
   db.exec(`PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, userId TEXT, name TEXT, role TEXT, phase TEXT, createdAt TEXT, updatedAt TEXT, data TEXT);
     CREATE TABLE IF NOT EXISTS bank_questions(id TEXT PRIMARY KEY, part TEXT, groupId TEXT, custom INTEGER, userId TEXT, data TEXT);
@@ -317,11 +318,14 @@ function createApp(options = {}) {
   function config() {
     let cfg = {};
     try { cfg = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8')); } catch {}
-    // 环境变量优先于 config.json（LLM 配置应放在环境变量中）
+    // 环境变量优先于 config.json（LLM 与飞书凭据都应放在环境变量中）
     const env = {};
     if (process.env.LLM_BASE_URL) env.baseUrl = process.env.LLM_BASE_URL;
     if (process.env.LLM_API_KEY) env.apiKey = process.env.LLM_API_KEY;
     if (process.env.LLM_MODEL) env.model = process.env.LLM_MODEL;
+    if (process.env.FEISHU_APP_ID) env.feishuAppId = process.env.FEISHU_APP_ID;
+    if (process.env.FEISHU_APP_SECRET) env.feishuAppSecret = process.env.FEISHU_APP_SECRET;
+    if (process.env.FEISHU_REDIRECT_URI) env.feishuRedirectUri = process.env.FEISHU_REDIRECT_URI;
     return { ...cfg, ...env, ...(options.config || {}) };
   }
   async function llm(messages) {

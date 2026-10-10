@@ -1,9 +1,9 @@
 {
-  "feishuAppId": "cli_...",
-  "feishuAppSecret": "...",
-  "feishuRedirectUri": "http://127.0.0.1:8080/api/auth/feishu/callback",
+  "feishuAppId": "",
+  "feishuAppSecret": "",
+  "feishuRedirectUri": "",
   "admins": ["fs:on_ union_id 或 demo:姓名"],
   "superAdmins": ["fs:on_ union_id"],
-  "_llm_note": "LLM 配置（baseUrl/apiKey/model）不在此文件，改放环境变量 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL；支持在 server/.env 中填写（参考 .env.example），环境变量优先于本文件。",
+  "_credential_note": "凭据一律不写入本文件：飞书用环境变量 FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_REDIRECT_URI 注入，LLM 用 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL（参考 .env.example）；环境变量优先于本文件。config.json 与 .env 均已被 git 忽略，真实密钥不得提交版本库。",
   "_admins_note": "admins 为管理员（用户 id 列表）。不配置时，首个飞书登录的用户自动成为管理员。管理员可单独授权某用户查看指定组织（含子部门）的 JD 与题库。superAdmins 为超级管理员：可查看所有组织的 JD、题库与所有人的简历、面试记录（只读），并可见数据看板；只能通过此配置授予。"
 }
