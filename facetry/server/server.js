@@ -429,7 +429,7 @@ function createApp(options = {}) {
         const state = crypto.randomBytes(8).toString('hex');
         oauthStates.set(state, Date.now() + 10 * 60 * 1000);
         const basePath = (process.env.BASE_PATH || '').replace(/\/+$/, '');
-        const redirectUri = cfg.feishuRedirectUri || `http://${req.headers.host || '127.0.0.1:8080'}${basePath}/api/auth/feishu/callback`;
+        const redirectUri = cfg.feishuRedirectUri || `http://${req.headers.host || '127.0.0.1:3220'}${basePath}/api/auth/feishu/callback`;
         const location = 'https://open.feishu.cn/open-apis/authen/v1/authorize?app_id=' + encodeURIComponent(cfg.feishuAppId) + '&redirect_uri=' + encodeURIComponent(redirectUri) + '&state=' + state;
         res.writeHead(302, { Location: location }); return res.end();
       }
@@ -934,5 +934,5 @@ function createApp(options = {}) {
   server.on('close', () => { try { db.close(); } catch {} });
   return server;
 }
-if (require.main === module) { const port = Number(process.env.PORT) || 8080, host = process.env.HOST || '0.0.0.0'; createApp().listen(port, host, () => { const nets = require('os').networkInterfaces(); const lan = Object.values(nets).flat().filter(Boolean).find(n => n.family === 'IPv4' && !n.internal); console.log(`知马已启动：http://localhost:${port}${lan ? `（局域网：http://${lan.address}:${port}）` : ''}`); }); }
+if (require.main === module) { const port = Number(process.env.PORT) || 3220, host = process.env.HOST || '0.0.0.0'; createApp().listen(port, host, () => { const nets = require('os').networkInterfaces(); const lan = Object.values(nets).flat().filter(Boolean).find(n => n.family === 'IPv4' && !n.internal); console.log(`知马已启动：http://localhost:${port}${lan ? `（局域网：http://${lan.address}:${port}）` : ''}`); }); }
 module.exports = { createApp, normalizeOutline, normalizeQuestions };
