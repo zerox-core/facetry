@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { DocData } from '../pdf'
 import type { ResumeLine, Section } from '../types'
-import { ScoreDots } from './ScoreDots'
 
 export const kindLabels: Record<string, string> = {
   project: '项目经历',
@@ -108,7 +107,6 @@ export function PdfViewer({ doc, sections, lines, activeId, onToggle, hoverId, p
               {pageSections.map((sec) => {
                 const y = anchorY(sec, lines)
                 if (y === null) return null
-                const x = sec.anchor?.x ?? 0.06
                 const active = activeId === sec.id
                 const hovered = hoverId === sec.id
                 const idx = sections.findIndex((s) => s.id === sec.id) + 1
@@ -126,11 +124,11 @@ export function PdfViewer({ doc, sections, lines, activeId, onToggle, hoverId, p
                       }`}
                       style={{ top: `${y * 100}%` }}
                     />
+                    {/* 数字角标统一靠左对齐；点击即滚动右侧面板到对应板块 */}
                     <button
                       data-marker
                       type="button"
-                      aria-label={`${sec.title}，点击展开问题`}
-                      aria-expanded={active}
+                      aria-label={`${sec.title}，点击定位到对应题目`}
                       onClick={(e) => {
                         e.stopPropagation()
                         if (placingFor) return
@@ -138,52 +136,16 @@ export function PdfViewer({ doc, sections, lines, activeId, onToggle, hoverId, p
                           onOpenSection(sec.id)
                           return
                         }
-                        onToggle(active ? null : sec.id)
+                        onToggle(null)
+                        onLocate(sec.id)
                       }}
-                      className={`pointer-events-auto absolute z-10 grid h-[22px] w-[22px] -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-[11px] font-semibold tabular-nums transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
-                        active || hovered ? 'bg-amber-400 text-[#1d2939]' : 'bg-[#1d2939] text-white hover:bg-blue-600'
+                      className={`pointer-events-auto absolute z-10 grid h-[22px] w-[22px] -translate-y-1/2 cursor-pointer place-items-center rounded-full text-[11px] font-semibold tabular-nums transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+                        hovered ? 'bg-amber-400 text-[#1d2939]' : 'bg-[#1d2939] text-white hover:bg-blue-600'
                       } ${sec.anchor?.matched === false ? 'ring-2 ring-amber-400' : ''}`}
-                      style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
+                      style={{ left: 12, top: `${y * 100}%` }}
                     >
                       {idx}
                     </button>
-                    {active && !onOpenSection && (
-                      <div
-                        data-popover
-                        className="ws-paper login-fade pointer-events-auto absolute z-20 w-64 rounded-xl p-4"
-                        style={{
-                          left: `min(calc(${x * 100}% + 18px), calc(100% - 264px))`,
-                          top: `min(calc(${y * 100}% + 12px), calc(100% - 220px))`,
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <span className="text-sm font-semibold text-slate-900">{sec.title}</span>
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{kindLabels[sec.kind] || '简历经历'}</span>
-                        </div>
-                        <div className="max-h-44 space-y-2.5 overflow-y-auto">
-                          {sec.questions.map((q) => (
-                            <div key={q.id} className={q.excluded ? 'opacity-45' : ''}>
-                              <p className="line-clamp-2 text-[13px] leading-5 text-slate-700">{q.q}</p>
-                              <div className="mt-1">
-                                <ScoreDots value={q.score} readonly size="sm" />
-                              </div>
-                            </div>
-                          ))}
-                          {!sec.questions.length && <p className="text-xs text-slate-400">该板块暂无问题</p>}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onToggle(null)
-                            onLocate(sec.id)
-                          }}
-                          className="mt-3 cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                        >
-                          定位到右侧面板 →
-                        </button>
-                      </div>
-                    )}
                   </div>
                 )
               })}
@@ -191,7 +153,7 @@ export function PdfViewer({ doc, sections, lines, activeId, onToggle, hoverId, p
           </div>
         )
       })}
-      <p className="text-center text-xs text-slate-400">数字标记对应这段经历的问题，点击即可展开</p>
+      <p className="text-center text-xs text-slate-400">数字标记对应这段经历的问题，点击自动定位到右侧题目</p>
     </div>
   )
 }
