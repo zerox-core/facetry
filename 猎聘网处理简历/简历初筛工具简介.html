@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>猎聘网简历自动初筛工具 · 简介</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: #f4f6f9; color: #1f2a37; line-height: 1.7;
+    padding: 32px 16px;
+  }
+  .page { max-width: 880px; margin: 0 auto; background: #fff; border-radius: 14px;
+          box-shadow: 0 6px 28px rgba(20,40,80,.08); overflow: hidden; }
+  .cover { background: linear-gradient(135deg,#1d4e89 0%, #2f7d6e 100%); color:#fff;
+           padding: 38px 44px; }
+  .cover .tag { display:inline-block; font-size:12px; letter-spacing:2px; opacity:.85;
+                border:1px solid rgba(255,255,255,.5); padding:3px 10px; border-radius:20px; }
+  .cover h1 { font-size: 27px; margin: 14px 0 6px; font-weight: 700; }
+  .cover p { font-size: 14px; opacity: .92; }
+  .body { padding: 30px 44px 40px; }
+  .sec { margin-bottom: 30px; }
+  .sec h2 { font-size: 18px; color:#1d4e89; border-left: 4px solid #2f7d6e;
+            padding-left: 10px; margin-bottom: 14px; }
+  .lead { background:#f6f9fc; border:1px solid #e3ecf5; border-radius:10px;
+          padding:16px 18px; font-size:14.5px; color:#374151; }
+  /* 流程 */
+  .flow { display:flex; flex-wrap:wrap; gap:10px; }
+  .step { flex:1 1 130px; background:#f6f9fc; border:1px solid #e3ecf5; border-radius:10px;
+          padding:14px 12px; position:relative; }
+  .step .n { display:inline-block; width:24px; height:24px; line-height:24px; text-align:center;
+             background:#1d4e89; color:#fff; border-radius:50%; font-size:13px; font-weight:700; margin-bottom:8px; }
+  .step b { display:block; font-size:14px; color:#1f2a37; margin-bottom:4px; }
+  .step span { font-size:12.5px; color:#5b6776; }
+  /* 功能卡片 */
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+  .card { border:1px solid #e3ecf5; border-radius:10px; padding:14px 16px; background:#fff; }
+  .card b { color:#2f7d6e; font-size:14px; }
+  .card p { font-size:13px; color:#5b6776; margin-top:5px; }
+  /* 提速 */
+  .kpi { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
+  .kpi .box { flex:1 1 200px; background:linear-gradient(135deg,#eef4fb,#eaf6f2);
+              border:1px solid #d8e6f2; border-radius:10px; padding:16px; text-align:center; }
+  .kpi .num { font-size:26px; font-weight:800; color:#1d4e89; }
+  .kpi .lab { font-size:12.5px; color:#5b6776; margin-top:4px; }
+  ul.tips { list-style:none; }
+  ul.tips li { padding:8px 0 8px 26px; position:relative; font-size:14px; border-bottom:1px dashed #eef1f5; }
+  ul.tips li:last-child { border-bottom:none; }
+  ul.tips li::before { content:"✓"; position:absolute; left:0; top:8px; color:#2f7d6e;
+                       font-weight:800; }
+  .foot { background:#f6f9fc; border-top:1px solid #e3ecf5; padding:16px 44px;
+          font-size:12.5px; color:#7a8794; }
+  .foot b { color:#1f2a37; }
+  @media print { body { background:#fff; } .page { box-shadow:none; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="cover">
+    <span class="tag">HR 招聘提效工具</span>
+    <h1>猎聘网简历自动初筛工具</h1>
+    <p>面向丽珠社招（CRA 等岗位）的简历初筛自动化方案 —— 扫描 · 解析 · AI 评估 · 复核</p>
+  </div>
+
+  <div class="body">
+    <div class="sec">
+      <h2>一、工具定位</h2>
+      <div class="lead">
+        将招聘中"逐份人工打开简历、阅读、判断"的初筛环节，升级为
+        <b>系统自动扫描解析 + 大模型 AI 深度评估 + 人工复核确认</b>。
+        既保留 HR 的最终决策权，又把大量重复阅读与基础判断交给工具完成，
+        显著缩短初筛周期、统一筛选标准。
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>二、核心流程</h2>
+      <div class="flow">
+        <div class="step"><span class="n">1</span><b>一键启动</b><span>后台服务与浏览器环境自动就绪</span></div>
+        <div class="step"><span class="n">2</span><b>自动扫描</b><span>读取猎聘"收到简历 / 未处理"列表</span></div>
+        <div class="step"><span class="n">3</span><b>智能解析</b><span>提取姓名、目前公司/岗位、期望城市、工作经历、应聘岗位</span></div>
+        <div class="step"><span class="n">4</span><b>AI 评估</b><span>规则引擎 + 大模型双重评估，输出匹配摘要与关注点</span></div>
+        <div class="step"><span class="n">5</span><b>自动判定</b><span>合适→通过筛选 / 不合适→标记不合适（可仅模拟）</span></div>
+        <div class="step"><span class="n">6</span><b>看板复核</b><span>HR 统一查看、跳转详情、确认操作</span></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>三、主要功能</h2>
+      <div class="grid">
+        <div class="card"><b>自动扫描</b><p>定时/手动读取猎聘未处理简历，无需逐份手动点开。</p></div>
+        <div class="card"><b>精准解析</b><p>目前公司/岗位、期望城市、应聘岗位与岗位 JD 自动匹配。</p></div>
+        <div class="card"><b>大模型深度评估</b><p>调用 MiniMax 大模型生成人岗匹配摘要与风险关注点。</p></div>
+        <div class="card"><b>双引擎兜底</b><p>规则版与 LLM 互备，大模型异常时自动回退规则版，稳定可靠。</p></div>
+        <div class="card"><b>看板管理</b><p>候选人、时间、AI 评估一目了然，支持跳转猎聘详情页。</p></div>
+        <div class="card"><b>安全可控</b><p>默认"仅模拟"预览，真实点击操作需人工确认，避免误处理。</p></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>四、效率提升亮点</h2>
+      <div class="kpi">
+        <div class="box"><div class="num">80%+</div><div class="lab">预计节省初筛工时</div></div>
+        <div class="box"><div class="num">秒级</div><div class="lab">单份简历评估耗时</div></div>
+        <div class="box"><div class="num">7 类</div><div class="lab">岗位 JD 已覆盖</div></div>
+      </div>
+      <ul class="tips">
+        <li>初筛从"人工逐份阅读 + 判断"变为"系统秒级自动评估 + 人工复核"，HR 只需聚焦系统标注的待定/异常项。</li>
+        <li>大模型替代人工全文阅读，判断更客观、标准更统一，减少主观偏差与漏看。</li>
+        <li>支持批量扫描与每日增量处理，可稳定支撑招聘高峰期的常态化初筛。</li>
+        <li>风险关注点自动高亮（如经验缺口、资质不符），辅助 HR 快速决策。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>当前状态：</b> 已在本地稳定运行，覆盖 CRA、SSU、临床项目经理、医学经理等多类岗位 JD。
+    <br><b>后续可扩展：</b> 与飞书多维表格打通候选人库、支持更多招聘平台接入。
+  </div>
+</div>
+</body>
+</html>

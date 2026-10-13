@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>猎聘安全验证触发差异排查报告</title>
+<style>
+  :root{ --blue:#1a73e8; --red:#d93025; --green:#188038; --bg:#f7f9fc; --card:#fff; --line:#e3e8ef; --txt:#1f2329; --sub:#5b6573; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--txt);line-height:1.6;padding:28px;}
+  .wrap{max-width:980px;margin:0 auto;}
+  h1{font-size:23px;margin-bottom:6px;}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:18px;}
+  .banner{background:linear-gradient(135deg,#fff4e5,#ffe8cc);border:1px solid #ffd8a8;border-radius:12px;padding:16px 18px;margin-bottom:22px;font-size:15px;}
+  .banner b{color:var(--red);}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.04);}
+  .card h2{font-size:17px;margin-bottom:14px;padding-left:10px;border-left:4px solid var(--blue);}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top;}
+  th{background:#f1f5fb;font-weight:600;}
+  tr:nth-child(even) td{background:#fafbfd;}
+  .tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600;}
+  .t-better{background:#e6f4ea;color:var(--green);}
+  .t-worse{background:#fce8e6;color:var(--red);}
+  .t-same{background:#eef1f5;color:var(--sub);}
+  .now{background:#fff8e1;}
+  .base{background:#f0f4f9;}
+  ul{margin:8px 0 0 20px;font-size:13.5px;}
+  li{margin-bottom:6px;}
+  .hl{background:#fff3cd;padding:0 3px;border-radius:3px;}
+  .metric{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;}
+  .m{flex:1;min-width:150px;background:#f7f9fc;border:1px solid var(--line);border-radius:10px;padding:12px 14px;}
+  .m .n{font-size:22px;font-weight:700;}
+  .m .l{font-size:12px;color:var(--sub);}
+  .red{color:var(--red);} .green{color:var(--green);} .blue{color:var(--blue);}
+  footer{color:var(--sub);font-size:12px;text-align:center;margin-top:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>猎聘安全验证触发差异排查报告</h1>
+  <div class="sub">生成于 2026-10-08 · 数据来源：当前运行版代码 + data/recruit.db + 8-26 定版备份</div>
+
+  <div class="banner">
+    <b>结论：现在频繁触发，不是你的代码变了，而是猎聘平台侧风控在 9 月中下旬开始收紧、10 月全面升级。</b><br>
+    当前版本（8-26 源码 + 猎聘专属保护）在"防触发"上比 8 月/9 月初版本<b>更慢、更拟人、更安全</b>，所以不可能是代码变差导致。证据：8–9 月猎聘累计扫 415 份基本正常，10 月仅 95 份就几乎全程撞验证码；而前程无忧累计 2974 份从不触发。
+  </div>
+
+  <div class="card">
+    <h2>一、代码版本差异：当前版 vs 8 月/9 月初基线（8-26 定版）</h2>
+    <table>
+      <tr><th style="width:22%">维度</th><th style="width:30%">8 月/9 月初（8-26 定版）</th><th style="width:30%">当前运行版（10-07 启用）</th><th style="width:18%">变化</th></tr>
+      <tr><td class="base">每份间隔</td><td class="base">1500ms（全局，猎聘也 1.5 秒/份）</td><td class="now">猎聘专属 6000ms + ±60% 抖动（2.4~9.6 秒）</td><td><span class="tag t-better">更慢 ✓</span></td></tr>
+      <tr><td class="base">每分钟节流</td><td class="base">无</td><td class="now">最多 10 份/分钟</td><td><span class="tag t-better">新增 ✓</span></td></tr>
+      <tr><td class="base">安全验证检测</td><td class="base">无（撞墙也不知，继续扫/卡住）</td><td class="now">多特征 JS 检测（列表页跳过防误报）</td><td><span class="tag t-better">新增 ✓</span></td></tr>
+      <tr><td class="base">命中验证后处理</td><td class="base">无</td><td class="now">自动暂停等人过验证码，过完继续</td><td><span class="tag t-better">新增 ✓</span></td></tr>
+      <tr><td class="base">翻页</td><td class="base">无（每轮约 20 份停）</td><td class="now">无（继承 8-26）</td><td><span class="tag t-same">相同</span></td></tr>
+      <tr><td class="base">拟人抖动</td><td class="base">无（匀速机械请求）</td><td class="now">有（±60% 随机间隔）</td><td><span class="tag t-better">新增 ✓</span></td></tr>
+    </table>
+    <p style="margin-top:12px;font-size:13px;color:var(--sub)">说明：9-18 备份不完整（仅含 main.py/export.py，缺 core/），无法作为对比基线，故采用 8-26 定版备份（解压校验完整）。当前版 = 8-26 源码 + 10-07 追加的猎聘保护，51job 分支零改动。</p>
+  </div>
+
+  <div class="card">
+    <h2>二、数据库时间线：扫描份数 vs 触发情况</h2>
+    <table>
+      <tr><th>平台</th><th>8 月</th><th>9 月</th><th>10 月（至 10-07）</th><th>累计</th><th>安全验证触发</th></tr>
+      <tr><td class="base">猎聘网</td><td class="base">154 份</td><td class="base">261 份</td><td class="now">95 份</td><td>510 份</td><td class="red">9-18 首现，10-07 爆发（95 份中大量"安全中心-验证码"）</td></tr>
+      <tr><td class="base">前程无忧</td><td class="base">1256 份</td><td class="base">1353 份</td><td class="now">365 份</td><td>2974 份</td><td class="green">从未出现验证码</td></tr>
+    </table>
+    <div class="metric">
+      <div class="m"><div class="n red">415</div><div class="l">猎聘 8–9 月扫描份数（基本正常）</div></div>
+      <div class="m"><div class="n red">95</div><div class="l">猎聘 10 月扫描份数（已大量触发）</div></div>
+      <div class="m"><div class="n green">2974</div><div class="l">前程无忧累计份数（从不触发）</div></div>
+      <div class="m"><div class="n blue">2026-09-18</div><div class="l">猎聘首个验证码记录日期（拐点）</div></div>
+    </div>
+    <ul>
+      <li><span class="hl">9-18 拐点</span>：DB 中最早一条"安全中心-验证码"记录是 <b>2026-09-18 16:17</b>（reason："简历内容为平台安全验证码信息"）。即 9 月初确实无触发，9-18 起出现，与你"9 月没遇到"的印象基本吻合，只是拐点比记忆稍早几天。</li>
+      <li><span class="hl">10-07 爆发</span>：当天 5 轮（北京时间 10:44–13:24）共 95 份，候选人表里充斥"安全中心-验证码"，几乎每轮必撞墙。</li>
+      <li><span class="hl">51job 对照</span>：累计 2974 份、97 个会话，从无任何验证码记录——证明你的扫描行为本身没问题，是猎聘单独收紧。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>三、根因结论与建议</h2>
+    <p style="font-size:14px;"><b>根因：猎聘平台侧风控在 9 月中下旬→10 月持续收紧，与代码版本、扫描速度、扫描量均无关。</b></p>
+    <ul>
+      <li>扫描量不是原因：8–9 月猎聘累计 415 份不触发，10 月仅 95 份就狂触发；而 51job 2974 份从不触发。</li>
+      <li>代码不是原因：当前版比 8-26 慢 4 倍 + 拟人 + 节流 + 验证暂停，理论上更不易触发，却更频繁——反证外部因素。</li>
+      <li>降速/拟人/暂停只是<b>触发后的止损手段</b>（让人过了验证码进度不废），不是解药；继续压低速度收益已边际递减。</li>
+    </ul>
+    <p style="font-size:14px;margin-top:6px;"><b>实操建议：</b></p>
+    <ul>
+      <li>猎聘：每天 <b>2–3 轮、每轮约 20 份</b>就收手，避开风控密集时段；触发后靠 verify_pause 在浏览器手动过验证码即可。</li>
+      <li>前程无忧：放心扫，不受影响。</li>
+      <li>当前 6 秒/份 + 每分钟 10 份 + 验证暂停 的配置已足够，<b>无需再降速</b>；若仍频繁，问题在平台而非工具。</li>
+    </ul>
+  </div>
+
+  <footer>本报告由猎聘简历初筛工具排查生成 · 代码差异已用 diff 校验 · 数据取自 data/recruit.db</footer>
+</div>
+</body>
+</html>

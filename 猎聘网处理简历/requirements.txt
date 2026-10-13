@@ -1,0 +1,4 @@
+PySide6>=6.6
+websocket-client>=1.6
+requests>=2.31
+openpyxl>=3.1

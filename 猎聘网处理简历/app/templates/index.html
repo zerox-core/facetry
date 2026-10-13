@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>猎聘简历初筛</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+  .card { background:#fff; border:1px solid #eef0f4; border-radius:10px; }
+  .btn-primary { background:#2563eb; color:#fff; padding:8px 18px; border-radius:6px; font-weight:500; }
+  .btn-primary:hover { background:#1d4ed8; }
+  .btn-primary:disabled { background:#94a3b8; cursor:not-allowed; }
+  .btn-secondary { background:#fff; color:#374151; border:1px solid #d1d5db; padding:8px 18px; border-radius:6px; }
+  .btn-secondary:hover { background:#f9fafb; }
+  .btn-danger { background:#dc2626; color:#fff; border:1px solid #dc2626; padding:8px 18px; border-radius:6px; }
+  .btn-danger:hover { background:#b91c1c; }
+  .verdict-合适 { color:#16a34a; }
+  .verdict-待定 { color:#f59e0b; }
+  .verdict-不合适 { color:#dc2626; }
+  .verdict-信息不足 { color:#6b7280; }
+  .verdict-select { font-size:12px; padding:2px 4px; border-radius:6px; border:1px solid #cbd5e1; cursor:pointer; background:#fff; }
+  .verdict-select.v-合适 { color:#16a34a; border-color:#16a34a; background:#f0fdf4; }
+  .verdict-select.v-待定 { color:#f59e0b; border-color:#f59e0b; background:#fffbeb; }
+  .verdict-select.v-不合适 { color:#dc2626; border-color:#dc2626; background:#fef2f2; }
+  .verdict-select.v-信息不足 { color:#6b7280; border-color:#6b7280; background:#f9fafb; }
+  .stat-num { font-size:36px; font-weight:600; line-height:1.1; }
+  .pill { padding:2px 8px; border-radius:9999px; font-size:12px; }
+  .pill-合适 { background:#dcfce7; color:#166534; }
+  .pill-待定 { background:#fef3c7; color:#92400e; }
+  .pill-不合适 { background:#fee2e2; color:#991b1b; }
+  .pill-信息不足 { background:#f3f4f6; color:#374151; }
+  table thead th { color:#6b7280; font-weight:500; font-size:13px; text-align:left; padding:7px 9px; background:#fafbfc; white-space:nowrap; }
+  table tbody td { padding:7px 9px; border-top:1px solid #f1f3f5; font-size:13px; vertical-align:middle; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* 紧凑列宽：去掉固定总宽，让表格自适应屏幕，避免整体过宽需横向滚动 */
+  table th:nth-child(1), table td:nth-child(1) { max-width:130px; }
+  table th:nth-child(2), table td:nth-child(2) { max-width:120px; }
+  table th:nth-child(3), table td:nth-child(3) { max-width:140px; }
+  table th:nth-child(4), table td:nth-child(4) { max-width:88px; }
+  table th:nth-child(5), table td:nth-child(5) { max-width:140px; }
+  table th:nth-child(6), table td:nth-child(6) { width:56px; }
+  table th:nth-child(7), table td:nth-child(7) { width:46px; }
+  table th:nth-child(9), table td:nth-child(9) { width:58px; }
+  table th:nth-child(10), table td:nth-child(10) { width:62px; }
+  table th:nth-child(11), table td:nth-child(11) { max-width:108px; }
+  table tbody td.cell-eval { white-space:normal; overflow:visible; min-width:220px; max-width:300px; }
+  .chrome-status { font-family: ui-monospace, monospace; font-size:12px; }
+  .pulse-dot { display:inline-block; width:8px; height:8px; border-radius:9999px; margin-right:6px; }
+  .pulse-on { background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.6); animation:pulse 1.5s infinite; }
+  .pulse-off { background:#94a3b8; }
+  @keyframes pulse {
+    0% { box-shadow:0 0 0 0 rgba(34,197,94,.6); }
+    70% { box-shadow:0 0 0 8px rgba(34,197,94,0); }
+    100% { box-shadow:0 0 0 0 rgba(34,197,94,0); }
+  }
+  .log-line { font-family: ui-monospace, "Cascadia Code", monospace; font-size:12px; padding:2px 0; }
+  details > summary { cursor:pointer; list-style:none; }
+  details > summary::-webkit-details-marker { display:none; }
+  .hit-chip { display:inline-block; background:#ecfeff; color:#0e7490; padding:2px 8px; border-radius:6px; margin-right:4px; margin-top:2px; font-size:11px; }
+  .miss-chip { display:inline-block; background:#fef2f2; color:#991b1b; padding:2px 8px; border-radius:6px; margin-right:4px; margin-top:2px; font-size:11px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<div class="max-w-7xl mx-auto px-6 py-6">
+
+  <!-- Header -->
+  <header class="flex items-center justify-between mb-4">
+    <h1 class="text-xl font-semibold text-slate-800">简历初筛</h1>
+    <div class="flex items-center gap-3">
+      <button id="btn-stop" class="btn-secondary hidden" onclick="stopScan()">停止扫描</button>
+    </div>
+  </header>
+
+  <!-- 双平台独立面板 -->
+  <!-- 猎聘网面板 -->
+  <div class="card mb-3 px-4 py-3">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-slate-800 font-semibold">猎聘简历初筛</div>
+      <div class="flex items-center gap-2">
+        <button id="btn-scan-liepin" class="btn-primary" onclick="startScan('猎聘网')">扫描新简历</button>
+        <button id="btn-rescan-liepin" class="btn-secondary" onclick="rescanToday('猎聘网')">重新扫描今日</button>
+        <button id="btn-diag-liepin" class="btn-secondary" onclick="runDiagnose('猎聘网')">诊断</button>
+      </div>
+    </div>
+    <div class="flex items-center gap-6 flex-wrap">
+      <span class="text-slate-500 text-sm font-medium">扫描时自动处理猎聘简历：</span>
+      <label class="inline-flex items-center gap-2 cursor-pointer text-sm select-none">
+        <input type="checkbox" id="chk-auto-operate-liepin" class="w-4 h-4">
+        <span>自动点「通过筛选 / 不合适」</span>
+      </label>
+      <label class="inline-flex items-center gap-2 cursor-pointer text-sm select-none">
+        <input type="checkbox" id="chk-dry-run-liepin" class="w-4 h-4">
+        <span>仅模拟（先看日志，不真点）</span>
+      </label>
+      <span id="auto-operate-hint-liepin" class="text-xs text-amber-600"></span>
+    </div>
+  </div>
+
+  <!-- 前程无忧面板 -->
+  <div class="card mb-4 px-4 py-3">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-slate-800 font-semibold">前程无忧简历初筛</div>
+      <div class="flex items-center gap-2">
+        <button id="btn-scan-51job" class="btn-primary" onclick="startScan('前程无忧')">扫描新简历</button>
+        <button id="btn-rescan-51job" class="btn-secondary" onclick="rescanToday('前程无忧')">重新扫描今日</button>
+        <button id="btn-diag-51job" class="btn-secondary" onclick="runDiagnose('前程无忧')">诊断</button>
+      </div>
+    </div>
+    <div class="flex items-center gap-6 flex-wrap">
+      <span class="text-slate-500 text-sm font-medium">扫描时自动处理前程无忧简历：</span>
+      <label class="inline-flex items-center gap-2 cursor-pointer text-sm select-none">
+        <input type="checkbox" id="chk-auto-operate-51job" class="w-4 h-4">
+        <span>自动点「通过 / 淘汰」</span>
+      </label>
+      <label class="inline-flex items-center gap-2 cursor-pointer text-sm select-none">
+        <input type="checkbox" id="chk-dry-run-51job" class="w-4 h-4">
+        <span>仅模拟（先看日志，不真点）</span>
+      </label>
+      <span id="auto-operate-hint-51job" class="text-xs text-amber-600"></span>
+    </div>
+  </div>
+
+  <!-- Chrome Status -->
+  <div id="chrome-status" class="card mb-4 px-4 py-3 flex items-start gap-2 chrome-status">
+    <span class="pulse-dot pulse-off"></span>
+    <div class="flex-1">
+      <div id="chrome-status-title" class="text-slate-700 font-medium">正在检查 Chrome...</div>
+      <div id="chrome-status-detail" class="text-slate-500 whitespace-pre-wrap"></div>
+    </div>
+    <button class="btn-secondary" onclick="refreshChrome()">重新检测</button>
+  </div>
+
+  <!-- Diagnose -->
+  <div class="card mb-4 px-4 py-3 hidden" id="diag-card">
+    <div class="flex items-center justify-between mb-2">
+      <div id="diag-title" class="text-slate-700 font-medium">页面诊断结果（调试 Chrome 中的平台标签页）</div>
+      <div class="flex items-center gap-2">
+        <button class="btn-secondary" onclick="rerunDiagnose()">重新诊断</button>
+        <button class="btn-secondary" onclick="hideDiagnose()">✕ 隐藏</button>
+      </div>
+    </div>
+    <pre id="diag-out" class="text-xs bg-slate-900 text-green-200 rounded p-3 overflow-auto max-h-80 whitespace-pre-wrap"></pre>
+  </div>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+    <div class="card p-4"><div class="text-slate-500 text-sm">累计扫描</div><div id="stat-total" class="stat-num text-blue-600">0</div></div>
+    <div class="card p-4"><div class="text-slate-500 text-sm">今日扫描</div><div id="stat-today" class="stat-num text-slate-800">0</div></div>
+    <div class="card p-4"><div class="text-slate-500 text-sm">合适</div><div id="stat-qualified" class="stat-num text-emerald-600">0</div></div>
+    <div class="card p-4"><div class="text-slate-500 text-sm">待定</div><div id="stat-pending" class="stat-num text-amber-500">0</div></div>
+    <div class="card p-4"><div class="text-slate-500 text-sm">不合适</div><div id="stat-rejected" class="stat-num text-red-500">0</div></div>
+    <div class="card p-4"><div class="text-slate-500 text-sm">信息不足</div><div id="stat-incomplete" class="stat-num text-slate-500">0</div></div>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="card p-4 mb-4 flex flex-wrap items-center gap-3">
+    <div class="flex items-center gap-2">
+      <span class="text-slate-500 text-sm">判定</span>
+      <select id="filter-verdict" class="border border-slate-300 rounded px-2 py-1 text-sm">
+        <option>全部</option>
+        <option>合适</option><option>待定</option><option>不合适</option><option>信息不足</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-slate-500 text-sm">平台</span>
+      <select id="filter-platform" class="border border-slate-300 rounded px-2 py-1 text-sm">
+        <option>全部平台</option>
+        <option>猎聘网</option>
+        <option>前程无忧</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-slate-500 text-sm">岗位</span>
+      <select id="filter-jd" class="border border-slate-300 rounded px-2 py-1 text-sm min-w-[200px]">
+        <option>全部岗位</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-slate-500 text-sm">从</span>
+      <input id="filter-date-from" type="date" class="border border-slate-300 rounded px-2 py-1 text-sm" />
+      <span class="text-slate-500 text-sm">到</span>
+      <input id="filter-date-to" type="date" class="border border-slate-300 rounded px-2 py-1 text-sm" />
+    </div>
+    <button class="btn-secondary text-sm" onclick="resetFilters()">重置</button>
+    <div class="ml-auto text-slate-500 text-sm">命中 <span id="row-count">0</span> 条</div>
+  </div>
+
+  <!-- Live Log -->
+  <details id="live-log-details" class="card p-3 mb-3" open>
+    <summary class="text-slate-700 font-medium flex items-center justify-between">
+      <span>实时日志 <span class="text-xs text-slate-400 ml-2" id="scan-state-text"></span></span>
+      <button type="button" class="text-xs text-blue-600 hover:underline" onclick="toggleLiveLog(event)">隐藏</button>
+    </summary>
+    <div id="live-log" class="mt-2 max-h-40 overflow-y-auto bg-slate-50 rounded p-2"></div>
+  </details>
+
+  <!-- Table -->
+  <div class="card overflow-x-auto">
+    <table class="w-full">
+      <thead>
+        <tr>
+          <th class="w-8 text-center"><input type="checkbox" id="chk-all" title="全选本页"></th>
+          <th>候选人</th><th>目前岗位</th><th>目前公司</th><th>期望城市</th>
+          <th>应聘职位</th><th>判定</th><th>分数</th><th>AI评估结果</th>
+          <th>简历</th><th>平台</th><th>时间</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <!-- 翻页 -->
+  <div id="pager" class="card px-4 py-3 mb-6 text-sm">
+    <div class="flex items-center justify-between">
+      <div class="text-slate-500">共 <span id="total-count">0</span> 条 · 第 <span id="cur-page">1</span>/<span id="total-pages">1</span> 页</div>
+      <div class="flex items-center gap-2">
+        <button class="btn-secondary text-sm" onclick="gotoPage(1)">首页</button>
+        <button class="btn-secondary text-sm" onclick="gotoPage(currentPage-1)">上一页</button>
+        <button class="btn-secondary text-sm" onclick="gotoPage(currentPage+1)">下一页</button>
+        <button class="btn-secondary text-sm" onclick="gotoPage(totalPages)">末页</button>
+        <span class="flex items-center gap-1 ml-2 pl-2 border-l border-slate-200">
+          跳至 <input id="jump-page" type="number" min="1" class="border border-slate-300 rounded px-2 py-1 text-sm w-16" /> 页
+          <button class="btn-secondary text-sm" onclick="jumpToPage()">跳转</button>
+        </span>
+      </div>
+    </div>
+    <div class="mt-3 pt-3 border-t border-slate-100 flex items-center gap-3">
+      <button id="btn-bulk-delete" class="btn-danger text-sm hidden" onclick="bulkDelete()">批量删除选中(<span id="bulk-count">0</span>)</button>
+      <span class="text-xs text-slate-400">勾选可跨页累计；选中后在此处一次性删除。</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmtTime = (s) => { try { return s ? String(s).substring(0, 16) : '-'; } catch(e) { return '-'; } };
+const fmtDateOnly = (s) => { try { const t = String(s); return t.length >= 10 ? t.substring(0, 10) : (t || '-'); } catch(e) { return '-'; } };
+const fmtTimeOnly = (s) => { try { const t = String(s); return t.length >= 16 ? t.substring(11, 16) : ''; } catch(e) { return ''; } };
+// 平台 → DOM id 后缀映射
+const PLATFORMS = [
+  {name:'猎聘网', code:'liepin', scanBtn:'btn-scan-liepin', rescanBtn:'btn-rescan-liepin', diagBtn:'btn-diag-liepin', autoChk:'chk-auto-operate-liepin', dryChk:'chk-dry-run-liepin', hint:'auto-operate-hint-liepin'},
+  {name:'前程无忧', code:'51job', scanBtn:'btn-scan-51job', rescanBtn:'btn-rescan-51job', diagBtn:'btn-diag-51job', autoChk:'chk-auto-operate-51job', dryChk:'chk-dry-run-51job', hint:'auto-operate-hint-51job'},
+];
+function getPlatformCfg(name){ return PLATFORMS.find(p=>p.name===name); }
+let currentDiagnosePlatform = '猎聘网';
+
+function refreshChrome(){
+  fetch('/api/chrome/status').then(r=>r.json()).then(s=>{
+    const dot = document.querySelector('#chrome-status .pulse-dot');
+    if (s.reachable && s.platforms) {
+      const any = Object.values(s.platforms).some(p => p.tab);
+      if (any) dot.classList.remove('pulse-off'); else dot.classList.add('pulse-off');
+      dot.classList.toggle('pulse-on', any);
+      dot.classList.toggle('pulse-off', !any);
+      $('chrome-status-title').textContent = any ? '✅ 已连接 Chrome' : '⚠️ Chrome 已连接，但未识别到任何平台页面';
+      $('chrome-status-detail').textContent = s.hint || '';
+    } else if (s.reachable) {
+      dot.classList.remove('pulse-on'); dot.classList.add('pulse-off');
+      $('chrome-status-title').textContent = '⚠️ Chrome 已连接';
+      $('chrome-status-detail').textContent = s.hint || '';
+    } else {
+      dot.classList.remove('pulse-on'); dot.classList.add('pulse-off');
+      $('chrome-status-title').textContent = '⛔ Chrome 未连接';
+      $('chrome-status-detail').textContent = s.hint || '';
+    }
+  });
+}
+
+function loadJDs() {
+  fetch('/api/jds').then(r=>r.json()).then(d=>{
+    const sel = $('filter-jd'); sel.innerHTML = '<option>全部岗位</option>';
+    d.jds.forEach(j=>{
+      const opt = document.createElement('option'); opt.value = j.key; opt.textContent = `${j.seq}. ${j.name}（${j.city}）`;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+function refreshStats() {
+  fetch('/api/stats').then(r=>r.json()).then(s=>{
+    $('stat-total').textContent = s.total;
+    $('stat-today').textContent = s.today;
+    $('stat-qualified').textContent = s.qualified;
+    $('stat-pending').textContent = s.pending;
+    $('stat-rejected').textContent = s.rejected;
+    $('stat-incomplete').textContent = s.incomplete;
+    // 扫描中：仅「正在运行的平台」显示"扫描中…"并禁用；其他平台保持正常标签（不串台）
+    const runningPlat = s.scanning_platform || null;
+    PLATFORMS.forEach(p => {
+      const isThis = runningPlat === p.name;
+      const sb = $(p.scanBtn);
+      if (sb) { sb.disabled = isThis; sb.textContent = isThis ? '扫描中…' : '扫描新简历'; }
+      const rb = $(p.rescanBtn); if (rb) rb.disabled = isThis;
+      const db = $(p.diagBtn); if (db) db.disabled = isThis;
+    });
+    $('btn-stop').classList.toggle('hidden', !s.scanning);
+    if (!s.scanning) $('scan-state-text').textContent = ''; // 扫描中进度由 SSE scanning 事件写入（含 [x/total]），此处不覆盖避免闪烁
+  });
+}
+
+let currentPage = 1;
+let totalPages = 1;
+const PAGE_SIZE = 50;
+let selectedIds = new Set();
+function updateBulkBtn(){
+  const n = selectedIds.size;
+  $('btn-bulk-delete').classList.toggle('hidden', n === 0);
+  $('bulk-count').textContent = n;
+}
+function gotoPage(p){
+  if (isNaN(p)) p = 1;
+  if (p < 1) p = 1;
+  if (totalPages && p > totalPages) p = totalPages;
+  currentPage = p;
+  reloadRows();
+}
+function jumpToPage(){
+  const inp = $('jump-page');
+  const v = parseInt(inp && inp.value, 10);
+  if (!isNaN(v)) gotoPage(v);
+}
+function hideDiagnose(){ $('diag-card').classList.add('hidden'); }
+function toggleLiveLog(e){
+  e.preventDefault(); e.stopPropagation();
+  const d = $('live-log-details');
+  d.open = !d.open;
+  e.target.textContent = d.open ? '隐藏' : '展开';
+}
+function reloadRows() {
+  const v = $('filter-verdict').value;
+  const j = $('filter-jd').value;
+  const df = $('filter-date-from').value;
+  const dt = $('filter-date-to').value;
+  const pf = $('filter-platform') ? $('filter-platform').value : '全部平台';
+  const qs = new URLSearchParams({verdict:v, jd_key:j, platform:pf, page: currentPage, page_size: PAGE_SIZE});
+  if (df) qs.set('date_from', df);
+  if (dt) qs.set('date_to', dt);
+  fetch('/api/candidates?' + qs).then(r=>r.json()).then(d=>{
+    $('row-count').textContent = d.count;
+    totalPages = d.total_pages || 1;
+    $('total-count').textContent = d.count;
+    $('cur-page').textContent = d.page || 1;
+    $('total-pages').textContent = totalPages;
+    if ($('jump-page')) $('jump-page').value = d.page || 1;
+    const tbody = $('table-body'); tbody.innerHTML = '';
+    d.rows.forEach(r => {
+      const tr = document.createElement('tr');
+      const ai = (r.detail && r.detail.ai_assessment) || {};
+      const concerns = (ai.concerns || []).map(c => `<span class="miss-chip">${escapeHtml(c)}</span>`).join('');
+      const evalHtml =
+        `<div class="text-slate-700 text-xs font-medium mb-1">${escapeHtml(ai.summary || r.reason || '')}</div>` +
+        (concerns ? `<div class="mt-1">注意：${concerns}</div>` : '');
+      tr.innerHTML = `
+        <td class="text-center"><input type="checkbox" class="row-chk" data-id="${r.id}"></td>
+        <td title="${escapeHtml(r.candidate_name || '')}"><div class="font-medium">${escapeHtml(r.candidate_name || '未识别')}</div>${r.detail? `<div class='text-xs text-slate-400'>${escapeHtml(r.detail?.education || '')}${r.detail?.years_of_experience >= 0 ? ' · '+r.detail.years_of_experience+'年' : ''}</div>`:''}</td>
+        <td title="${escapeHtml(r.current_position || '')}">${escapeHtml(r.current_position || '-')}</td>
+        <td title="${escapeHtml(r.current_company || '')}">${escapeHtml(r.current_company || '-')}</td>
+        <td title="${escapeHtml(r.expected_city || '')}">${escapeHtml(r.expected_city || '-')}</td>
+        <td title="${escapeHtml(r.applied_position || '')}">${escapeHtml(r.applied_position || '-')}</td>
+        <td><select class="verdict-select v-${r.verdict}" data-id="${r.id}" data-name="${escapeHtml(r.candidate_name||'')}">${['合适','待定','不合适','信息不足'].map(o=> '<option value="'+o+'"'+(o===r.verdict?' selected':'')+'>'+o+'</option>').join('')}</select></td>
+        <td>${Math.round(r.score || 0)}</td>
+        <td class="cell-eval">${evalHtml}</td>
+        <td class="text-xs">${r.page_url ? `<a href="${escapeHtml(r.page_url)}" target="_blank" rel="noopener" title="${escapeHtml(r.page_url)}" class="text-blue-600 hover:underline">查看</a>` : '-'}</td>
+        <td>${escapeHtml(r.platform || '')}</td>
+        <td class="text-xs text-slate-500 leading-tight whitespace-nowrap">${fmtDateOnly(r.scanned_at)}<br>${fmtTimeOnly(r.scanned_at)}</td>
+      `;
+      tbody.appendChild(tr);
+      const cb = tr.querySelector('.row-chk'); if (cb && selectedIds.has(r.id)) cb.checked = true;
+    });
+  });
+}
+
+function escapeHtml(s){return (s??'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function resetFilters(){
+  $('filter-verdict').value='全部';
+  $('filter-jd').value='全部岗位';
+  if ($('filter-platform')) $('filter-platform').value='全部平台';
+  $('filter-date-from').value='';
+  $('filter-date-to').value='';
+  currentPage = 1;
+  reloadRows();
+}
+function bulkDelete(){
+  const ids = Array.from(selectedIds);
+  if (!ids.length) return;
+  if (!confirm(`确认删除选中的 ${ids.length} 条候选人记录？此操作不可撤销（仅删记录，不动扫描会话）。`)) return;
+  fetch('/api/candidates', {method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ids})})
+    .then(r=>r.json()).then(d=>{
+      if (!d.ok){ alert('删除失败：' + (d.error||'未知错误')); return; }
+      appendLog(`🗑️ 已批量删除 ${d.deleted} 条候选人记录`, 'warn');
+      selectedIds.clear();
+      updateBulkBtn();
+      refreshStats();
+      reloadRows();
+    }).catch(e=> appendLog('删除请求失败: ' + e, 'error'));
+}
+
+function scanOpts(platform){
+  const cfg = getPlatformCfg(platform);
+  return {
+    platform: platform,
+    auto_operate: $(cfg.autoChk).checked,
+    dry_run: $(cfg.dryChk).checked,
+  };
+}
+function updateAutoHint(platform){
+  const cfg = getPlatformCfg(platform);
+  const ao = $(cfg.autoChk).checked, dr = $(cfg.dryChk).checked;
+  let h = '';
+  if (ao && dr) h = '⚠️ 仅模拟：只判定并入库，不会在平台点任何按钮，简历扫描后仍是「未处理」。要真实处理请取消勾选「仅模拟」。';
+  else if (ao && !dr) h = '🔴 真实操作：扫描中将直接在平台点按钮，简历会被真实处理！';
+  else h = 'ℹ️ 自动操作已关闭：扫描只判定并入库，需你手动在平台处理。';
+  $(cfg.hint).textContent = h;
+}
+function startScan(platform){
+  if (!confirm(`开始扫描「${platform}」？将遍历该平台的"待处理简历"列表。`)) return;
+  fetch('/api/scan/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(scanOpts(platform))})
+    .then(r=>r.json()).then(d=>{
+      if (!d.ok) { alert('启动失败：' + d.error); return; }
+      appendLog(`▶️ [${platform}] 扫描启动 session=${d.session_id}`, 'info');
+      refreshStats();
+    });
+}
+function rescanToday(platform){
+  if (!confirm(`重新扫描「${platform}」今日投递？`)) return;
+  fetch('/api/scan/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({rescan_today: true}, scanOpts(platform)))})
+    .then(r=>r.json()).then(d=>{
+      if (!d.ok) { alert('启动失败：' + d.error); return; }
+      appendLog(`↻️ [${platform}] 重新扫描今日 session=${d.session_id}`, 'info');
+      refreshStats();
+    });
+}
+function stopScan(){
+  fetch('/api/scan/stop', {method:'POST'}).then(r=>r.json()).then(d=>{
+    if (d.ok) appendLog('⏹ 已请求停止', 'warn');
+    else alert(d.error);
+  });
+}
+function runDiagnose(platform){
+  currentDiagnosePlatform = platform;
+  $('diag-title').textContent = `页面诊断结果 — ${platform}`;
+  $('diag-card').classList.remove('hidden');
+  $('diag-out').textContent = '诊断中...';
+  appendLog(`🔍 [${platform}] 正在诊断调试 Chrome 中的平台页面...`, 'info');
+  fetch(`/api/diagnose?platform=${encodeURIComponent(platform)}`).then(r=>r.json()).then(d=>{
+    $('diag-out').textContent = JSON.stringify(d, null, 2);
+    if (!d.reachable){ appendLog('诊断: Chrome 调试端口不可达 (9222)', 'error'); return; }
+    if (!d.platform_tab){
+      appendLog(`诊断: 调试 Chrome 中没有 ${platform} 标签页 —— 请在该 Chrome 打开并登录 ${platform}「待处理」页后再扫描`, 'error');
+      return;
+    }
+    appendLog(`诊断: 选中的 ${platform} 页 = ${d.platform_tab.url}`, 'info');
+    const p = d.probe || {};
+    const hitKey = p.listSelectorHits ? Object.keys(p.listSelectorHits).length : (p.selectorHits ? Object.keys(p.selectorHits).length : 0);
+    const btns = p.buttonTexts ? Object.keys(p.buttonTexts).length : 0;
+    appendLog(`诊断: 正文长度=${p.bodyLen}, 列表选择器命中=${hitKey}, 按钮文字数=${btns}, 列表抓取到=${(d.list_js_items_count!=null?d.list_js_items_count:'?')}`, (hitKey>0||btns>0)?'info':'warn');
+    if (hitKey === 0 && btns === 0) appendLog('诊断结论: 页面已打开但列表选择器与按钮都未命中 → 平台 DOM 结构不匹配，需要把诊断 JSON 复制给我以调整选择器', 'warn');
+    else if (d.list_js_items_count === 0) appendLog('诊断结论: 列表抓取到 0 条，请检查页面是否在「待处理」视图（非「已处理」）', 'warn');
+    else appendLog('诊断结论: 选择器/按钮有命中，平台结构基本对得上，可重试扫描', 'info');
+  }).catch(e=> appendLog('诊断请求失败: ' + e, 'error'));
+}
+function rerunDiagnose(){ runDiagnose(currentDiagnosePlatform); }
+
+function appendLog(msg, kind='info'){
+  const box = $('live-log');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  const c = {'info':'text-slate-600','warn':'text-amber-600','error':'text-red-600'}[kind] || 'text-slate-600';
+  line.innerHTML = `<span class="${c}">[${new Date().toLocaleTimeString()}]</span> ${escapeHtml(msg)}`;
+  box.prepend(line);
+  while (box.children.length > 50) box.removeChild(box.lastChild);
+}
+
+// 与 appendLog 类似，但允许直接插入受控 HTML（用于日志行内的彩色「网站已点」状态）
+function appendLogRaw(innerHtml, kind='info'){
+  const box = $('live-log');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  const c = {'info':'text-slate-600','warn':'text-amber-600','error':'text-red-600'}[kind] || 'text-slate-600';
+  line.innerHTML = `<span class="${c}">[${new Date().toLocaleTimeString()}]</span> ${innerHtml}`;
+  box.prepend(line);
+  while (box.children.length > 50) box.removeChild(box.lastChild);
+}
+
+let es = null;
+function listenSSE(){
+  if (es) es.close();
+  es = new EventSource('/api/scan/events');
+  es.onmessage = e => {
+    const ev = JSON.parse(e.data);
+    handleEvent(ev);
+  };
+  es.onerror = () => { /* network break */ };
+}
+
+function handleEvent(ev){
+  const t = ev.type, p = ev.payload || {};
+  switch (t) {
+    case 'session_started':
+      appendLog(`▶️ Session 启动: ${p.session_id} · 平台=${p.platform}`, 'info');
+      break;
+    case 'info':
+      appendLog(p.message || JSON.stringify(p), 'info');
+      break;
+    case 'warn':
+      appendLog('⚠️ ' + (p.message || JSON.stringify(p)), 'warn');
+      break;
+    case 'error':
+      appendLog('⛔ ' + (p.message || JSON.stringify(p)), 'error');
+      break;
+    case 'scanning': {
+      // 仅更新顶端进度，不写日志行（避免每份简历刷出多条日志）
+      if (p.current && p.total) $('scan-state-text').textContent = `● 运行中：${p.platform||''} [${p.current}/${p.total}]`;
+      break;
+    }
+    case 'candidate': {
+      const prog = (p.current && p.total) ? ` [${p.current}/${p.total}]` : '';
+      const sa = p.site_action || '';
+      const saClass = sa === '已点合适' ? 'text-emerald-600'
+                    : sa === '已点不合适' ? 'text-red-600'
+                    : sa ? 'text-slate-400' : '';
+      const saHtml = sa ? ` · <span class="${saClass} font-medium">${escapeHtml(sa)}</span>` : '';
+      appendLogRaw(`📄${prog} ${escapeHtml(p.candidate_name)} → ${escapeHtml(p.verdict)}（${Math.round(p.score||0)}分）${saHtml}`, 'info');
+      reloadRows();
+      break;
+    }
+      break;
+    case 'stats':
+      $('stat-qualified').textContent = p.qualified;
+      $('stat-pending').textContent = p.pending;
+      $('stat-rejected').textContent = p.rejected;
+      $('stat-incomplete').textContent = p.incomplete;
+      // 累计扫描 + 今日扫描
+      refreshStats();
+      break;
+    case 'session_finished':
+      appendLog(`✅ 扫描完成: 已处理 ${p.stats.scanned} 份`, 'info');
+      refreshStats();
+      $('scan-state-text').textContent = '';
+      currentPage = 1;
+      reloadRows();
+      break;
+  }
+}
+
+$('filter-verdict').addEventListener('change', () => { currentPage = 1; reloadRows(); });
+$('filter-jd').addEventListener('change', () => { currentPage = 1; reloadRows(); });
+$('filter-platform').addEventListener('change', () => { currentPage = 1; reloadRows(); });
+// 判定列下拉：手动纠正 AI 误判
+$('table-body').addEventListener('change', async (e) => {
+  const sel = e.target.closest('.verdict-select');
+  if (!sel) return;
+  const cid = sel.dataset.id, nv = sel.value, name = sel.dataset.name || '';
+  sel.disabled = true;
+  try {
+    const res = await fetch(`/api/candidate/${cid}/verdict`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({verdict: nv})
+    });
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || '保存失败');
+    sel.className = 'verdict-select v-' + nv;
+    appendLog(`✏️ ${name} 判定已改为「${nv}」`, 'info');
+  } catch (err) {
+    appendLog(`❌ 判定更新失败（${name}）：${err.message}`, 'error');
+    reloadRows();
+  } finally {
+    sel.disabled = false;
+  }
+});
+// 行内勾选框：缓存选中 id（跨 8 秒自动刷新保留，支持跨页累计）
+$('table-body').addEventListener('change', (e) => {
+  const cb = e.target.closest('.row-chk');
+  if (!cb) return;
+  const id = parseInt(cb.dataset.id, 10);
+  if (cb.checked) selectedIds.add(id); else selectedIds.delete(id);
+  updateBulkBtn();
+});
+// 表头全选：仅作用于当前页
+$('chk-all').addEventListener('change', (e) => {
+  const checked = e.target.checked;
+  document.querySelectorAll('#table-body .row-chk').forEach(cb => {
+    const id = parseInt(cb.dataset.id, 10);
+    if (checked) selectedIds.add(id); else selectedIds.delete(id);
+    cb.checked = checked;
+  });
+  updateBulkBtn();
+});
+$('filter-date-from').addEventListener('change', () => { currentPage = 1; reloadRows(); });
+$('filter-date-to').addEventListener('change', () => { currentPage = 1; reloadRows(); });
+// 跳页输入框：回车即跳转
+$('jump-page').addEventListener('keydown', (e) => { if (e.key === 'Enter') jumpToPage(); });
+// 各平台自动操作勾选 → 提示更新
+PLATFORMS.forEach(p => {
+  $(p.autoChk).addEventListener('change', () => updateAutoHint(p.name));
+  $(p.dryChk).addEventListener('change', () => updateAutoHint(p.name));
+});
+
+function loadConfig(){
+  fetch('/api/config').then(r=>r.json()).then(c=>{
+    const sc = c.scanner || {};
+    PLATFORMS.forEach(p => {
+      $(p.autoChk).checked = !!sc.auto_operate;
+      $(p.dryChk).checked = !!sc.dry_run;
+      updateAutoHint(p.name);
+    });
+  }).catch(()=> PLATFORMS.forEach(p => updateAutoHint(p.name)));
+}
+
+// 启动
+refreshChrome();
+loadJDs();
+loadConfig();
+refreshStats();
+reloadRows();
+listenSSE();
+setInterval(refreshChrome, 15000);
+setInterval(refreshStats, 5000);
+setInterval(reloadRows, 8000);
+</script>
+</body>
+</html>
