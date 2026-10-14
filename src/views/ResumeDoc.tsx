@@ -51,12 +51,12 @@ export default function ResumeDoc({ c, active, onPick, filter = 'all' }: Props) 
                     onClick={() => clickable && (qid ? onPick!(qid) : setPeek(peek === l.text ? null : l.text))}
                     onKeyDown={(e) => clickable && e.key === 'Enter' && qid && onPick!(qid)}
                     className={`-mx-3 rounded-lg px-3 py-1.5 text-[15px] leading-7 transition-colors ${clickable ? 'cursor-pointer' : ''} ${
-                      on ? 'bg-blue-50 text-slate-900' : clickable ? 'hover:bg-slate-50' : ''
+                      on ? 'bg-black/[0.05] text-[#1d1d1f] font-medium' : clickable ? 'hover:bg-slate-50' : ''
                     } ${shown && !on ? (tone === 'amber' ? 'text-slate-900' : 'text-slate-800') : !shown ? 'text-slate-600' : ''}`}
                   >
                     <span className={shown ? (tone === 'amber' ? 'shadow-[inset_0_-0.4em_0_#fde68a]' : 'shadow-[inset_0_-0.4em_0_#d1fae5]') : ''}>{l.text}</span>
                     {shown && (
-                      <span className={`ml-2 inline-flex translate-y-[-1px] items-center rounded px-1.5 text-xs leading-5 ${on ? 'bg-blue-600 text-white' : tone === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                      <span className={`ml-2 inline-flex translate-y-[-1px] items-center rounded px-1.5 text-xs leading-5 ${on ? 'bg-[#1d1d1f] text-white shadow-2xs font-medium' : tone === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
                         {qid ? `第 ${qNo(qid)} 题` : l.mark === 'risk' ? '疑点' : '亮点'}
                       </span>
                     )}

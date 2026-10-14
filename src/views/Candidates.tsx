@@ -1,169 +1,337 @@
 import type React from 'react'
 import { useState } from 'react'
-import { candidates, resumes, STATUS, TODAY } from '../data'
-import { importResume, schedule, slotLabel } from '../store'
+import { candidates, resumes, STAGES, type CandidateStage } from '../data'
+import { batchAssign, findJd, findPos, positions, slotLabel, updateCandidateStage } from '../store'
 import type { Go } from '../App'
 import { Btn } from './ui'
 
-const STEPS = ['上传文件', '提取基本信息与经历', '比对岗位要求', '标注亮点与疑点', '生成定制题目']
-const statusCls: Record<string, string> = { 待约面: 'bg-slate-100 text-slate-600', 待面试: 'bg-blue-50 text-blue-700', 待评价: 'bg-amber-50 text-amber-700', 跟进中: 'bg-emerald-50 text-emerald-700', 已结束: 'bg-slate-100 text-slate-500' }
-const ROLES = ['前端', '后端', '算法', '产品']
-const roleOf = (role: string) => ROLES.find((r) => role.includes(r)) ?? '其他'
-// 快速可选场次：基于演示「今天」推算
-const [y, m, d] = TODAY.split('-').map(Number)
-const isoDay = (offset: number) => { const t = new Date(y, m - 1, d + offset); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` }
-const QUICK = [[`今天 17:00`, `${isoDay(0)} 17:00`], [`明天 10:00`, `${isoDay(1)} 10:00`], [`明天 14:30`, `${isoDay(1)} 14:30`], [`10-08 15:00`, '2026-10-08 15:00']] as const
+const SOURCES = ['全部', '前程无忧', '猎聘', 'BOSS直聘', '内推', '影刀采集']
+const ASSIGNEES = ['全部', '林婉 (HRG)', '赵静 (HR)', '未分配']
+
+const stageCls: Record<string, string> = {
+  新入库: 'bg-zinc-100 text-zinc-800 border-zinc-200/60 font-medium',
+  待初筛: 'bg-amber-50 text-amber-800 border-amber-200/50',
+  待约面: 'bg-purple-50 text-purple-800 border-purple-200/50',
+  待面试: 'bg-zinc-800 text-white border-transparent font-medium shadow-2xs',
+  待评价: 'bg-orange-50 text-orange-800 border-orange-200/50',
+  待录取: 'bg-emerald-50 text-emerald-800 border-emerald-200/50',
+  已录取: 'bg-emerald-600 text-white border-transparent',
+  已淘汰: 'bg-black/[0.04] text-[#86868b] border-black/[0.06]',
+}
 
 export default function Candidates({ go }: { go: Go }) {
-  const [step, setStep] = useState(-1)
-  const [fresh, setFresh] = useState<string>()
-  const importing = step >= 0
-  const [err, setErr] = useState('')
   const [kw, setKw] = useState('')
-  const [role, setRole] = useState('全部')
-  const [st, setSt] = useState('全部')
-  const [schedFor, setSchedFor] = useState<string>() // 正在安排日程的候选人 id
-  const [date, setDate] = useState(isoDay(1))
-  const [time, setTime] = useState('10:00')
+  const [selectedPos, setSelectedPos] = useState('全部')
+  const [selectedStage, setSelectedStage] = useState('全部')
+  const [selectedSource, setSelectedSource] = useState('全部')
+  const [selectedAssignee, setSelectedAssignee] = useState('全部')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [batchModal, setBatchModal] = useState(false)
+  const [targetAssignee, setTargetAssignee] = useState('林婉 (HRG)')
 
-  // 与正式服务一致的文件校验：PDF / DOCX / TXT / 图片，≤ 20 MB
-  const run = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    e.target.value = ''
-    if (!f) return
-    if (!/\.(pdf|docx|txt|png|jpe?g)$/i.test(f.name)) return setErr(`不支持「${f.name}」，请上传 PDF、DOCX、TXT、PNG 或 JPG`)
-    if (f.size > 20 * 1024 * 1024) return setErr(`「${f.name}」超过 20 MB`)
-    setErr('')
-    let i = 0
-    setStep(0)
-    setFresh(undefined)
-    const t = setInterval(() => {
-      i += 1
-      if (i < STEPS.length) return setStep(i)
-      clearInterval(t)
-      setFresh(importResume())
-      setStep(-1)
-    }, 700)
+  const list = candidates.filter(
+    (c) =>
+      (selectedStage === '全部' || c.status === selectedStage) &&
+      (selectedPos === '全部' || c.positionId === selectedPos) &&
+      (selectedSource === '全部' || c.source === selectedSource) &&
+      (selectedAssignee === '全部' || c.assignee === selectedAssignee) &&
+      (!kw || c.name.includes(kw) || c.role.includes(kw) || resumes[c.id]?.file.includes(kw) || c.sourceId.includes(kw)),
+  )
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  const list = candidates.filter((c) =>
-    (st === '全部' || c.status === st) &&
-    (role === '全部' || roleOf(c.role) === role) &&
-    (!kw || c.name.includes(kw) || c.role.includes(kw) || resumes[c.id]?.file.includes(kw)),
-  )
-  const schedC = schedFor ? candidates.find((c) => c.id === schedFor) : undefined
-  const confirmSchedule = (slot: string) => { if (schedFor) schedule(schedFor, slot); setSchedFor(undefined) }
+  const toggleSelectAll = () => {
+    if (selectedIds.length === list.length) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(list.map((c) => c.id))
+    }
+  }
+
+  const handleBatchAssign = () => {
+    if (!selectedIds.length) return
+    batchAssign(selectedIds, targetAssignee)
+    setSelectedIds([])
+    setBatchModal(false)
+  }
 
   return (
-    <div>
-      <div className="ws-rise flex flex-wrap items-end justify-between gap-4">
+    <div className="space-y-6">
+      {/* 顶部标题与行动 */}
+      <div className="ws-rise flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-black/[0.08] pb-5">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">候选人</h1>
-        </div>
-        <label className={`inline-flex h-10 cursor-pointer items-center rounded-lg px-4 text-sm font-medium text-white ${importing ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
-          {importing ? '正在解析简历…' : '导入简历'}
-          <input type="file" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg" className="sr-only" disabled={importing} onChange={run} />
-        </label>
-      </div>
-
-      {err && <p className="login-fade mt-4 rounded-lg bg-amber-50 px-4 py-2.5 text-sm text-amber-800">{err}</p>}
-      {importing && (
-        <div className="ws-rise mt-6 ws-paper rounded-xl px-5 py-4">
-          <div className="text-[15px] font-medium text-slate-900">正在分析简历</div>
-          <ol className="mt-3 grid gap-2 sm:grid-cols-5">
-            {STEPS.map((s, i) => (
-              <li key={s} className="text-sm">
-                <div className={`h-1 rounded-full transition-colors ${i < step ? 'bg-blue-600' : i === step ? 'animate-pulse bg-blue-300' : 'bg-slate-100'}`} />
-                <div className={`mt-2 ${i <= step ? 'text-slate-800' : 'text-slate-400'}`}>{s}</div>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-      {fresh && !importing && (() => {
-        const n = candidates.find((c) => c.id === fresh)!
-        return (
-          <div className="mt-6 flex flex-wrap items-center gap-4 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4">
-            <div className="min-w-0 flex-1">
-              <div className="text-[15px] font-medium text-slate-900">已生成候选人：{n.name} · {n.role}</div>
-              <div className="mt-0.5 text-sm text-slate-600">匹配 {n.match}% · 亮点 {n.highlights.length} · 待核实 {n.risks.length} · {n.qs.length} 道定制题 · 待约面</div>
-            </div>
-            <Btn onClick={() => go('analysis', n.id)}>查看分析</Btn>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-[#1d1d1f]">候选人大池 · 全流程管理</h1>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-black/[0.04] px-2.5 py-0.5 text-xs font-semibold text-[#1d1d1f] ring-1 ring-inset ring-black/10">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              在库人选 {candidates.length} 人
+            </span>
           </div>
-        )
-      })()}
+          <p className="mt-1.5 text-xs text-[#6e6e73]">
+            影刀来源库落库 · 多渠道多维筛选 · AI 宽松初筛标识 · 详情页一页贯通
+          </p>
+        </div>
 
-      {/* 搜索与筛选 */}
-      <div className="ws-rise [--i:1] mt-6 flex flex-wrap items-center gap-2">
-        <input value={kw} onChange={(e) => setKw(e.target.value)} placeholder="搜索姓名 / 岗位 / 简历文件…" className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-600 sm:w-56" />
-        <span className="mx-1 hidden h-4 w-px bg-slate-200 sm:inline" />
-        {['全部', ...ROLES].map((r) => (
-          <button key={r} onClick={() => setRole(r)} className={`cursor-pointer rounded-full border px-3 py-1 text-sm transition ${role === r ? 'border-[#1d2939] bg-[#1d2939] text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>{r}</button>
-        ))}
-        <span className="mx-1 hidden h-4 w-px bg-slate-200 sm:inline" />
-        {['全部', ...STATUS].map((s) => (
-          <button key={s} onClick={() => setSt(s)} className={`cursor-pointer rounded-full border px-3 py-1 text-sm transition ${st === s ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>{s}</button>
-        ))}
+        <div className="flex items-center gap-2">
+          {selectedIds.length > 0 && (
+            <Btn variant="solid" onClick={() => setBatchModal(true)}>
+              批量分配负责人 ({selectedIds.length})
+            </Btn>
+          )}
+          <Btn variant="ghost" onClick={() => go('workbench')}>
+            ← 返回工作台待办
+          </Btn>
+        </div>
       </div>
 
-      <div className="ws-rise [--i:2] mt-4 overflow-x-auto ws-paper rounded-xl">
-        <table className="w-full min-w-[760px] text-left text-sm">
-          <thead><tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
-            <th className="px-5 py-2.5 font-medium">候选人</th><th className="font-medium">应聘岗位</th><th className="font-medium">来源</th><th className="font-medium">简历匹配</th><th className="font-medium">面试安排</th><th className="font-medium">状态</th><th className="px-5 text-right font-medium">操作</th>
-          </tr></thead>
-          <tbody>
-            {list.map((c) => (
-              <tr key={c.id} onClick={() => go('analysis', c.id)} className={`cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50 ${fresh === c.id ? 'bg-blue-50/50' : ''}`}>
-                <td className="px-5 py-4">
-                  <div className="font-medium text-slate-900">{c.name}{fresh === c.id && <span className="ml-2 rounded bg-blue-600 px-1.5 py-0.5 text-[11px] font-normal text-white">新</span>}</div>
-                  <div className="mt-0.5 text-xs text-slate-400">{resumes[c.id].file}</div>
-                </td>
-                <td className="text-slate-700">{c.role}<div className="text-xs text-slate-400">{c.exp} · {c.edu}</div></td>
-                <td className="text-slate-600">{c.source}</td>
-                <td>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-16 rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600" style={{ width: `${c.match}%` }} /></div>
-                    <span className="tabular-nums text-slate-700">{c.match}%</span>
-                  </div>
-                </td>
-                <td className="tabular-nums text-slate-600">
-                  {c.slot === '待安排' ? <span className="text-slate-400">待安排 · {c.round}</span> : `${slotLabel(c.slot)} · ${c.round}`}
-                </td>
-                <td><span className={`rounded px-2 py-0.5 text-xs ${statusCls[c.status]}`}>{c.status}</span></td>
-                <td className="px-5 text-right" onClick={(e) => e.stopPropagation()}>
-                  {c.status === '待约面' && <Btn className="!h-8 !px-3" onClick={() => { setSchedFor(c.id); setDate(isoDay(1)); setTime('10:00') }}>加入日程</Btn>}
-                  {c.status === '待面试' && <Btn className="!h-8 !px-3" variant="ghost" onClick={() => { setSchedFor(c.id); setDate(c.slot.slice(0, 10)); setTime(c.slot.slice(11)) }}>改期</Btn>}
-                  {c.status === '待评价' && <Btn className="!h-8 !px-3" variant="ghost" onClick={() => go('room', c.id)}>去评价</Btn>}
-                  {['跟进中', '已结束'].includes(c.status) && <Btn className="!h-8 !px-3" variant="ghost" onClick={() => go('result', c.id)}>看结果</Btn>}
-                </td>
-              </tr>
+      {/* 苹果深曜石数据条 (Obsidian KPI Metric Strip) */}
+      <div className="ws-rise [--i:1] obsidian-panel rounded-2xl p-4 sm:p-5 text-white flex flex-wrap items-center justify-between gap-4 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-1/4 w-48 h-48 bg-gradient-to-br from-violet-600/20 to-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1">
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-1 rounded-full bg-violet-400" />
+            <div>
+              <div className="text-[11px] text-white/50">新入库/初筛</div>
+              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '新入库' || c.status === '待初筛').length} <span className="text-xs text-white/40 font-normal">人</span></div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-1 rounded-full bg-amber-400" />
+            <div>
+              <div className="text-[11px] text-white/50">约面推进中</div>
+              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '待约面').length} <span className="text-xs text-white/40 font-normal">人</span></div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-1 rounded-full bg-emerald-400" />
+            <div>
+              <div className="text-[11px] text-white/50">面试与评价</div>
+              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '待面试' || c.status === '待评价').length} <span className="text-xs text-white/40 font-normal">人</span></div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-1 rounded-full bg-rose-400" />
+            <div>
+              <div className="text-[11px] text-white/50">录取与跟进</div>
+              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '跟进中' || c.status === '已发Offer').length} <span className="text-xs text-white/40 font-normal">人</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 多维筛选栏 (按岗位/阶段/渠道/负责人/关键词) */}
+      <div className="ws-rise [--i:1] ws-paper rounded-2xl p-4 border border-black/[0.05] space-y-3 text-xs">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <input
+            value={kw}
+            onChange={(e) => setKw(e.target.value)}
+            placeholder="搜索姓名 / 岗位 / 简历 / 来源ID…"
+            className="h-8 w-full sm:w-56 rounded-full border border-black/[0.08] bg-white px-3.5 text-xs text-[#1d1d1f] outline-none focus:border-black/50"
+          />
+
+          {/* 岗位筛选 */}
+          <select
+            value={selectedPos}
+            onChange={(e) => setSelectedPos(e.target.value)}
+            className="h-8 rounded-full border border-black/[0.08] bg-white px-3 text-xs outline-none"
+          >
+            <option value="全部">应聘岗位：全部</option>
+            {positions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name.replace(/.*·\s*/, '')} ({p.code})
+              </option>
             ))}
-            {!list.length && <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-slate-400">没有符合条件的候选人</td></tr>}
-          </tbody>
-        </table>
+          </select>
+
+          {/* 渠道筛选 */}
+          <select
+            value={selectedSource}
+            onChange={(e) => setSelectedSource(e.target.value)}
+            className="h-8 rounded-full border border-black/[0.08] bg-white px-3 text-xs outline-none"
+          >
+            {SOURCES.map((s) => (
+              <option key={s} value={s}>
+                渠道来源：{s}
+              </option>
+            ))}
+          </select>
+
+          {/* 负责人筛选 */}
+          <select
+            value={selectedAssignee}
+            onChange={(e) => setSelectedAssignee(e.target.value)}
+            className="h-8 rounded-full border border-black/[0.08] bg-white px-3 text-xs outline-none"
+          >
+            {ASSIGNEES.map((a) => (
+              <option key={a} value={a}>
+                HR 负责人：{a}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 阶段胶囊条 */}
+        <div className="pt-2 border-t border-black/[0.04] flex flex-wrap items-center gap-1.5">
+          <span className="text-[#86868b] mr-1">阶段：</span>
+          {['全部', ...STAGES].map((st) => (
+            <button
+              key={st}
+              onClick={() => setSelectedStage(st)}
+              className={`cursor-pointer rounded-full px-3 py-1 font-medium transition-all ${
+                selectedStage === st
+                  ? 'bg-[#1d1d1f] text-white shadow-2xs'
+                  : 'bg-white text-[#86868b] border border-black/[0.06] hover:text-[#1d1d1f]'
+              }`}
+            >
+              {st}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* 加入日程 / 改期 */}
-      {schedC && (
-        <div className="ws-scrim fixed inset-0 z-50 grid place-items-center px-4" onClick={() => setSchedFor(undefined)}>
-          <div className="login-fade w-full max-w-md ws-paper rounded-xl p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-lg font-semibold text-slate-900">{schedC.status === '待约面' ? '加入日程' : '调整时间'}</h2>
-              <button onClick={() => setSchedFor(undefined)} className="cursor-pointer text-sm text-slate-500 hover:text-slate-900">取消</button>
+      {/* 候选人列表卡片 */}
+      <div className="ws-rise [--i:2] space-y-3">
+        <div className="flex items-center justify-between text-xs text-[#86868b] px-1">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={selectedIds.length === list.length && list.length > 0}
+              onChange={toggleSelectAll}
+              className="rounded accent-[#1d1d1f]"
+            />
+            <span>全选本页 ({list.length} 人)</span>
+          </label>
+          <span>点击卡片进入「一页贯通详情页」</span>
+        </div>
+
+        {list.map((c) => {
+          const pos = findPos(c.positionId)
+          const isSelected = selectedIds.includes(c.id)
+
+          return (
+            <div
+              key={c.id}
+              onClick={() => go('detail', c.id)}
+              className={`group cursor-pointer ws-paper rounded-2xl p-5 border transition-all duration-200 hover:-translate-y-0.5 hover:border-black/25 hover:shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
+                isSelected ? 'border-[#1d1d1f] ring-2 ring-black/10 bg-black/[0.015] shadow-xs' : 'border-black/[0.06]'
+              }`}
+            >
+              {/* 左侧：选择框 + 基本信息 */}
+              <div className="flex items-start gap-3.5 min-w-[300px]">
+                <div onClick={(e) => e.stopPropagation()} className="pt-1">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleSelect(c.id)}
+                    className="h-4 w-4 rounded accent-[#1d1d1f] cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-semibold text-[#1d1d1f] group-hover:text-black group-hover:underline transition-colors">
+                      {c.name}
+                    </span>
+                    <span className="text-xs text-[#86868b]">·</span>
+                    <span className="text-xs text-[#86868b]">{c.exp}</span>
+                    <span className="text-xs text-[#86868b]">·</span>
+                    <span className="text-xs text-[#86868b]">{c.edu.split('·')[0]}</span>
+                  </div>
+
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded-md bg-black/[0.04] px-2 py-0.5 text-[#1d1d1f] font-medium border border-black/5">
+                      {pos.name}
+                    </span>
+                    <span className="rounded-md bg-black/[0.04] px-2 py-0.5 text-[#1d1d1f] border border-black/5">
+                      {c.source} ({c.sourceId})
+                    </span>
+                    {c.attachmentType === 'missing' && (
+                      <span className="rounded-md bg-amber-50 px-2 py-0.5 text-amber-800 ring-1 ring-inset ring-amber-600/20 font-medium">
+                        附件缺失
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 中间：AI 初筛宽松匹配度与理由 */}
+              <div className="flex-1 border-t lg:border-t-0 lg:border-l border-black/[0.05] pt-3 lg:pt-0 lg:pl-6 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#86868b] flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                    AI 宽松初筛评定
+                  </span>
+                  <span className="font-bold text-[#1d1d1f] tabular-nums">契合度 <strong className="text-emerald-700">{c.match}%</strong></span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-black/[0.04] overflow-hidden p-0.5 border border-black/5">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500 transition-all duration-700 ease-out"
+                    style={{ width: `${c.match}%` }}
+                  />
+                </div>
+                <div className="text-[11px] text-[#515154] line-clamp-1">
+                  {c.aiScreening?.looseMatch || c.summary}
+                </div>
+              </div>
+
+              {/* 右侧：阶段状态与操作 */}
+              <div
+                className="flex items-center justify-between lg:justify-end gap-3.5 border-t lg:border-t-0 lg:border-l border-black/[0.05] pt-3 lg:pt-0 lg:pl-6 shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="text-right text-xs">
+                  <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${stageCls[c.status] || 'bg-black/[0.04] text-[#86868b]'}`}>
+                    {c.status}
+                  </span>
+                  <div className="mt-1 text-[11px] text-[#86868b]">
+                    负责人：{c.assignee}
+                  </div>
+                </div>
+
+                <Btn
+                  variant="solid"
+                  className="!h-8 !px-3.5"
+                  onClick={() => go('detail', c.id)}
+                >
+                  一页贯通详情 ↗
+                </Btn>
+              </div>
             </div>
-            <p className="mt-1.5 text-sm text-slate-500">{schedC.name} · {schedC.role} · {schedC.round}</p>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {QUICK.map(([label, v]) => {
-                const cur = `${date} ${time}` === v
-                return <button key={v} onClick={() => { setDate(v.slice(0, 10)); setTime(v.slice(11)) }} className={`cursor-pointer rounded-lg border px-3 py-2 text-sm tabular-nums transition ${cur ? 'border-blue-600 bg-blue-50 font-medium text-blue-800' : 'border-slate-200 text-slate-600 hover:border-slate-400'}`}>{label}</button>
-              })}
+          )
+        })}
+
+        {!list.length && (
+          <div className="ws-paper rounded-2xl p-12 text-center text-xs text-[#86868b]">
+            未检索到符合条件的候选人
+          </div>
+        )}
+      </div>
+
+      {/* 批量分配负责人弹窗 */}
+      {batchModal && (
+        <div className="ws-scrim fixed inset-0 z-50 grid place-items-center px-4" onClick={() => setBatchModal(false)}>
+          <div className="w-full max-w-sm ws-paper rounded-2xl p-6 border border-black/[0.08] shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-baseline justify-between border-b border-black/[0.06] pb-3">
+              <h2 className="text-base font-semibold text-[#1d1d1f]">批量分配 HR 负责人</h2>
+              <button onClick={() => setBatchModal(false)} className="cursor-pointer text-xs text-[#86868b]">✕</button>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <input type="date" value={date} min={isoDay(0)} onChange={(e) => setDate(e.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-sm tabular-nums outline-none focus:border-blue-600" />
-              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-sm tabular-nums outline-none focus:border-blue-600" />
+            <div className="space-y-2 text-xs">
+              <label className="text-[#86868b] block">已选 {selectedIds.length} 位候选人，指派给：</label>
+              <select
+                value={targetAssignee}
+                onChange={(e) => setTargetAssignee(e.target.value)}
+                className="h-9 w-full rounded-xl border border-black/[0.08] px-3 bg-white outline-none"
+              >
+                <option value="林婉 (HRG)">林婉 (HRG)</option>
+                <option value="赵静 (HR)">赵静 (HR)</option>
+                <option value="张晴 (招聘)">张晴 (招聘)</option>
+              </select>
             </div>
-            <div className="mt-5 flex justify-end">
-              <Btn variant="accent" onClick={() => confirmSchedule(`${date} ${time}`)}>确认安排 · {slotLabel(`${date} ${time}`)}</Btn>
+            <div className="flex justify-end gap-2 pt-2">
+              <Btn variant="ghost" onClick={() => setBatchModal(false)}>取消</Btn>
+              <Btn variant="solid" onClick={handleBatchAssign}>确认分配</Btn>
             </div>
           </div>
         </div>

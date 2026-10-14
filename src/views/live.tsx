@@ -65,7 +65,7 @@ export function TalkList({ items, me, interim, dark = false, empty }: { items: T
 export function Composer({ onText, onFiles, dark = false, placeholder = '输入文字消息…' }: { onText: (t: string) => void; onFiles: (f: File[]) => void; dark?: boolean; placeholder?: string }) {
   const [v, setV] = useState('')
   const send = () => { if (v.trim()) { onText(v.trim()); setV('') } }
-  const box = dark ? 'border-white/15 bg-white/5 text-white placeholder:text-white/35 focus-within:border-amber-400/60' : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus-within:border-blue-500'
+  const box = dark ? 'border-white/15 bg-white/5 text-white placeholder:text-white/35 focus-within:border-amber-400/60' : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus-within:border-black/50'
   return (
     <div className={`flex items-end gap-2 rounded-lg border px-2 py-1.5 transition-colors ${box}`}>
       <label title="上传文件或图片" className={`grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-lg transition-colors ${dark ? 'text-white/60 hover:bg-white/10' : 'text-slate-500 hover:bg-slate-100'}`}>
@@ -73,7 +73,7 @@ export function Composer({ onText, onFiles, dark = false, placeholder = '输入�
         <input type="file" multiple accept="image/*,.pdf,.doc,.docx,.txt,.md,.zip" className="sr-only" onChange={(e) => { onFiles([...(e.target.files ?? [])]); e.target.value = '' }} />
       </label>
       <textarea value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} rows={1} placeholder={placeholder} className="max-h-24 min-h-8 flex-1 resize-none bg-transparent py-1 text-sm leading-6 outline-none" />
-      <button onClick={send} disabled={!v.trim()} className={`ws-press h-8 shrink-0 cursor-pointer rounded-md px-3 text-sm font-medium disabled:cursor-default disabled:opacity-40 ${dark ? 'bg-amber-400 text-[#1d2939]' : 'bg-blue-600 text-white'}`}>发送</button>
+      <button onClick={send} disabled={!v.trim()} className={`ws-press h-8 shrink-0 cursor-pointer rounded-md px-3 text-sm font-medium disabled:cursor-default disabled:opacity-40 ${dark ? 'bg-amber-400 text-[#1d2939]' : 'bg-[#1d1d1f] text-white hover:bg-black/90 shadow-2xs'}`}>发送</button>
     </div>
   )
 }

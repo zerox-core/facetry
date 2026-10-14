@@ -5,7 +5,7 @@ import { Btn, SectionHead } from './ui'
 
 const DIFFS = ['基础', '中等', '较难']
 // 录入表单：文字端正清晰（标签 slate-600 中字重，输入正文 slate-900）
-const field = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
+const field = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-400 focus:border-black/50'
 const lab = 'text-xs font-medium text-slate-600'
 
 const DRAFT_KEY = 'facetry-bank-draft'
@@ -66,10 +66,22 @@ export default function Bank() {
   }
 
   return (
-    <div>
-      <div className="flex items-end justify-between">
-        <SectionHead title="团队题库" />
-        <Btn variant="accent" className="mb-4" onClick={() => setEntering(!entering)}>{entering ? '收起录入' : '录入题目'}</Btn>
+    <div className="space-y-6">
+      <div className="ws-rise flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-black/[0.08] pb-5">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-[#1d1d1f]">团队能力标尺题库</h1>
+            <span className="inline-flex items-center rounded-full bg-black/[0.04] px-2.5 py-0.5 text-xs font-semibold text-[#1d1d1f] ring-1 ring-inset ring-black/10">
+              已沉淀 {bank.length} 道标准试题
+            </span>
+          </div>
+          <p className="mt-1.5 text-xs text-[#6e6e73]">
+            沉淀各专业序列的标准考察问题、考核维度、参考答案与减分负向信号
+          </p>
+        </div>
+        <Btn variant="accent" onClick={() => setEntering(!entering)}>
+          {entering ? '收起录入' : '+ 录入新题'}
+        </Btn>
       </div>
 
       {entering && (
@@ -83,7 +95,7 @@ export default function Bank() {
               <span className="min-w-0 flex-1 truncate text-amber-900">
                 有 1 条暂存的题目{stash.q.trim() ? `：${stash.q.trim().slice(0, 30)}${stash.q.trim().length > 30 ? '…' : ''}` : ''}
               </span>
-              <button onClick={restoreStash} className="shrink-0 cursor-pointer font-medium text-blue-600 hover:text-blue-800">继续填写</button>
+              <button onClick={restoreStash} className="shrink-0 cursor-pointer font-semibold text-[#1d1d1f] hover:underline">继续填写</button>
               <button onClick={clearStash} className="shrink-0 cursor-pointer text-slate-400 hover:text-slate-700">丢弃</button>
             </div>
           )}
@@ -125,7 +137,7 @@ export default function Bank() {
               return (
                 <li key={c}>
                   <button onClick={() => setCat(c)} className={`flex w-full cursor-pointer items-center justify-between px-4 py-2 transition-colors ${cat === c ? 'font-medium text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}>
-                    <span className="flex items-center gap-2">{cat === c && <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />}{c}</span>
+                    <span className="flex items-center gap-2">{cat === c && <span className="h-1.5 w-1.5 rounded-full bg-[#1d1d1f]" />}{c}</span>
                     <span className="tabular-nums text-xs text-slate-400">{n}</span>
                   </button>
                 </li>
@@ -134,10 +146,10 @@ export default function Bank() {
           </ul>
           {addingCat ? (
             <div className="login-fade mt-2 ws-paper rounded-xl p-2">
-              <input autoFocus value={newCat} onChange={(e) => setNewCat(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitCat()} placeholder="分类名，如：测试" className="h-8 w-full rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-blue-600" />
+              <input autoFocus value={newCat} onChange={(e) => setNewCat(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitCat()} placeholder="分类名，如：测试" className="h-8 w-full rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-black/50" />
               <div className="mt-1.5 flex justify-end gap-2 text-xs">
                 <button onClick={() => { setAddingCat(false); setNewCat('') }} className="cursor-pointer text-slate-400 hover:text-slate-700">取消</button>
-                <button onClick={submitCat} className="cursor-pointer font-medium text-blue-600 hover:text-blue-800">添加</button>
+                <button onClick={submitCat} className="cursor-pointer font-semibold text-[#1d1d1f] hover:underline">添加</button>
               </div>
             </div>
           ) : (
@@ -146,7 +158,7 @@ export default function Bank() {
         </aside>
 
         <div className="min-w-0 flex-1">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索题目或答案…" className="ws-rise [--i:1] h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-600 sm:w-72" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索题目或答案…" className="ws-rise [--i:1] h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-black/50 sm:w-72" />
           <ol className="ws-rise [--i:2] mt-3 space-y-3">
             {list.map((b) => {
               const expanded = open === b.id
@@ -160,7 +172,7 @@ export default function Bank() {
                     <div className="flex shrink-0 items-center gap-2">
                       <button onClick={() => setOpen(expanded ? undefined : b.id)} className="cursor-pointer text-sm text-slate-500 hover:text-slate-900">{expanded ? '收起' : '答案'}</button>
                       <div className="relative">
-                        <button onClick={() => setMenu(menu === b.id ? null : b.id)} className="cursor-pointer ws-press rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50">加入本场题目</button>
+                        <button onClick={() => setMenu(menu === b.id ? null : b.id)} className="cursor-pointer ws-press rounded-lg border border-black/[0.1] bg-white px-3 py-1.5 text-sm text-[#1d1d1f] font-medium hover:bg-black/[0.04]">加入本场题目</button>
                         {menu === b.id && (
                           <div className="absolute right-0 z-10 mt-1 w-60 login-fade rounded-lg bg-white py-1 shadow-[var(--shadow-lift)]">
                             <div className="px-3 py-1.5 text-xs text-slate-400">选择候选人（待面试）</div>

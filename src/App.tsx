@@ -1,21 +1,49 @@
 import type React from 'react'
 import { useEffect, useState } from 'react'
-import Home from './views/Home'
+import Workbench from './views/Workbench'
 import Candidates from './views/Candidates'
+import CandidateDetail from './views/CandidateDetail'
+import Jobs from './views/Jobs'
+import ScheduleManager from './views/ScheduleManager'
+import Approvals from './views/Approvals'
 import Bank from './views/Bank'
-import Interviewer from './views/Interviewer'
+import Admin from './views/Admin'
+import Overview from './views/Overview'
 import Offline from './views/Offline'
 import Login from './views/Login'
 import Join from './views/Join'
 import Result from './views/Result'
-import Overview from './views/Overview'
 import { elapsedOf, findC, resetDemo, rooms, runningRoomId, useStore } from './store'
 
-const nav = [['home', '工作台'], ['overview', '总览'], ['candidates', '候选人'], ['bank', '题库']]
-const LABEL: Record<string, string> = { home: '工作台', overview: '总览', candidates: '候选人', bank: '题库', analysis: '候选人分析', result: '结果分析', room: '面试间' }
+const nav = [
+  ['workbench', '工作台'],
+  ['candidates', '候选人大池'],
+  ['jobs', '岗位管理'],
+  ['schedule', '约面管理'],
+  ['approvals', '录取审批'],
+  ['bank', '题库管理'],
+  ['admin', '管理后台'],
+  ['overview', '数据看板(P2)'],
+]
+
+const LABEL: Record<string, string> = {
+  workbench: '工作台',
+  candidates: '候选人大池',
+  detail: '候选人详情',
+  jobs: '岗位管理',
+  schedule: '约面管理',
+  approvals: '录取审批',
+  bank: '题库管理',
+  admin: '管理后台',
+  overview: '数据看板',
+  analysis: '候选人详情',
+  result: '结果分析',
+  room: '考场面试间',
+}
+
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 
-/** 后台面试悬浮入口：面试进行中离开面试间时出现（暂停 / 结束不出现），计时继续，点「回到面试间」直接进入、不再确认 */
+/** 后台面试悬浮入口：苹果风格精致药丸胶囊，离开面试间时平滑浮动 */
 function BgRoomWidget({ go }: { go: Go }) {
   const cid = runningRoomId()
   const [, tick] = useState(0)
@@ -27,86 +55,159 @@ function BgRoomWidget({ go }: { go: Go }) {
   if (!cid) return null
   const c = findC(cid)
   return (
-    <div className="ws-rise fixed bottom-5 right-5 z-40 flex items-center gap-3.5 rounded-xl bg-[#1d2939] py-2.5 pl-4 pr-2.5 text-white shadow-[var(--shadow-lift)]" style={{ '--i': 0 } as React.CSSProperties}>
-      <span className="relative flex h-2.5 w-2.5 shrink-0">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-70" />
-        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+    <div
+      className="ws-rise fixed bottom-6 right-6 z-40 flex items-center gap-3 rounded-full bg-[#1d1d1f]/90 p-1.5 pl-4 text-white shadow-2xl backdrop-blur-xl border border-white/10"
+      style={{ '--i': 0 } as React.CSSProperties}
+    >
+      <span className="relative flex h-2 w-2 shrink-0">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
       </span>
-      <div className="min-w-0">
-        <div className="text-xs tabular-nums text-white/55">面试进行中 · {mmss(elapsedOf(rooms[cid]))}</div>
-        <div className="max-w-44 truncate text-sm font-medium">{c.name} · {c.role}</div>
+      <div className="min-w-0 pr-1 text-left">
+        <div className="text-[11px] tabular-nums text-white/60">现场考场记录中 · {mmss(elapsedOf(rooms[cid]))}</div>
+        <div className="max-w-40 truncate text-xs font-medium text-white/90">
+          {c.name} · {c.role}
+        </div>
       </div>
-      <button onClick={() => go('room', cid)} className="h-9 shrink-0 cursor-pointer rounded-lg bg-amber-400 px-3.5 text-sm font-semibold text-[#1d2939] transition-colors hover:bg-amber-300">回到面试间</button>
+      <button
+        onClick={() => go('room', cid)}
+        className="h-8 shrink-0 cursor-pointer rounded-full bg-gradient-to-b from-[#2c2c2e] to-[#121214] px-3.5 text-xs font-medium text-white shadow-[0_2px_6px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.22)] border border-black/80 transition-all hover:brightness-110 active:scale-95"
+      >
+        继续考场
+      </button>
     </div>
   )
 }
 
-/** 导航：go(v) 进入新页并记住来源；go('back') 回到来源页；replace 用于不该回退到的中间页（如提交后的面试间）。
- *  go.from 是返回目标的名称，页面上的「← xx」按钮用它 */
 export type Go = ((v: string, cid?: string, opt?: { replace?: boolean }) => void) & { from: string }
 type Entry = { view: string; cid: string }
 
 export default function App() {
-  const [stack, setStack] = useState<Entry[]>([{ view: 'home', cid: 'c1' }])
+  const [stack, setStack] = useState<Entry[]>([{ view: 'workbench', cid: 'c1' }])
   const { view, cid } = stack[stack.length - 1]
   const setView = (v: string) => setStack([{ view: v, cid }])
   useStore()
   const [user, setUser] = useState(() => localStorage.getItem('facetry-user'))
-  const login = (name: string) => { localStorage.setItem('facetry-user', name); setUser(name); setView('home') }
-  const logout = () => { localStorage.removeItem('facetry-user'); setUser(null) }
+  const login = (name: string) => {
+    localStorage.setItem('facetry-user', name)
+    setUser(name)
+    setView('workbench')
+  }
+  const logout = () => {
+    localStorage.removeItem('facetry-user')
+    setUser(null)
+  }
   const go = ((v, id, opt) => {
     setStack((s) => {
-      if (v === 'back') return s.length > 1 ? s.slice(0, -1) : [{ view: 'home', cid }]
+      if (v === 'back') return s.length > 1 ? s.slice(0, -1) : [{ view: 'workbench', cid }]
       const e = { view: v, cid: id ?? s[s.length - 1].cid }
       return opt?.replace ? [...s.slice(0, -1), e] : [...s, e].slice(-20)
     })
     window.scrollTo(0, 0)
   }) as Go
   go.from = LABEL[stack[stack.length - 2]?.view] ?? '工作台'
-  // 顶部导航是入口：点击即清空来源栈
-  const enter = (v: string) => { setStack([{ view: v, cid }]); window.scrollTo(0, 0) }
+  const enter = (v: string) => {
+    setStack([{ view: v, cid }])
+    window.scrollTo(0, 0)
+  }
 
-  // 候选人通过分享链接 ?join=<候选人 id> 进入面试间，不需要登录，也看不到任何后台信息
   const join = new URLSearchParams(location.search).get('join')
   if (join) return <Join cid={join} />
   if (!user) return <Login onLogin={login} />
 
-  // 面试间是唯一的现场记录页，独占全屏，不显示后台导航
+  // 现场考场面试间独占全屏
   if (view === 'room') return <Offline key={cid} cid={cid} go={go} />
 
-  // 高亮当前入口（栈底），而不是当前页
   const tab = stack[0].view
+
   return (
     <div className="ws-canvas min-h-screen">
-      <header className="sticky top-0 z-20 ws-bar text-white">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-8 px-6">
-          <button onClick={() => enter('home')} className="flex cursor-pointer items-center gap-2">
-            <span className="grid h-7 w-7 place-items-center rounded-md bg-amber-400 text-sm font-bold text-[#1d2939]">F</span>
-            <span className="text-base font-semibold">Facetry</span>
-            <span className="ml-1 rounded bg-white/10 px-1.5 py-0.5 text-xs text-white/60">面试官工作台</span>
-          </button>
-          <nav className="flex h-full flex-1 gap-1">
-            {nav.map(([k, v]) => (
-              <button key={k} onClick={() => enter(k)} className={`relative cursor-pointer px-3 text-sm transition-colors duration-150 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:origin-center after:rounded-full after:bg-amber-400 after:transition-transform after:duration-300 ${tab === k ? 'font-medium text-white after:scale-x-100' : 'text-white/55 after:scale-x-0 hover:text-white'}`}>{v}</button>
-            ))}
-          </nav>
-          <div className="flex items-center gap-3 text-sm text-white/70">
-            <button onClick={() => confirm('清空导入的候选人、题目与面试记录，恢复初始演示数据？') && resetDemo()} className="hidden cursor-pointer text-white/45 hover:text-white md:inline">重置演示数据</button>
-            <span className="hidden h-4 w-px bg-white/15 md:inline" />
-            <span className="hidden sm:inline">技术部 · {user}</span>
-            <button onClick={logout} title="退出登录" className="group relative grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-white/10 text-white hover:bg-white/20">{user[0]}</button>
-            <button onClick={logout} className="cursor-pointer text-white/45 hover:text-white">退出</button>
+      {/* 苹果官网风格超薄磨砂玻璃顶栏 */}
+      <header className="sticky top-0 z-30 ws-bar">
+        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-6">
+          <div className="flex items-center gap-6">
+            <button onClick={() => enter('workbench')} className="group flex cursor-pointer items-center gap-2">
+              <span className="grid h-6 w-6 place-items-center rounded-full bg-[#1d1d1f] text-[11px] font-bold text-white tracking-tighter shadow-2xs group-hover:bg-black/80 transition-colors">
+                F
+              </span>
+              <span className="text-sm font-semibold tracking-tight text-[#1d1d1f]">FaceTry</span>
+              <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-medium text-[#86868b]">招聘工作台</span>
+            </button>
+
+            {/* 顶栏分段导航胶囊 */}
+            <nav className="hidden lg:flex items-center gap-1 overflow-x-auto">
+              {nav.map(([k, label]) => {
+                const on = tab === k
+                return (
+                  <button
+                    key={k}
+                    onClick={() => enter(k)}
+                    className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                      on
+                        ? 'bg-[#1d1d1f] text-white shadow-2xs'
+                        : 'text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.04]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={resetDemo}
+              className="hidden sm:inline cursor-pointer text-[11px] text-[#86868b] hover:text-[#1d1d1f] transition-colors"
+              title="一键恢复系统出厂纯净数据"
+            >
+              重置数据
+            </button>
+            <div className="flex items-center gap-2 rounded-full bg-black/[0.04] py-1 pl-2.5 pr-1.5 text-xs">
+              <span className="font-medium text-[#1d1d1f]">{user}</span>
+              <button
+                onClick={logout}
+                className="grid h-5 w-5 cursor-pointer place-items-center rounded-full text-[#86868b] hover:bg-black/10 hover:text-[#1d1d1f] transition-colors"
+                title="退出登录"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* 移动端/小屏顶栏导航条 */}
+        <div className="lg:hidden flex items-center gap-1 px-4 pb-2 overflow-x-auto border-t border-black/[0.04] pt-1">
+          {nav.map(([k, label]) => {
+            const on = tab === k
+            return (
+              <button
+                key={k}
+                onClick={() => enter(k)}
+                className={`whitespace-nowrap cursor-pointer rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+                  on ? 'bg-[#1d1d1f] text-white' : 'text-[#86868b]'
+                }`}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
       </header>
-      <main key={view} className="mx-auto max-w-7xl px-6 py-8">
-        {view === 'home' && <Home go={go} />}
-        {view === 'overview' && <Overview go={go} />}
+
+      <main className="mx-auto max-w-7xl px-6 py-8">
+        {view === 'workbench' && <Workbench go={go} />}
         {view === 'candidates' && <Candidates go={go} />}
+        {(view === 'detail' || view === 'analysis') && <CandidateDetail cid={cid} go={go} />}
+        {view === 'jobs' && <Jobs go={go} />}
+        {view === 'schedule' && <ScheduleManager go={go} />}
+        {view === 'approvals' && <Approvals go={go} />}
         {view === 'bank' && <Bank />}
-        {view === 'analysis' && <Interviewer key={cid} cid={cid} go={go} />}
-        {view === 'result' && <Result key={cid} cid={cid} go={go} />}
+        {view === 'admin' && <Admin go={go} />}
+        {view === 'overview' && <Overview go={go} />}
+        {view === 'result' && <Result cid={cid} go={go} />}
       </main>
+
       <BgRoomWidget go={go} />
     </div>
   )

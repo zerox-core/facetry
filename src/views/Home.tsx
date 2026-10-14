@@ -6,7 +6,7 @@ import type { Go } from '../App'
 import { Btn, Card, ScoreStamp, SectionHead } from './ui'
 
 const verdictCls: Record<string, string> = { 推荐: 'bg-emerald-50 text-emerald-700', 待定: 'bg-slate-100 text-slate-600', 不推荐: 'bg-amber-50 text-amber-700' }
-const statusCls: Record<string, string> = { 待约面: 'bg-slate-100 text-slate-600', 待面试: 'bg-blue-50 text-blue-700', 待评价: 'bg-amber-50 text-amber-700', 跟进中: 'bg-emerald-50 text-emerald-700', 已结束: 'bg-slate-100 text-slate-500' }
+const statusCls: Record<string, string> = { 待约面: 'bg-slate-100 text-slate-600', 待面试: 'bg-black/[0.05] text-[#1d1d1f] font-medium border border-black/10', 待评价: 'bg-amber-50 text-amber-700', 跟进中: 'bg-emerald-50 text-emerald-700', 已结束: 'bg-slate-100 text-slate-500' }
 const today = () => { const [y, m, d] = TODAY.split('-').map(Number); return new Date(y, m - 1, d) }
 const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 const rise = (i: number) => ({ '--i': i } as React.CSSProperties)
@@ -74,7 +74,7 @@ export default function Home({ go }: { go: Go }) {
             <h2 className="text-lg font-semibold text-slate-900">{isTodayView ? '今日面试' : `${viewDate.getMonth() + 1} 月 ${viewDate.getDate()} 日 · 周${WEEK[viewDate.getDay()]}`}</h2>
             {!isTodayView && (
               <span className="flex items-center gap-3 text-sm text-slate-400">
-                <button onClick={() => setViewDay(TODAY)} className="cursor-pointer text-blue-600 hover:text-blue-800">回到今天</button>
+                <button onClick={() => setViewDay(TODAY)} className="cursor-pointer font-medium text-[#1d1d1f] hover:underline">回到今天</button>
               </span>
             )}
           </div>
@@ -187,7 +187,7 @@ export default function Home({ go }: { go: Go }) {
               ))}
               {!unscheduled.length && <li className="py-3 text-center text-sm text-slate-400">暂无 · 导入简历后出现在这里</li>}
             </ul>
-            <button onClick={() => go('candidates')} className="mt-3 cursor-pointer self-start text-sm text-blue-600 hover:text-blue-800">去安排 →</button>
+            <button onClick={() => go('candidates')} className="mt-3 cursor-pointer self-start text-sm font-medium text-[#1d1d1f] hover:underline">去安排 →</button>
           </Card>
 
           <Card className="flex flex-col px-5 py-4">
@@ -205,7 +205,7 @@ export default function Home({ go }: { go: Go }) {
               ))}
               {!upcoming.length && <li className="py-3 text-center text-sm text-slate-400">暂无待面试安排</li>}
             </ul>
-            <button onClick={() => go('candidates')} className="mt-3 cursor-pointer self-start text-sm text-blue-600 hover:text-blue-800">全部候选人 →</button>
+            <button onClick={() => go('candidates')} className="mt-3 cursor-pointer self-start text-sm font-medium text-[#1d1d1f] hover:underline">全部候选人 →</button>
           </Card>
 
           <Card className="flex flex-col px-5 py-4">
@@ -222,7 +222,7 @@ export default function Home({ go }: { go: Go }) {
                     <span className={`ml-2 rounded px-1.5 py-0.5 text-xs ${statusCls[c.status]}`}>{c.status}</span>
                     {c.status === '跟进中' && <span className="ml-1.5 text-xs text-slate-400">待确认后续安排</span>}
                   </div>
-                  <span className="shrink-0 text-xs text-blue-600">{c.status === '待评价' ? '去评价' : '看结果'}</span>
+                  <span className="shrink-0 text-xs font-medium text-[#1d1d1f] hover:underline">{c.status === '待评价' ? '去评价' : '看结果'}</span>
                 </li>
               ))}
               {!after.length && <li className="py-3 text-center text-sm text-slate-400">暂无已面试的候选人</li>}
@@ -240,8 +240,8 @@ export default function Home({ go }: { go: Go }) {
             </tr></thead>
             <tbody>
               {history.map((h) => (
-                <tr key={h.id} onClick={() => h.cid && go('result', h.cid)} className={`${h.cid ? 'cursor-pointer' : ''} border-b border-slate-100 last:border-0 hover:bg-slate-50 ${h.date === TODAY ? 'bg-blue-50/40' : ''}`}>
-                  <td className="px-5 py-3.5 font-medium text-slate-900">{h.name}<span className="ml-2 text-xs font-normal tabular-nums text-slate-400">{h.id}</span>{h.date === TODAY && <span className="ml-2 rounded bg-blue-600 px-1.5 py-0.5 text-[11px] font-normal text-white">今天</span>}</td>
+                <tr key={h.id} onClick={() => h.cid && go('result', h.cid)} className={`${h.cid ? 'cursor-pointer' : ''} border-b border-slate-100 last:border-0 hover:bg-slate-50 ${h.date === TODAY ? 'bg-black/[0.02]' : ''}`}>
+                  <td className="px-5 py-3.5 font-medium text-slate-900">{h.name}<span className="ml-2 text-xs font-normal tabular-nums text-slate-400">{h.id}</span>{h.date === TODAY && <span className="ml-2 rounded-full bg-[#1d1d1f] px-2 py-0.5 text-[10px] font-medium text-white shadow-2xs">今天</span>}</td>
                   <td className="text-slate-600">{h.role}</td>
                   <td className="hidden tabular-nums text-slate-500 md:table-cell">{h.date}</td>
                   <td className="hidden tabular-nums text-slate-500 md:table-cell">{h.dur}</td>
