@@ -9,6 +9,7 @@ import Approvals from './views/Approvals'
 import Bank from './views/Bank'
 import Admin from './views/Admin'
 import Overview from './views/Overview'
+import ColorBentoDashboard from './views/ColorBentoDashboard'
 import Offline from './views/Offline'
 import Login from './views/Login'
 import Join from './views/Join'
@@ -17,6 +18,7 @@ import { elapsedOf, findC, resetDemo, rooms, runningRoomId, useStore } from './s
 
 const nav = [
   ['workbench', '工作台'],
+  ['bento', '四色指挥舱(DaisyUI)'],
   ['candidates', '候选人大池'],
   ['jobs', '岗位管理'],
   ['schedule', '约面管理'],
@@ -28,6 +30,7 @@ const nav = [
 
 const LABEL: Record<string, string> = {
   workbench: '工作台',
+  bento: '四色指挥舱',
   candidates: '候选人大池',
   detail: '候选人详情',
   jobs: '岗位管理',
@@ -54,6 +57,7 @@ function BgRoomWidget({ go }: { go: Go }) {
   }, [cid])
   if (!cid) return null
   const c = findC(cid)
+  if (!c) return null
   return (
     <div
       className="ws-rise fixed bottom-6 right-6 z-40 flex items-center gap-3 rounded-full bg-[#1d1d1f]/90 p-1.5 pl-4 text-white shadow-2xl backdrop-blur-xl border border-white/10"
@@ -83,7 +87,7 @@ export type Go = ((v: string, cid?: string, opt?: { replace?: boolean }) => void
 type Entry = { view: string; cid: string }
 
 export default function App() {
-  const [stack, setStack] = useState<Entry[]>([{ view: 'workbench', cid: 'c1' }])
+  const [stack, setStack] = useState<Entry[]>([{ view: 'bento', cid: 'c1' }])
   const { view, cid } = stack[stack.length - 1]
   const setView = (v: string) => setStack([{ view: v, cid }])
   useStore()
@@ -196,6 +200,7 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-7xl px-6 py-8">
+        {view === 'bento' && <ColorBentoDashboard go={go} onSwitchView={() => go('workbench')} />}
         {view === 'workbench' && <Workbench go={go} />}
         {view === 'candidates' && <Candidates go={go} />}
         {(view === 'detail' || view === 'analysis') && <CandidateDetail cid={cid} go={go} />}

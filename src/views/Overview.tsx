@@ -15,7 +15,7 @@ export default function Overview({ go }: { go: Go }) {
   const avg = n ? history.reduce((a, h) => a + h.score, 0) / n : 0
   const avgDur = n ? history.reduce((a, h) => a + toSec(h.dur), 0) / n / 60 : 0
   const vc = Object.fromEntries(V.map((v) => [v, history.filter((h) => h.verdict === v).length]))
-  const funnel = [['待面试', candidates.filter((c) => c.status === '待面试').length], ['待评价', candidates.filter((c) => c.status === '待评价').length], ['已评价', candidates.filter((c) => c.status === '已评价').length + n]] as const
+  const funnel = [['约面中', candidates.filter((c) => c.status === '约面中').length], ['面评中', candidates.filter((c) => c.status === '面评中').length], ['已完成', candidates.filter((c) => c.status === '已完成').length + n]] as const
   const fmax = Math.max(1, ...funnel.map((f) => f[1]))
 
   // 按岗位

@@ -12,7 +12,6 @@ import {
   TODAY,
   type ApprovalApplication,
   type ApprovalHistoryItem,
-  type ApprovalTrack,
   type ApprovalTrackStatus,
   type Candidate,
   type CandidateStage,
@@ -986,7 +985,6 @@ export function updateApprovalTrack(
   t.status = status
   t.updateTime = now
   t.approver = by
-  t.failureNote?.length
   const item: ApprovalHistoryItem = { at: now, status, node: t.currentNode, by, comment: info.comment }
   t.history.push(item)
 

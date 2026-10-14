@@ -31,7 +31,7 @@ export default function Bank() {
   const [draft, setDraft] = useState<Draft>({ cat: bankCats[0], tag: '基础', diff: '中等', q: '', points: '', answer: '', follow: '', flag: '' })
   const [stash, setStash] = useState<Draft | null>(loadStash) // 暂存：只保留最近一道题
 
-  const targets = candidates.filter((c) => c.status === '待面试')
+  const targets = candidates.filter((c) => c.status === '约面中')
   const say = (t: string) => { setToast(t); setTimeout(() => setToast(''), 2400) }
   const add = (cid: string, b: (typeof bank)[number]) => {
     addQuestion(cid, { q: b.q, topic: b.cat === '综合' ? '行为面试' : '技术深挖', diff: b.diff, basis: `题库 · ${b.cat}`, points: b.points, answer: b.answer, follow: b.follow, flag: b.flag })
@@ -175,7 +175,7 @@ export default function Bank() {
                         <button onClick={() => setMenu(menu === b.id ? null : b.id)} className="cursor-pointer ws-press rounded-lg border border-black/[0.1] bg-white px-3 py-1.5 text-sm text-[#1d1d1f] font-medium hover:bg-black/[0.04]">加入本场题目</button>
                         {menu === b.id && (
                           <div className="absolute right-0 z-10 mt-1 w-60 login-fade rounded-lg bg-white py-1 shadow-[var(--shadow-lift)]">
-                            <div className="px-3 py-1.5 text-xs text-slate-400">选择候选人（待面试）</div>
+                            <div className="px-3 py-1.5 text-xs text-slate-400">选择候选人（约面中）</div>
                             {targets.map((c) => {
                               const has = c.qs.some((x) => x.q === b.q)
                               return (
@@ -184,7 +184,7 @@ export default function Bank() {
                                 </button>
                               )
                             })}
-                            {!targets.length && <div className="px-3 py-2 text-xs text-slate-400">暂无待面试的候选人</div>}
+                            {!targets.length && <div className="px-3 py-2 text-xs text-slate-400">暂无约面中的候选人</div>}
                           </div>
                         )}
                       </div>

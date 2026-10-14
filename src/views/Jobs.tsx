@@ -40,6 +40,15 @@ export default function Jobs({ go }: { go: Go }) {
   })
   const [tagInput, setTagInput] = useState('')
 
+  // 标尺缺失时给出空态：findJd 找不到返回 undefined，不静默绑到其他 JD 上
+  if (!boundJd) {
+    return (
+      <div className="ws-paper rounded-2xl p-12 text-center text-xs text-[#86868b]">
+        当前岗位尚未装配 JD 标尺，请先在左侧能力标尺库创建标尺后重新装配。
+      </div>
+    )
+  }
+
   // 打开新建岗位
   const openNewPos = () => {
     setPosForm({
@@ -173,8 +182,8 @@ export default function Jobs({ go }: { go: Go }) {
     const matched = candidates.filter((c) => c.positionId === posId)
     return {
       total: matched.length,
-      waitMeet: matched.filter((c) => c.status === '待面试').length,
-      waitEval: matched.filter((c) => c.status === '待评价').length,
+      waitMeet: matched.filter((c) => c.status === '约面中').length,
+      waitEval: matched.filter((c) => c.status === '面评中').length,
     }
   }
 
@@ -309,9 +318,9 @@ export default function Jobs({ go }: { go: Go }) {
                   <div className="mt-3 flex items-center gap-2">
                     <span className="inline-flex items-center gap-1 rounded-full bg-black/[0.04] px-2.5 py-1 text-xs font-medium text-[#1d1d1f] ring-1 ring-inset ring-black/10">
                       <span>📋</span>
-                      {jd.title} ({jd.code})
+                      {jd?.title ?? '未装配标尺'} ({jd?.code ?? '—'})
                     </span>
-                    <span className="text-xs text-[#86868b]">{jd.salary}</span>
+                    <span className="text-xs text-[#86868b]">{jd?.salary ?? '薪酬待定'}</span>
                   </div>
 
                   {/* HC 进度与协同人 */}
@@ -346,7 +355,7 @@ export default function Jobs({ go }: { go: Go }) {
                     </button>
                     {stat.waitMeet > 0 && (
                       <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800 font-medium text-[10px]">
-                        {stat.waitMeet} 位待面试
+                        {stat.waitMeet} 位约面中
                       </span>
                     )}
                   </div>

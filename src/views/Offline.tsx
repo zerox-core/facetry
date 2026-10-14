@@ -49,13 +49,13 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   const c = findC(cid)
   const picked = pickedOf(cid)
   const saved = rooms[cid]
-  // 已提交评价（跟进中 / 已结束）的面试间是只读记录：结果不可再修改
-  const locked = c.status === '跟进中' || c.status === '已结束' || (c.status as string) === '已评价'
-  const lines = resumes[c.id].sections.flatMap((s) => s.lines).filter((l) => l.mark)
+  // 已提交评价（待录取 / 已完成 / 搁置）的面试间是只读记录：结果不可再修改
+  const locked = !!c && (c.status === '待录取' || c.status === '已完成' || c.status === '搁置')
+  const lines = (c ? (resumes[c.id]?.sections ?? []) : []).flatMap((s) => s.lines).filter((l) => l.mark)
   const count = { all: lines.length, hi: lines.filter((l) => l.mark === 'hi').length, risk: lines.filter((l) => l.mark === 'risk').length }
   // 屏幕可能朝向候选人：遮挡分析结论、参考答案与减分信号
   const [cover, setCover] = useState(false)
-  const qs = c.qs.filter((q) => !picked.length || picked.includes(q.id))
+  const qs = (c?.qs ?? []).filter((q) => !picked.length || picked.includes(q.id))
   const [idx, setIdx] = useState(0)
   const [filter, setFilter] = useState<'all' | 'hi' | 'risk'>('all')
   const [wide, setWide] = useState(false)
@@ -171,7 +171,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   }, [cid])
   // 面试官确认进入后上报在线：候选人侧从「等待面试官」变为「面试进行中」
   useEffect(() => { if (entered) ch.current?.send({ type: 'hello' }) }, [entered])
-  useEffect(() => { if (entered) ch.current?.send({ type: 'state', name: c.name, role: c.role, round: c.round, idx, total: qs.length, q: q?.q ?? '', ended: done, sec: elapsed }) }, [entered, shared, peer, idx, done, elapsed])
+  useEffect(() => { if (entered) ch.current?.send({ type: 'state', name: c?.name ?? '', role: c?.role ?? '', round: c?.round ?? '', idx, total: qs.length, q: q?.q ?? '', ended: done, sec: elapsed }) }, [entered, shared, peer, idx, done, elapsed])
   useEffect(() => { if (entered) ch.current?.send({ type: 'level', who: '面试官', on: micOn && voice.speaking }) }, [entered, micOn, voice.speaking])
   useEffect(() => { rooms[cid] = { ...rooms[cid], talk, shared }; save() }, [talk, shared])
   const link = `${location.origin}${location.pathname}?join=${cid}`
@@ -218,7 +218,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
       good.length ? `表现较好：${[...new Set(good)].join('、')}。` : '',
       weak.length ? `需要关注：${[...new Set(weak)].join('、')}。` : '',
       tags.length ? `面试印象：${tags.join('、')}。` : '',
-      c.risks.length ? `简历待核实项：${c.risks[0]}${recs[qs.find((x) => x.topic === '简历核实')?.id ?? '']?.note ? '（已追问，见记录）' : '（建议下一轮继续确认）'}。` : '',
+      c?.risks.length ? `简历待核实项：${c.risks[0]}${recs[qs.find((x) => x.topic === '简历核实')?.id ?? '']?.note ? '（已追问，见记录）' : '（建议下一轮继续确认）'}。` : '',
     ].filter(Boolean).join('\n')
   }
   // 综合评价：只看已评分题目；被排除或未评分的题不计入，也不当作低分
@@ -233,19 +233,20 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
         : '尚无评分记录，无法形成有依据的评价。',
       strengths: good.map(cite),
       weaknesses: [...weak.map(cite), ...(miss.length ? [`${miss.map((x) => x.topic).join('、')} 未评分，相关能力未验证`] : [])],
-      nextSteps: [...weak, ...miss].flatMap((x) => x.follow.filter((f) => !recs[x.id]?.asked.includes(f)).slice(0, 1)).slice(0, 3),
+      nextSteps: [...weak, ...miss].flatMap((x) => (x.follow ?? []).filter((f) => !recs[x.id]?.asked.includes(f)).slice(0, 1)).slice(0, 3),
       suggestion: rated.length < qs.length / 2 ? '覆盖率不足一半，证据不充分，建议安排下一轮再做结论。' : weak.length ? '证据基本充分，建议结合偏弱项在下一轮定向验证后再做结论。' : '证据较充分，可结合团队需求复核后做结论。',
       evidence: [...good, ...weak].map((x) => x.id),
       at: now(),
+      draft: true, // AI 辅助草稿，须经面试官 / HR 人工确认后作为面评结论（FR-B3）
     }
   }
   // 报告由已保存的评分与记录推导，提交前后都可以生成 / 重新生成
   const genReview = () => { setReviewing(true); setTimeout(() => { setReview(buildReview()); setReviewing(false); touch() }, 1200) }
   // 导出 Markdown 完整记录：评分、备注、参考要点、排除状态与综合评价
   const exportMd = () => {
-    const excluded = c.qs.filter((x) => !qs.includes(x))
+    const excluded = (c?.qs ?? []).filter((x) => !qs.includes(x))
     const md = [
-      `# 面试记录 · ${c.name}`, '', `- 岗位：${c.role}`, `- 轮次：${c.round} · ${c.slot}`, `- 用时：${mmss(elapsed)} · 已评 ${scored}/${qs.length} · 均分 ${scored ? avg.toFixed(1) : '–'}`, `- 结论：${verdict || '未选择'}`, '',
+      `# 面试记录 · ${c?.name}`, '', `- 岗位：${c?.role}`, `- 轮次：${c?.round} · ${c?.slot}`, `- 用时：${mmss(elapsed)} · 已评 ${scored}/${qs.length} · 均分 ${scored ? avg.toFixed(1) : '–'}`, `- 结论：${verdict || '未选择'}`, '',
       '## 题目记录', '',
       ...qs.flatMap((x, i) => { const r = recs[x.id] ?? empty; return [`### ${i + 1}. ${x.q}`, '', `- 类型：${x.topic} · 依据：${x.basis}`, `- 评分：${r.score ?? '未评分'} · 用时 ${mmss(r.secs)}`, `- 命中要点：${r.hit.length ? r.hit.join('；') : '无'}`, `- 参考要点：${x.points.join('；') || '无'}`, r.tags.length ? `- 标签：${r.tags.join('、')}` : '', r.note ? `- 备注：${r.note}` : '', ''].filter((l, j, a) => l !== '' || j === a.length - 1) }),
       ...(excluded.length ? ['## 已排除题目', '', ...excluded.map((x) => `- ${x.q}`), ''] : []),
@@ -256,7 +257,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
     ].join('\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' }))
-    a.download = `${c.name}-面试记录.md`
+    a.download = `${c?.name ?? cid}-面试记录.md`
     a.click()
     URL.revokeObjectURL(a.href)
   }
@@ -295,6 +296,15 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
+  // 找不到候选人时给出空态（findC 找不到返回 undefined），避免把面试间静默绑到其他候选人
+  if (!c) {
+    return (
+      <div className="grid h-full min-h-[320px] place-items-center bg-black text-sm text-white/70">
+        未找到候选人 {cid} 的记录，可能已被来源库标记失效。
+      </div>
+    )
+  }
+
   const pick = (qid: string) => { const i = qs.findIndex((x) => x.id === qid); if (i >= 0) move(i) }
   const enterRoom = () => {
     setMicOn(micDraft); setCamOn(camDraft); setEntered(true)
@@ -658,9 +668,9 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                     </div>
                     <div>
                       <h2 className="text-[15px] font-semibold text-slate-900">追问</h2>
-                      {!q.follow.length && <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-400">暂无预设追问</p>}
+                      {!q.follow?.length && <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-400">暂无预设追问</p>}
                       <ul className="mt-3 space-y-2">
-                        {q.follow.map((f) => {
+                        {(q.follow ?? []).map((f) => {
                           const on = rec.asked.includes(f)
                           return (
                             <li key={f}>

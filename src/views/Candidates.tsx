@@ -1,21 +1,23 @@
 import type React from 'react'
 import { useState } from 'react'
-import { candidates, resumes, STAGES, type CandidateStage } from '../data'
+import { candidates, CHANNELS, resumes, STAGES, type CandidateStage } from '../data'
 import { batchAssign, findJd, findPos, positions, slotLabel, updateCandidateStage } from '../store'
 import type { Go } from '../App'
 import { Btn } from './ui'
 
-const SOURCES = ['全部', '前程无忧', '猎聘', 'BOSS直聘', '内推', '影刀采集']
+// 渠道筛选直接取自渠道字典：新增渠道只由采集侧扩展，页面不需要改代码
+const SOURCES = ['全部', ...CHANNELS]
 const ASSIGNEES = ['全部', '林婉 (HRG)', '赵静 (HR)', '未分配']
 
 const stageCls: Record<string, string> = {
   新入库: 'bg-zinc-100 text-zinc-800 border-zinc-200/60 font-medium',
-  待初筛: 'bg-amber-50 text-amber-800 border-amber-200/50',
-  待约面: 'bg-purple-50 text-purple-800 border-purple-200/50',
-  待面试: 'bg-zinc-800 text-white border-transparent font-medium shadow-2xs',
-  待评价: 'bg-orange-50 text-orange-800 border-orange-200/50',
+  筛选中: 'bg-amber-50 text-amber-800 border-amber-200/50',
+  待联系: 'bg-purple-50 text-purple-800 border-purple-200/50',
+  约面中: 'bg-zinc-800 text-white border-transparent font-medium shadow-2xs',
+  面评中: 'bg-orange-50 text-orange-800 border-orange-200/50',
   待录取: 'bg-emerald-50 text-emerald-800 border-emerald-200/50',
-  已录取: 'bg-emerald-600 text-white border-transparent',
+  已完成: 'bg-emerald-600 text-white border-transparent',
+  搁置: 'bg-amber-50 text-amber-900 border-amber-300/60',
   已淘汰: 'bg-black/[0.04] text-[#86868b] border-black/[0.06]',
 }
 
@@ -93,29 +95,29 @@ export default function Candidates({ go }: { go: Go }) {
           <div className="flex items-center gap-3">
             <div className="h-8 w-1 rounded-full bg-violet-400" />
             <div>
-              <div className="text-[11px] text-white/50">新入库/初筛</div>
-              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '新入库' || c.status === '待初筛').length} <span className="text-xs text-white/40 font-normal">人</span></div>
+              <div className="text-[11px] text-white/50">新入库/筛选中</div>
+              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '新入库' || c.status === '筛选中').length} <span className="text-xs text-white/40 font-normal">人</span></div>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="h-8 w-1 rounded-full bg-amber-400" />
             <div>
               <div className="text-[11px] text-white/50">约面推进中</div>
-              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '待约面').length} <span className="text-xs text-white/40 font-normal">人</span></div>
+              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '待联系').length} <span className="text-xs text-white/40 font-normal">人</span></div>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="h-8 w-1 rounded-full bg-emerald-400" />
             <div>
               <div className="text-[11px] text-white/50">面试与评价</div>
-              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '待面试' || c.status === '待评价').length} <span className="text-xs text-white/40 font-normal">人</span></div>
+              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '约面中' || c.status === '面评中').length} <span className="text-xs text-white/40 font-normal">人</span></div>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="h-8 w-1 rounded-full bg-rose-400" />
             <div>
               <div className="text-[11px] text-white/50">录取与跟进</div>
-              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '跟进中' || c.status === '已发Offer').length} <span className="text-xs text-white/40 font-normal">人</span></div>
+              <div className="text-xl font-bold text-white tabular-nums">{candidates.filter(c => c.status === '待录取' || c.status === '已完成').length} <span className="text-xs text-white/40 font-normal">人</span></div>
             </div>
           </div>
         </div>
@@ -242,7 +244,7 @@ export default function Candidates({ go }: { go: Go }) {
 
                   <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                     <span className="rounded-md bg-black/[0.04] px-2 py-0.5 text-[#1d1d1f] font-medium border border-black/5">
-                      {pos.name}
+                      {pos?.name ?? c.role}
                     </span>
                     <span className="rounded-md bg-black/[0.04] px-2 py-0.5 text-[#1d1d1f] border border-black/5">
                       {c.source} ({c.sourceId})

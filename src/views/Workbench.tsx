@@ -4,18 +4,22 @@ import { approvals, findJd, findPos, runningRoomId, slotDate, slotLabel, trigger
 import type { Go } from '../App'
 import { Btn, Card } from './ui'
 
+// 审批轨状态中文标签：发起 / 处理中 / 通过 / 退回 / 拒绝 / 撤销全部显式展示（FR-C4）
+const trackLabel: Record<string, string> = { pending: '处理中', approved: '已通过', returned: '已退回', rejected: '已拒绝', canceled: '已撤销' }
+
 export default function Workbench({ go }: { go: Go }) {
   const [syncToast, setSyncToast] = useState('')
   const [activeTab, setActiveTab] = useState<'all' | 'screen' | 'schedule' | 'review' | 'approval'>('all')
 
-  const pendingScreen = candidates.filter((c) => c.status === '新入库' || c.status === '待初筛')
-  const pendingSchedule = candidates.filter((c) => c.status === '待约面')
-  const pendingReview = candidates.filter((c) => c.status === '待评价')
-  const pendingApproval = approvals.filter((a) => a.finalStatus === 'processing')
+  const pendingScreen = candidates.filter((c) => c.status === '新入库' || c.status === '筛选中')
+  const pendingSchedule = candidates.filter((c) => c.status === '待联系')
+  const pendingReview = candidates.filter((c) => c.status === '面评中')
+  // processing + partial（单边通过）都算仍在流转，partial 不得当作已完成
+  const pendingApproval = approvals.filter((a) => a.finalStatus === 'processing' || a.finalStatus === 'partial')
 
   const todayStr = TODAY
   const todayInterviews = candidates
-    .filter((c) => c.status === '待面试' && c.slot.startsWith(todayStr))
+    .filter((c) => c.status === '约面中' && c.slot.startsWith(todayStr))
     .sort((a, b) => a.slot.localeCompare(b.slot))
 
   const handleSync = () => {
@@ -45,6 +49,12 @@ export default function Workbench({ go }: { go: Go }) {
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => go('bento')}
+            className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#FF5A36] to-[#6366F1] px-3.5 py-1.5 text-xs font-bold text-white shadow-md hover:brightness-110 hover:-translate-y-0.5 transition-all cursor-pointer"
+          >
+            <span>🎛️ COLOR 四色指挥舱</span>
+          </button>
           <Btn variant="ghost" onClick={handleSync} className="hover:-translate-y-0.5 transition-transform">
             🔄 刷新拉取来源库
           </Btn>
@@ -65,7 +75,7 @@ export default function Workbench({ go }: { go: Go }) {
 
       {/* 4 大核心业务待办 Bento 卡片 (纯白微浮雕底 + 4 色优雅点缀微线 + 弹簧代码动效) */}
       <div className="ws-rise [--i:1] grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {/* 1. 待初筛 (紫罗兰点缀) */}
+        {/* 1. 筛选中 (紫罗兰点缀) */}
         <div
           onClick={() => setActiveTab('screen')}
           className={`cursor-pointer ws-paper rounded-2xl p-5 border transition-all duration-300 relative overflow-hidden group hover:-translate-y-1 hover:shadow-lg ${
@@ -76,7 +86,7 @@ export default function Workbench({ go }: { go: Go }) {
         >
           <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-purple-500 to-indigo-500 opacity-80 group-hover:h-1.5 transition-all" />
           <div className="flex items-center justify-between text-xs text-[#86868b]">
-            <span className="group-hover:text-purple-700 transition-colors font-medium">待初筛复核</span>
+            <span className="group-hover:text-purple-700 transition-colors font-medium">筛选中复核</span>
             <span className="rounded-full bg-purple-50 px-2.5 py-0.5 text-[10px] font-semibold text-purple-700 ring-1 ring-inset ring-purple-600/20">
               影刀落库
             </span>
@@ -90,7 +100,7 @@ export default function Workbench({ go }: { go: Go }) {
           </p>
         </div>
 
-        {/* 2. 待约面 (暖阳琥珀点缀) */}
+        {/* 2. 待联系 (暖阳琥珀点缀) */}
         <div
           onClick={() => setActiveTab('schedule')}
           className={`cursor-pointer ws-paper rounded-2xl p-5 border transition-all duration-300 relative overflow-hidden group hover:-translate-y-1 hover:shadow-lg ${
@@ -191,7 +201,7 @@ export default function Workbench({ go }: { go: Go }) {
                   activeTab === 'screen' ? 'ws-segmented-active font-semibold shadow-xs' : 'text-[#6e6e73] hover:text-[#1d1d1f]'
                 }`}
               >
-                待初筛 ({pendingScreen.length})
+                筛选中 ({pendingScreen.length})
               </button>
               <button
                 onClick={() => setActiveTab('schedule')}
@@ -199,7 +209,7 @@ export default function Workbench({ go }: { go: Go }) {
                   activeTab === 'schedule' ? 'ws-segmented-active font-semibold shadow-xs' : 'text-[#6e6e73] hover:text-[#1d1d1f]'
                 }`}
               >
-                待约面 ({pendingSchedule.length})
+                待联系 ({pendingSchedule.length})
               </button>
               <button
                 onClick={() => setActiveTab('review')}
@@ -221,7 +231,7 @@ export default function Workbench({ go }: { go: Go }) {
           </div>
 
           <div className="space-y-3">
-            {/* 待初筛列表 (电光紫侧标微动效) */}
+            {/* 筛选中列表 (电光紫侧标微动效) */}
             {(activeTab === 'all' || activeTab === 'screen') &&
               pendingScreen.map((c) => (
                 <div
@@ -257,7 +267,7 @@ export default function Workbench({ go }: { go: Go }) {
                 </div>
               ))}
 
-            {/* 待约面列表 (暖阳琥珀侧标微动效) */}
+            {/* 待联系列表 (暖阳琥珀侧标微动效) */}
             {(activeTab === 'all' || activeTab === 'schedule') &&
               pendingSchedule.map((c) => (
                 <div
@@ -340,9 +350,9 @@ export default function Workbench({ go }: { go: Go }) {
                         </span>
                       </div>
                       <div className="mt-1 flex items-center gap-3 text-xs text-[#86868b]">
-                        <span>飞书审批: <strong className="text-rose-700">{a.feishu.currentNode}</strong> ({a.feishu.status === 'pending' ? '审批中' : '已通过'})</span>
+                        <span>飞书审批: <strong className="text-rose-700">{a.feishu.currentNode}</strong> ({trackLabel[a.feishu.status] ?? a.feishu.status})</span>
                         <span>·</span>
-                        <span>BPM 流程: <strong className="text-rose-700">{a.bpm.currentNode}</strong> ({a.bpm.status === 'pending' ? '流转中' : '已通过'})</span>
+                        <span>BPM 流程: <strong className="text-rose-700">{a.bpm.currentNode}</strong> ({trackLabel[a.bpm.status] ?? a.bpm.status})</span>
                       </div>
                     </div>
                   </div>

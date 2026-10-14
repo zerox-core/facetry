@@ -435,7 +435,7 @@ export const initialApprovals: ApprovalApplication[] = [
     salary: '38k · 15薪',
     level: 'P7 资深研发',
     dept: '技术部',
-    onboardDate: '2026-11-01',
+    onboardDate: '2026-10-26',
     idempotencyKey: 'APPR-2026-1002-C4-POSBE1',
     materials: [
       { key: 'tech-review', name: '一面 / 二面技术评审表 (均分 3.8)', required: true, status: 'done', fileRef: 'minio://facetry/materials/c4/tech-review.pdf' },
@@ -1151,6 +1151,53 @@ export const resumes: Record<string, { file: string; contact: string; sections: 
       { title: '教育', lines: [{ text: '武汉大学 · 软件工程 · 本科 · 2023' }] },
     ],
   },
+  c7: {
+    file: '郑亦然_高级前端_简历.pdf', contact: '上海 · 133****9087 · yiran.zheng@mail.com',
+    sections: [
+      { title: '工作经历', lines: [
+        { text: '2022.06 – 至今　某 SaaS 公司 · 前端工程师' },
+        { text: '主导 6 个子应用微前端拆分，独立发布周期缩短 40%', mark: 'hi', ref: 0, q: ['q14'] },
+        { text: '自研低代码表单引擎，覆盖 30+ 业务表单', mark: 'hi', ref: 1 },
+        { text: '负责首屏加载优化（仅局部优化，缺少线上指标记录）', mark: 'risk', ref: 0, q: ['q15'] },
+      ] },
+      { title: '教育', lines: [{ text: '同济大学 · 软件工程 · 本科 · 2021' }] },
+    ],
+  },
+  c8: {
+    file: '高远-Go高级.pdf', contact: '西安 · 187****4412 · yuan.gao@mail.com',
+    sections: [
+      { title: '工作经历', lines: [
+        { text: '2021.03 – 至今　某电商平台 · 高级后端工程师' },
+        { text: '自研网关限流组件，大促拦截 3 倍峰值异常流量', mark: 'hi', ref: 0, q: ['q16'] },
+        { text: '推动接口 SLA 与熔断规范落地' },
+        { text: '了解资金对账与一致性方案', mark: 'risk', ref: 0 },
+      ] },
+      { title: '教育', lines: [{ text: '西安电子科技大学 · 计算机科学与技术 · 本科 · 2020' }] },
+    ],
+  },
+  c9: {
+    file: '唐薇_产品经理(平台模板).pdf', contact: '广州 · 139****2201 · wei.tang@mail.com',
+    sections: [
+      { title: '工作经历', lines: [
+        { text: '2020.05 – 至今　某 SaaS 公司 · 高级产品经理' },
+        { text: '主导会员体系定价重构，客单价提升 18%', mark: 'hi', ref: 0, q: ['q17'] },
+        { text: '负责续约率与流失率监控看板' },
+        { text: '期望薪资高于同职级区间（缺少对标说明）', mark: 'risk', ref: 0 },
+      ] },
+      { title: '教育', lines: [{ text: '中山大学 · 信息管理与信息系统 · 本科 · 2019' }] },
+    ],
+  },
+  c10: {
+    file: '邓子睿_高级后端_简历.pdf', contact: '成都 · 136****7788 · zirui.deng@mail.com',
+    sections: [
+      { title: '工作经历', lines: [
+        { text: '2021.08 – 至今　某支付科技公司 · 高级后端工程师' },
+        { text: '主导结算与对账系统重构，差异率降至十万分之一', mark: 'hi', ref: 0, q: ['q18'] },
+        { text: '带 4 人小组完成结算链路迁移', mark: 'hi', ref: 1 },
+      ] },
+      { title: '教育', lines: [{ text: '电子科技大学 · 计算机科学与技术 · 本科 · 2020' }] },
+    ],
+  },
 }
 
 // 影刀落库增量同步池
@@ -1209,7 +1256,7 @@ export const importPool: { c: Candidate; r: (typeof resumes)[string] }[] = [
       exp: '6 年',
       edu: '北京邮电大学 · 计算机',
       match: 84,
-      status: '待初筛',
+      status: '筛选中',
       slot: '待安排',
       round: '未开始',
       source: 'BOSS直聘',

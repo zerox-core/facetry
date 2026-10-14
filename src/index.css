@@ -1,6 +1,57 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 
+/* ───────────── daisyUI 5 · 模式 B：把项目 token 映射成品牌主题 ─────────────
+   颜色只有一套来源：daisyUI 语义色 ←→ 下方 --apple-* 令牌。
+   base-100 = 纸面（卡片白）· base-200 = 画布（页面灰）· primary = 品牌黑。
+   圆角对齐项目：卡片 rounded-2xl(1rem)、输入 rounded-xl(0.75rem)、按钮胶囊。 */
+@plugin 'daisyui' {
+  themes: false;
+  logs: false;
+}
+@plugin 'daisyui/theme' {
+  name: 'facetry';
+  default: true;
+  color-scheme: light;
+
+  --color-base-100: #ffffff;
+  --color-base-200: #f2f4f7;
+  --color-base-300: #e4e7eb;
+  --color-base-content: #1d1d1f;
+
+  --color-primary: #1d1d1f;
+  --color-primary-content: #ffffff;
+  --color-secondary: #515154;
+  --color-secondary-content: #ffffff;
+  --color-accent: #b45309; /* 琥珀：一屏仅一处焦点动作 */
+  --color-accent-content: #ffffff;
+  --color-neutral: #2c2c2e;
+  --color-neutral-content: #ffffff;
+
+  --color-info: #475569;
+  --color-info-content: #ffffff;
+  --color-success: #047857;
+  --color-success-content: #ffffff;
+  --color-warning: #b45309;
+  --color-warning-content: #ffffff;
+  --color-error: #b91c1c;
+  --color-error-content: #ffffff;
+
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* 全站按钮沿用项目的胶囊形，避免与 .ws-* 按钮外观分叉 */
+@utility btn {
+  @apply rounded-full;
+}
+
 @theme {
   --font-display: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
   --font-sans: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
