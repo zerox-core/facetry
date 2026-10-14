@@ -3,6 +3,7 @@ dist/
 server/data/
 server/config.json
 server/.env
+.env
 *.log
 .DS_Store
 Thumbs.db

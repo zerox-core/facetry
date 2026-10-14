@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>简历初筛工具 · 核心业务流程与 AI 提示词</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#fff; --ink:#1f2329; --sub:#646a73; --line:#e5e6eb;
+    --blue:#2f54eb; --green:#389e0d; --red:#cf1322; --orange:#d46b08; --gray:#8c8c8c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.7;padding:32px 16px}
+  .wrap{max-width:960px;margin:0 auto}
+  header h1{font-size:26px;margin-bottom:6px}
+  header .meta{color:var(--sub);font-size:13px;margin-bottom:28px}
+  h2{font-size:19px;margin:34px 0 14px;padding-left:10px;border-left:4px solid var(--blue)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px 22px;margin-bottom:14px}
+
+  /* 流程步骤条 */
+  .flow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .step{flex:1;min-width:130px;background:var(--card);border:2px solid var(--line);border-radius:10px;
+        padding:14px 12px;cursor:pointer;transition:all .18s;position:relative;text-align:center}
+  .step:hover{border-color:var(--blue);transform:translateY(-2px)}
+  .step.active{border-color:var(--blue);background:#f0f5ff}
+  .step .no{display:inline-block;width:24px;height:24px;line-height:24px;border-radius:50%;
+            background:var(--blue);color:#fff;font-size:13px;margin-bottom:6px}
+  .step .t{font-weight:600;font-size:15px}
+  .step .s{font-size:12px;color:var(--sub);margin-top:2px}
+  #stepDetail{display:none}
+  #stepDetail.show{display:block}
+  #stepDetail h3{font-size:16px;margin-bottom:8px}
+  #stepDetail ul{margin-left:20px}
+  #stepDetail li{margin-bottom:4px;font-size:14px}
+  .tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;margin-right:4px}
+  .tag.blue{background:#e6f0ff;color:var(--blue)} .tag.orange{background:#fff3e6;color:var(--orange)}
+  .tag.red{background:#fff1f0;color:var(--red)} .tag.green{background:#f6ffed;color:var(--green)}
+
+  /* 判定四档 */
+  .verdicts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+  .vd{border-radius:10px;padding:14px;border:1px solid var(--line);background:var(--card)}
+  .vd .name{font-weight:700;font-size:15px;margin-bottom:4px}
+  .vd .desc{font-size:13px;color:var(--sub)}
+  .vd.g{border-top:4px solid var(--green)} .vd.o{border-top:4px solid var(--orange)}
+  .vd.r{border-top:4px solid var(--red)} .vd.gr{border-top:4px solid var(--gray)}
+  .vd.g .name{color:var(--green)} .vd.o .name{color:var(--orange)}
+  .vd.r .name{color:var(--red)} .vd.gr .name{color:var(--gray)}
+
+  .btn{display:inline-block;background:var(--blue);color:#fff;border:none;border-radius:8px;
+       padding:10px 20px;font-size:14px;cursor:pointer;transition:background .15s}
+  .btn:hover{background:#1d39c4}
+  .btn.ghost{background:#fff;color:var(--blue);border:1px solid var(--blue)}
+  .btn.ghost:hover{background:#f0f5ff}
+
+  /* 弹窗 */
+  .mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100}
+  .mask.show{display:block}
+  .modal{display:none;position:fixed;top:4vh;left:50%;transform:translateX(-50%);width:min(880px,94vw);
+         max-height:92vh;background:#fff;border-radius:12px;z-index:101;overflow:hidden;
+         box-shadow:0 12px 40px rgba(0,0,0,.25);flex-direction:column}
+  .modal.show{display:flex}
+  .modal .hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line)}
+  .modal .hd b{font-size:16px}
+  .modal .close{cursor:pointer;font-size:22px;color:var(--sub);border:none;background:none}
+  .tabs{display:flex;gap:4px;padding:10px 20px 0;border-bottom:1px solid var(--line)}
+  .tab{padding:8px 16px;cursor:pointer;font-size:14px;color:var(--sub);border-bottom:2px solid transparent}
+  .tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+  .modal .bd{padding:18px 20px;overflow-y:auto}
+  pre.prompt{background:#1f2329;color:#e6e6e6;border-radius:8px;padding:16px 18px;font-size:13px;
+             line-height:1.8;white-space:pre-wrap;word-break:break-word;font-family:Consolas,"Courier New",monospace}
+  pre.prompt .ph{color:#ffd591;font-weight:700}
+  .note{font-size:12px;color:var(--sub);margin-top:10px}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+  .copied{color:var(--green);font-size:13px;display:none}
+  table.kv{width:100%;border-collapse:collapse;font-size:14px}
+  table.kv th,table.kv td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top}
+  table.kv th{background:#fafafa;width:140px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>简历初筛工具 · 核心业务流程与 AI 提示词</h1>
+    <div class="meta">数据来源：app/core/jd_matcher.py（运行时原样截获，与代码逐字一致） · 《职位JD汇总.xlsx》（15 个岗位） · 生成日期 2026-10-14</div>
+  </header>
+
+  <h2>一、核心业务流程（点击步骤查看详情）</h2>
+  <div class="flow" id="flow"></div>
+  <div class="card" id="stepDetail"></div>
+
+  <h2>二、判定结果四档</h2>
+  <div class="verdicts">
+    <div class="vd g"><div class="name">合适</div><div class="desc">专业、经验、资质符合岗位硬性要求。平台动作：点「通过筛选 / 合适」。</div></div>
+    <div class="vd o"><div class="name">待定</div><div class="desc">部分符合，建议人工复核。平台动作：同样点「通过筛选」，放行给 HR 看。</div></div>
+    <div class="vd r"><div class="name">不合适</div><div class="desc">硬性条件不达标（含备注硬规则强制淘汰）。平台动作：点「不合适」。</div></div>
+    <div class="vd gr"><div class="name">信息不足</div><div class="desc">找不到适配岗位 / 关键信息无法识别。平台动作：点「通过筛选」，不误杀。</div></div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <b>业务原则：</b>工具只负责淘汰「明确不合适」的人；拿不准的一律放行。异地（期望城市≠岗位城市）<b>不能</b>作为不合适理由，最多是一条中性备注——这是写死在提示词里的硬约束。
+  </div>
+
+  <h2>三、AI 判定提示词</h2>
+  <div class="card">
+    <table class="kv">
+      <tr><th>调用模型</th><td>MiniMax-M2.7（OpenAI 兼容协议，temperature=0.1，超时 60s）；AI 失败时自动降级为本地关键词规则版</td></tr>
+      <tr><th>输入</th><td>岗位 JD（城市/职责/要求/备注）+ 候选人简历（姓名/目前岗位/公司/期望城市/学历/专业/年限/技能/全文）</td></tr>
+      <tr><th>输出</th><td>verdict（四档）、score（0-100）、reason（≤30字）、hits、misses、ai_summary（一句话评估）、concerns（注意点）</td></tr>
+      <tr><th>硬规则兜底</th><td>AI 判完后强制检查 JD 备注「没有X经验不考虑」：缺失则<b>无条件改判不合适</b>，理由加 [硬规则强制] 前缀，分数压到 30 以下</td></tr>
+    </table>
+    <div style="margin-top:16px">
+      <button class="btn" onclick="openModal()">📄 查看完整提示词（逐字原版）</button>
+    </div>
+  </div>
+
+  <h2>四、保存内容（每份简历一条记录）</h2>
+  <div class="card">
+    <table class="kv">
+      <tr><th>简历信息</th><td>姓名、目前岗位、目前公司、期望城市、学历、专业、工作年限、技能、工作经历、简历原文摘要、详情页链接</td></tr>
+      <tr><th>判定结果</th><td>判定（四档）、分数、理由、命中项、缺失项、AI 一句话评估、注意点</td></tr>
+      <tr><th>归属</th><td>应聘岗位、命中的 JD、平台（猎聘网/前程无忧）、扫描时间、所属扫描批次</td></tr>
+      <tr><th>操作状态</th><td>operated 标记：是否真的在平台上点过按钮（用于事后核对"哪些简历真处理了"）</td></tr>
+    </table>
+    <div class="note">另有一张扫描批次表：每次扫描的开始/结束时间、平台、各判定份数。看板支持按判定/平台/岗位/日期筛选，可人工改判、批量删除、重新扫描。</div>
+  </div>
+</div>
+
+<!-- 提示词弹窗 -->
+<div class="mask" id="mask" onclick="closeModal()"></div>
+<div class="modal" id="modal">
+  <div class="hd"><b>AI 判定提示词（与代码逐字一致）</b><button class="close" onclick="closeModal()">×</button></div>
+  <div class="tabs">
+    <div class="tab active" data-k="sys_prompt" onclick="switchTab(this)">系统提示词</div>
+    <div class="tab" data-k="user_template" onclick="switchTab(this)">用户提示词 · 模板</div>
+    <div class="tab" data-k="user_filled_example" onclick="switchTab(this)">用户提示词 · 填充示例（临床监查员CRA）</div>
+  </div>
+  <div class="bd">
+    <div class="toolbar">
+      <button class="btn ghost" onclick="copyPrompt()">复制当前内容</button>
+      <span class="copied" id="copied">✔ 已复制</span>
+    </div>
+    <pre class="prompt" id="promptBox"></pre>
+    <div class="note" id="tabNote"></div>
+  </div>
+</div>
+
+<script>
+const DATA = {"sys_prompt": "你是资深招聘评估专家。给定一个JD和一个候选人的简历，你需要判断该候选人是否值得推荐给HR。请严格只输出 JSON，不要输出任何其它文字或代码块标记。JSON 字段：\n  verdict: 必须是 '合适' | '待定' | '不合适' | '信息不足' 之一\n  score: 0-100 的整数\n  reason: 30字以内的中文判定理由\n  hits: list[string]，命中的关键条件（5-15字）\n  misses: list[string]，缺失或不达标的条件（5-15字）\n  ai_summary: 一句话评估，格式如'本科药学专业，相关经验8年，综合评分72分'；若有知名公司/团队管理/显著亮点，用分号追加（如'…；曾任职辉瑞，具备团队管理经验'），普通亮点不赘述\n  concerns: list[string]，简历注意点（5-15字）\n  重要约束：期望城市与JD城市不一致（异地）绝不能作为判定'不合适'或'待定'的依据；只要专业、经验、资质符合岗位硬性要求即可判'合适'。城市差异最多只能作为一条中性备注，不得影响 verdict。\n", "user_template": "## 岗位JD\n城市: {jd.city}\n岗位: {jd.name}\n\n### 岗位职责\n{jd.description}\n\n### 岗位要求\n{jd.requirements}\n\n### 备注/筛选规则\n{jd.note or '无'}\n\n## 候选人简历\n姓名: {cand.name or '未识别'}\n目前岗位: {cand.current_position or '未识别'}\n目前公司: {cand.current_company or '未识别'}\n期望城市: {cand.expected_city or '未识别'}\n学历: {cand.education or '未识别'}\n专业: {cand.major or '未识别'}\n工作年限: {cand.years_of_experience if cand.years_of_experience >= 0 else '未识别'}\n技能关键词: {','.join(cand.skills) or '无'}\n简历正文:\n{cand.raw_text or '(空)'}\n", "user_filled_example": "## 岗位JD\n城市: 全国\n岗位: 临床监查员CRA\n\n### 岗位职责\n1、确保所有的临床操作符合方案、SOP、ICH-GCP/中国GCP和相关法规的要求，并按照要求报告相关的背离；\n2、负责试验中心的选择，确保试验中心是具备临床试验资质的，并符合试验方案、公司的要求；\n3、参与研究者会的准备工作；\n4、负责伦理资料的递交工作，并及时获得伦理批件/回执，并保证伦理批件的内容符合相关法规；\n5、试验中心合同的谈判和签署试验合同，并按照合同申请和支付相关试验经费，并及时取回试验发票；\n6、负责试验中心的启动监查、常规监查、关闭中心监查，并按时提交监查报告。\n\n### 岗位要求\n1、本科及以上医学或药学、公共卫生、药事管理、护士、化学等相关学位；\n2、1-4年以上I、Ⅱ、Ⅲ期药物临床工作经验，熟悉ICH-GCP/中国GCP和相关法规；\n3、具备较好的沟通协调能力、抗压能力、较强的责任心。\n\n### 备注/筛选规则\n1、没有CRA/监查经验的完全不考虑；\n2、如果职位要求都符合，但是学历是专科，可以按待定处理，平台简历处理可以勾选通过\n\n## 候选人简历\n姓名: 张三\n目前岗位: 临床监查员\n目前公司: 某CRO\n期望城市: 上海\n学历: 本科\n专业: 药学\n工作年限: 3.0\n技能关键词: CRA,GCP\n简历正文:\n张三 男 30岁 期望：医药 本科 中国药科大学 3年工作经验 CRA GCP 临床监查员\n", "example_jd_name": "临床监查员CRA", "model": "MiniMax-M2.7", "base_url": "https://api.minimaxi.com/v1", "temperature": 0.1};
+
+const STEPS = [
+  { t:"发现简历", s:"两平台待处理列表",
+    html:`<h3>第 1 步 · 发现简历</h3><ul>
+      <li><span class="tag blue">猎聘网</span>人才管理 → 求职者投递 → <b>未处理</b> 列表，逐份打开；<b>单批上限 20 份</b>，到量自动停（防平台风控）。</li>
+      <li><span class="tag blue">前程无忧</span>人才管理 → <b>待处理</b> 简历列表；先一次性收集全部候选人，再逐份处理；<b>单批上限 50 份</b>。</li>
+      <li>猎聘全程拟人化：随机阅读停留、份间随机间隔、每 8 份休息一次、偶发"长思考"，模拟真人节奏。</li>
+      <li><b>两个平台不能同时扫</b>，必须先后进行。</li></ul>` },
+  { t:"岗位归集", s:"简历 → 15 个 JD",
+    html:`<h3>第 2 步 · 岗位归集</h3><ul>
+      <li>优先看简历卡片上候选人<b>自己投递的岗位名称</b>（如"应聘职位：临床监查员CRA"），去《职位JD汇总.xlsx》的 15 个岗位里找最匹配的。</li>
+      <li>匹配不到时，按简历内容关键词猜一个最可能的岗位。</li>
+      <li>两步都失败 → 直接判「信息不足」。</li></ul>` },
+  { t:"简历提取", s:"结构化候选人信息",
+    html:`<h3>第 3 步 · 简历信息提取</h3><ul>
+      <li>姓名、目前岗位、目前公司（取最近一段工作经历）</li>
+      <li>期望城市（<b>仅供展示，不影响判定</b>）、学历、专业、工作年限</li>
+      <li>技能关键词（CRA、GCP、GMP、FDA 等医药行业内置词表）</li>
+      <li>完整工作经历列表 + 简历全文（截取前 8000 字）</li></ul>` },
+  { t:"AI 判定", s:"大模型语义评估",
+    html:`<h3>第 4 步 · AI 判定（核心）</h3><ul>
+      <li>把「JD 城市/职责/要求/备注」+「候选人全部信息」发给大模型（MiniMax-M2.7），扮演<b>资深招聘评估专家</b>。</li>
+      <li>输出：判定四档 + 0~100 分 + ≤30字理由 + 命中/缺失项 + 一句话评估 + 注意点。</li>
+      <li>提示词硬约束：<b>异地不能判不合适</b>，专业/经验/资质符合硬性要求即判合适。</li>
+      <li>AI 调用失败时自动降级为本地规则版（关键词命中计数 + 学历/年限比对）。</li>
+      <li><button class="btn" onclick="openModal()">📄 查看完整提示词</button></li></ul>` },
+  { t:"硬规则兜底", s:"强制覆盖 AI",
+    html:`<h3>第 5 步 · 硬规则兜底（覆盖 AI 结论）</h3><ul>
+      <li>JD 备注写了「<b>没有X经验不考虑</b>」而简历正文确实没有 → <b>无条件改判不合适</b>，理由加 [硬规则强制] 前缀，分数压到 30 以下。</li>
+      <li>例：CRA 岗"没有CRA/监查经验完全不考虑"；财务总监"没有财务负责人经验/年龄超45/第一学历专科 不考虑"。</li>
+      <li>HR 调规则不用改代码：直接在 Excel 备注列按此句式书写即生效。</li></ul>` },
+  { t:"存档+点击", s:"入库 & 平台操作",
+    html:`<h3>第 6 步 · 存档 + 平台点击</h3><ul>
+      <li>判定结果、理由、命中/缺失项、AI 评估全部入库（SQLite），看板实时刷新，日志每份一行。</li>
+      <li>平台动作：判「不合适」→ 点不合适；其余（合适/待定/信息不足）→ 点通过筛选。<b>拿不准的一律放行</b>。</li>
+      <li>真实点击成功后标记 operated，事后可核对哪些简历真处理了。</li>
+      <li>「仅模拟」模式下只判定存档、不点按钮（验证规则用）。</li></ul>` },
+];
+
+const flow = document.getElementById('flow');
+const detail = document.getElementById('stepDetail');
+STEPS.forEach((st, i) => {
+  const el = document.createElement('div');
+  el.className = 'step';
+  el.innerHTML = `<span class="no">${i+1}</span><div class="t">${st.t}</div><div class="s">${st.s}</div>`;
+  el.onclick = () => {
+    document.querySelectorAll('.step').forEach(x => x.classList.remove('active'));
+    el.classList.add('active');
+    detail.innerHTML = st.html;
+    detail.classList.add('show');
+  };
+  flow.appendChild(el);
+});
+
+const NOTES = {
+  sys_prompt: "每次调用原样发送的系统提示词（system role），定义了输出格式与「异地不淘汰」硬约束。",
+  user_template: "用户提示词的模板形态：{花括号} 为运行时替换的占位符，'未识别'/'无' 为字段缺失时的兜底文本。",
+  user_filled_example: "用真实 JD 表第 1 条「临床监查员CRA」+ 示例候选人填充后的实际发送内容。"
+};
+let curKey = 'sys_prompt';
+function render() {
+  document.getElementById('promptBox').textContent = DATA[curKey];
+  document.getElementById('tabNote').textContent = NOTES[curKey];
+  document.getElementById('copied').style.display = 'none';
+}
+function switchTab(el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  curKey = el.dataset.k;
+  render();
+}
+function openModal() {
+  document.getElementById('mask').classList.add('show');
+  document.getElementById('modal').classList.add('show');
+  render();
+}
+function closeModal() {
+  document.getElementById('mask').classList.remove('show');
+  document.getElementById('modal').classList.remove('show');
+}
+function copyPrompt() {
+  navigator.clipboard.writeText(DATA[curKey]).then(() => {
+    document.getElementById('copied').style.display = 'inline';
+  });
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+</body>
+</html>
