@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { resumes } from '../data'
-import { commit, elapsedOf, findC, liveChannel, pickedOf, rooms, save, submitEvaluation, type Rec, type Review, type Room, type Talk } from '../store'
+import { can, commit, confirmReview, currentUser, elapsedOf, findC, liveChannel, pickedOf, rooms, save, submitEvaluation, type Rec, type Review, type Room, type Talk } from '../store'
 import { canTranscribe, clock, readFile, uid, useVoice } from '../voice'
 import { Composer, Speaker, TalkList, VoiceBars } from './live'
 import type { Go } from '../App'
-import { Btn } from './ui'
+import { Btn, Chip, Empty, Modal } from './ui'
 import ResumeDoc from './ResumeDoc'
 
 const LEVELS = ['不达标', '偏弱', '符合预期', '良好', '超出预期']
@@ -68,6 +68,14 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   const [obs, setObs] = useState(saved?.obs ?? '')
   const [review, setReview] = useState<Review | undefined>(saved?.review)
   const [reviewing, setReviewing] = useState(false)
+  // FR-B3：AI 只能产出草稿，必须人工确认；确认中防重复点击，失败要给可读原因
+  const [reviewAsk, setReviewAsk] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [reviewErr, setReviewErr] = useState('')
+  // 破坏性动作的二次确认与提交防抖
+  const [endAsk, setEndAsk] = useState(false)
+  const [submitAsk, setSubmitAsk] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   // 分享面试间：候选人通过链接进入后，双方语音自动转写进会话记录；未分享时只记录面试官一侧
   const [shared, setShared] = useState(saved?.shared ?? false)
   const [talk, setTalk] = useState<Talk[]>(saved?.talk ?? [])
@@ -245,6 +253,9 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   // 导出 Markdown 完整记录：评分、备注、参考要点、排除状态与综合评价
   const exportMd = () => {
     const excluded = (c?.qs ?? []).filter((x) => !qs.includes(x))
+    const reviewTitle = review
+      ? `## 综合评价（${review.draft ? 'AI 草稿 · 待人工确认，未作为面评结论' : `已人工确认：${review.confirmedBy ?? '—'} ${review.confirmedAt ?? '—'}`}）`
+      : ''
     const md = [
       `# 面试记录 · ${c?.name}`, '', `- 岗位：${c?.role}`, `- 轮次：${c?.round} · ${c?.slot}`, `- 用时：${mmss(elapsed)} · 已评 ${scored}/${qs.length} · 均分 ${scored ? avg.toFixed(1) : '–'}`, `- 结论：${verdict || '未选择'}`, '',
       '## 题目记录', '',
@@ -253,7 +264,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
       '## 面试官整体观察', '', obs || '（无）', '',
       '## 综合评语', '', summary || '（无）', '',
       ...(talk.length ? ['## 会话记录（补充材料）', '', ...talk.map((m) => `- [${m.t}] ${m.who}${m.kind === 'voice' ? '（语音）' : ''}：${m.kind === 'file' ? `[文件] ${m.file?.name}` : m.text}`), ''] : []),
-      ...(review ? ['## 综合评价（辅助意见，供复核）', '', review.overall, '', '**优势**', ...review.strengths.map((t) => `- ${t}`), '', '**待验证或不足**', ...review.weaknesses.map((t) => `- ${t}`), '', '**下一轮建议**', ...review.nextSteps.map((t) => `- ${t}`), '', `**复核建议**：${review.suggestion}`, ''] : []),
+      ...(review ? [reviewTitle, '', review.overall, '', '**优势**', ...review.strengths.map((t) => `- ${t}`), '', '**待验证或不足**', ...review.weaknesses.map((t) => `- ${t}`), '', '**下一轮建议**', ...review.nextSteps.map((t) => `- ${t}`), '', `**复核建议**：${review.suggestion}`, ''] : []),
     ].join('\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' }))
@@ -268,22 +279,36 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
     setDone(true)
     if (!summary) setSummary(gen())
   }
+  // 收尾是有后果的动作：未结束时先二次确认再停表（已在评价页则直接切回）
+  const askEnd = () => { if (done || locked) { toEval(); return } setMiss(''); setEndAsk(true) }
+  // 提交评价：二次确认后置 loading 并禁用按钮，防止重复提交
+  const doSubmit = () => {
+    if (submitting) return
+    setMiss(unscored ? 'questions' : '')
+    setSubmitting(true)
+    setTimeout(() => { submitEvaluation(cid, avg, mmss(elapsed), verdict); go('result', cid, { replace: true }) }, 500)
+  }
   const submit = () => {
+    if (submitting) return
     if (!verdict) {
       setWarn('请先选择综合结论')
       setMiss('verdict')
       verdictRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
-    if (unscored && warn !== 'confirm') {
-      setWarn('confirm')
-      setMiss('questions')
-      listRef.current?.scrollIntoView({ behavior: 'smooth' })
-      return
-    }
-    setMiss('')
-    submitEvaluation(cid, avg, mmss(elapsed), verdict)
-    go('result', cid, { replace: true })
+    setWarn('')
+    setSubmitAsk(true)
+  }
+  // 人工确认 AI 综合评价草稿（FR-B3）：确认后才作为面评结论，并记录确认人与确认时间
+  const doConfirmReview = () => {
+    if (confirming) return
+    setConfirming(true)
+    setReviewErr('')
+    const r = confirmReview(cid, currentUser.name)
+    setConfirming(false)
+    setReviewAsk(false)
+    if (!r) { setReviewErr('确认失败：本场评价记录已失效，请返回面试间重新生成综合评价后再确认。'); return }
+    setReview({ ...r })
   }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -306,6 +331,8 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   }
 
   const pick = (qid: string) => { const i = qs.findIndex((x) => x.id === qid); if (i >= 0) move(i) }
+  // 面评确认权限（FR-B3）：HR / 面试官可确认 AI 草稿，其他角色只能查看
+  const canConfirmReview = can('evaluation:submit')
   const enterRoom = () => {
     setMicOn(micDraft); setCamOn(camDraft); setEntered(true)
     const rm = (rooms[cid] ??= newRoom())
@@ -547,7 +574,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
             <Btn
               variant="solid"
               className="!h-8 !px-3.5"
-              onClick={toEval}
+              onClick={askEnd}
             >
               结束考场 ↗
             </Btn>
@@ -634,11 +661,18 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                   </button>
                 )
               })}
-              <button onClick={toEval} className={`relative ml-auto shrink-0 cursor-pointer px-3 py-3.5 text-sm ${done ? 'font-medium text-slate-900 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-amber-400' : 'text-slate-500 hover:text-slate-800'}`}>评价</button>
+              <button onClick={askEnd} className={`relative ml-auto shrink-0 cursor-pointer px-3 py-3.5 text-sm ${done ? 'font-medium text-slate-900 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-amber-400' : 'text-slate-500 hover:text-slate-800'}`}>评价</button>
             </nav>
 
             <div ref={right} className="min-h-0 flex-1 overflow-y-auto">
               {!done ? (
+                qs.length === 0 ? (
+                  <Empty
+                    title="本场还没有题目"
+                    hint="回到候选人页勾选本轮要考察的题目，或从题库装载后再进入面试间。"
+                    action={<Btn variant="ghost" onClick={() => go('back')}>返回{go.from}</Btn>}
+                  />
+                ) : (
                 <div key={idx} className="ws-rise mx-auto max-w-[760px] px-8 py-8">
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     <span className="tabular-nums">第 {idx + 1} / {qs.length} 题</span><span>·</span><span>{q.diff}</span><span>·</span><span className="tabular-nums">本题 {mmss(rec.secs)}</span>
@@ -712,6 +746,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                     <textarea value={rec.note} onChange={(e) => set({ note: e.target.value })} rows={4} placeholder="记录候选人的回答要点…" readOnly={locked} className="mt-4 w-full resize-none rounded-lg border border-slate-200 px-4 py-3 text-[15px] leading-7 outline-none placeholder:text-slate-400 focus:border-black/50 focus:ring-2 focus:ring-black/10" />
                   </div>
                 </div>
+                )
               ) : (
                 <div key={idx} className="ws-rise mx-auto max-w-[760px] px-8 py-8">
                   <div className="flex items-baseline justify-between"><h1 className="text-[22px] font-semibold text-slate-900">面试评价</h1>{locked && <span className="rounded bg-slate-100 px-2 py-0.5 text-sm text-slate-500">已提交 · 结果不可修改</span>}</div>
@@ -742,15 +777,36 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                   <h2 className="mt-8 text-[15px] font-semibold text-slate-900">整体观察</h2>
                   <textarea value={obs} readOnly={locked} onChange={(e) => { setObs(e.target.value); touch() }} rows={3} placeholder="补充题目之外的观察，例如沟通方式、学习意愿…（会作为综合评价的依据）" className="mt-3 w-full resize-none rounded-lg border border-slate-200 px-4 py-3 text-[15px] leading-7 outline-none placeholder:text-slate-400 focus:border-black/50 focus:ring-2 focus:ring-black/10" />
 
-                  <div className="mt-8 flex items-baseline justify-between">
+                  <div className="mt-8 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-[15px] font-semibold text-slate-900">综合评价</h2>
                     <button onClick={genReview} disabled={reviewing} className="cursor-pointer text-sm font-medium text-[#1d1d1f] hover:underline disabled:cursor-default disabled:text-slate-400">{reviewing ? '生成中…' : review ? '重新生成报告' : '生成综合评价'}</button>
                   </div>
+                  {reviewErr && <p className="mt-3 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-sm leading-6 text-base-content/80">{reviewErr}</p>}
                   {reviewing ? (
                     <div className="mt-3 space-y-2 rounded-xl border border-slate-200 p-5">{[92, 78, 60].map((w) => <div key={w} className="h-3 animate-pulse rounded bg-slate-100" style={{ width: `${w}%` }} />)}</div>
                   ) : review ? (
-                    <div className="login-fade mt-3 rounded-xl border border-slate-200 p-5">
-                      <p className="text-[15px] leading-7 text-slate-800">{review.overall}</p>
+                    /* 已确认（success 边框）与未确认草稿（warning 边框 + 徽标）视觉区分，草稿不得当作最终结论 */
+                    <div className={`login-fade mt-3 rounded-xl border p-5 ${review.draft ? 'border-warning/60 bg-warning/5' : 'border-success/40 bg-success/5'}`}>
+                      <div className="flex flex-wrap items-center gap-2 border-b border-black/[0.06] pb-3">
+                        <Chip tone={review.draft ? 'warning' : 'success'}>{review.draft ? 'AI 草稿 · 待人工确认' : '已人工确认'}</Chip>
+                        <span className="text-xs leading-5 text-slate-500">
+                          {review.draft
+                            ? `${review.at} 由 AI 依据本场评分与备注辅助生成，未经人工确认前不作为面评结论`
+                            : `${review.confirmedBy ?? '—'} 于 ${review.confirmedAt ?? '—'} 人工确认，已作为正式面评结论保存`}
+                        </span>
+                        {review.draft && (
+                          <Btn
+                            className="ml-auto !h-8 !px-3"
+                            variant="accent"
+                            onClick={() => setReviewAsk(true)}
+                            disabled={!canConfirmReview}
+                            title={canConfirmReview ? '确认为正式面评结论并记录确认人与时间' : `当前角色（${currentUser.role}）无面评确认权限`}
+                          >
+                            人工确认
+                          </Btn>
+                        )}
+                      </div>
+                      <p className="mt-3 text-[15px] leading-7 text-slate-800">{review.overall}</p>
                       <div className="mt-4 grid gap-4 sm:grid-cols-3">
                         {([['优势', review.strengths, 'bg-emerald-500'], ['待验证或不足', review.weaknesses, 'bg-amber-500'], ['下一轮建议', review.nextSteps, 'bg-slate-700']] as const).map(([t, list, dot]) => (
                           <div key={t}>
@@ -763,11 +819,11 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                       <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
                         依据
                         {review.evidence.map((id) => { const i = qs.findIndex((x) => x.id === id); return i < 0 ? null : <button key={id} onClick={() => move(i)} disabled={locked} className="cursor-pointer rounded bg-black/[0.05] border border-black/10 px-1.5 py-0.5 text-xs font-medium text-[#1d1d1f] hover:bg-black/10 disabled:cursor-default">第 {i + 1} 题</button> })}
-                        <span className="ml-auto">{review.at} 生成 · 辅助意见，不自动作录用决定</span>
+                        <span className="ml-auto">{review.at} 生成 · AI 辅助意见，不自动作录用决定{review.draft ? '' : ` · ${review.confirmedBy ?? ''} ${review.confirmedAt ?? ''} 已确认`}</span>
                       </div>
                     </div>
                   ) : (
-                    <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-400">根据已评分题目、备注与整体观察生成；未评分和已排除的题不计入。{locked && '提交后仍可随时重新生成。'}</p>
+                    <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-400">根据已评分题目、备注与整体观察生成，产出为「AI 草稿 · 待人工确认」；未评分和已排除的题不计入。{locked && '提交后仍可随时重新生成。'}</p>
                   )}
 
                   <div className="mt-8 flex items-baseline justify-between">
@@ -792,7 +848,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                 <>
                   <Btn variant="ghost" onClick={() => move(Math.max(0, idx - 1))}>上一题</Btn>
                   <span className="ml-auto text-sm text-slate-400">{savedAt ? `已自动保存 ${savedAt}` : '记录会自动保存'}</span>
-                  {idx < qs.length - 1 ? <Btn variant="accent" onClick={() => move(idx + 1)}>下一题 →</Btn> : <Btn variant="accent" onClick={toEval}>去评价 →</Btn>}
+                  {idx < qs.length - 1 ? <Btn variant="accent" onClick={() => move(idx + 1)}>下一题 →</Btn> : <Btn variant="accent" onClick={askEnd}>去评价 →</Btn>}
                 </>
               ) : locked ? (
                 <>
@@ -804,8 +860,8 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                 <>
                   <Btn variant="ghost" onClick={() => move(0)}>返回题目</Btn>
                   <Btn variant="ghost" onClick={exportMd}>导出记录</Btn>
-                  <span className={`ml-auto text-sm ${warn ? 'text-amber-700' : 'text-slate-400'}`}>{warn === 'confirm' ? `还有 ${unscored} 题未评分，再次点击确认提交` : warn || (savedAt ? `已自动保存 ${savedAt}` : '')}</span>
-                  <Btn variant="accent" onClick={submit}>{warn === 'confirm' ? '仍然提交' : verdict ? `提交评价：${verdict}` : '提交评价'}</Btn>
+                  <span className={`ml-auto text-sm ${warn ? 'text-amber-700' : 'text-slate-400'}`}>{warn || (unscored ? `还有 ${unscored} 题未评分，提交前可先补填` : savedAt ? `已自动保存 ${savedAt}` : '记录会自动保存')}</span>
+                  <Btn variant="accent" onClick={submit} loading={submitting} disabled={submitting}>{verdict ? `提交评价：${verdict}` : '提交评价'}</Btn>
                 </>
               )}
             </div>
@@ -872,6 +928,72 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
           </div>
         </div>
       )}
+
+      {/* 结束面试的二次确认：说明后果（停表、只读、进入待录取） */}
+      <Modal
+        open={endAsk}
+        onClose={() => setEndAsk(false)}
+        title="结束本场面试，进入评价？"
+        sub="结束后计时停表，离开不会再出现后台悬浮入口"
+        footer={
+          <>
+            <Btn variant="ghost" onClick={() => setEndAsk(false)}>继续面试</Btn>
+            <Btn variant="accent" onClick={() => { setEndAsk(false); toEval() }}>结束并进入评价</Btn>
+          </>
+        }
+      >
+        <ul className="space-y-1.5 text-sm leading-6 text-base-content/70">
+          <li>· 计时立即停止，已记录的评分、备注与会话记录全部保留</li>
+          <li>· 未评分的题目保留为「未评分」，可在评价页补填后再提交</li>
+          <li>· 提交评价后评分与结论不可修改，候选人流转到「待录取」</li>
+        </ul>
+      </Modal>
+
+      {/* 提交评价的二次确认：确认期间按钮 loading，防止重复提交 */}
+      <Modal
+        open={submitAsk}
+        onClose={() => { if (!submitting) setSubmitAsk(false) }}
+        title="提交面试评价？"
+        sub={verdict ? `综合结论：${verdict}` : '尚未选择综合结论'}
+        footer={
+          <>
+            <Btn variant="ghost" disabled={submitting} onClick={() => setSubmitAsk(false)}>再检查一下</Btn>
+            <Btn variant="accent" loading={submitting} onClick={doSubmit}>确认提交</Btn>
+          </>
+        }
+      >
+        <ul className="space-y-1.5 text-sm leading-6 text-base-content/70">
+          <li>· 提交后评分与结论不可修改，面试间转为只读记录</li>
+          <li>· 综合得分 {scored ? avg.toFixed(1) : '–'} 分，已评 {scored}/{qs.length} 题</li>
+          <li>· 候选人流转到「待录取」；AI 综合评价仍需人工确认后才作为面评结论</li>
+        </ul>
+        {unscored > 0 && (
+          <p className="mt-3 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-xs leading-5 text-base-content/70">
+            还有 {unscored} 题未评分，提交后这些题目会保留为「未评分」，也会出现在评价记录里。
+          </p>
+        )}
+      </Modal>
+
+      {/* AI 综合评价草稿的人工确认（FR-B3）：确认后记录确认人与确认时间 */}
+      <Modal
+        open={reviewAsk}
+        onClose={() => { if (!confirming) setReviewAsk(false) }}
+        title="确认 AI 综合评价草稿"
+        sub="FR-B3：AI 辅助生成的评价必须经人工确认后才作为面评结论"
+        footer={
+          <>
+            <Btn variant="ghost" disabled={confirming} onClick={() => setReviewAsk(false)}>取消</Btn>
+            <Btn variant="accent" loading={confirming} onClick={doConfirmReview}>确认并保存</Btn>
+          </>
+        }
+      >
+        <p className="text-sm leading-6 text-base-content/70">
+          该报告由 AI 依据本场评分、备注与整体观察生成，当前标记为「AI 草稿 · 待人工确认」。确认后标记为「已人工确认」并记录确认人（{currentUser.name}）与确认时间，可作为面评结论使用。
+        </p>
+        <p className="mt-2 text-xs leading-5 text-base-content/50">
+          报告内容仍可随时重新生成（重新生成后会回到「待人工确认」状态）；AI 只提供辅助证据，不会自动作录用决定，也不触发审批。
+        </p>
+      </Modal>
     </div>
   )
 }

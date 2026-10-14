@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { bank, type JD } from '../data'
+import { bank, type Candidate, type JD, type Position } from '../data'
 import {
   addQuestion,
   bindCandidatePosition,
@@ -21,10 +21,14 @@ const field =
 
 type Props = { cid: string; go: Go }
 
+// 岗位 / 标尺缺失时的兜底展示对象：不把面试间静默绑到其他岗位或标尺上（FR-A4）
+const emptyPos = (c: Candidate): Position => ({ id: '', code: '—', name: c.role, jdId: '', dept: '', recruiter: c.assignee, hiringManager: c.assignee, hc: 0, hired: 0, status: '招募中', createdAt: '' })
+const emptyJd = (c: Candidate): JD => ({ id: '', code: '—', title: '未装配标尺', dept: c.role, exp: '—', edu: '—', salary: '—', skills: [], summary: '', responsibilities: [], requirements: [], updatedAt: '' })
+
 export default function Interviewer({ cid, go }: Props) {
-  const c = findC(cid)
-  const pos = findPos(c.positionId)
-  const jd = findJd(c.jdId || pos?.jdId)
+  const foundC = findC(cid)
+  const foundPos = findPos(foundC?.positionId)
+  const foundJd = findJd(foundC?.jdId || foundPos?.jdId)
   const picked = pickedOf(cid)
   const setPicked = (v: string[]) => savePicked(cid, v)
   const [hover, setHover] = useState<string>()
@@ -33,6 +37,19 @@ export default function Interviewer({ cid, go }: Props) {
   const [showSwitchPos, setShowSwitchPos] = useState(false)
   const [activeDeckTab, setActiveDeckTab] = useState<'picked' | 'bank'>('picked')
   const [draft, setDraft] = useState({ q: '', topic: TOPICS[0], points: '', follow: '' })
+
+  // 找不到候选人时给出空态，避免面试间静默绑到其他候选人
+  if (!foundC) {
+    return (
+      <div className="ws-paper rounded-2xl p-12 text-center text-xs text-[#86868b]">
+        未找到候选人记录（{cid}），可能已被来源库标记失效，请返回工作台重新选择。
+      </div>
+    )
+  }
+
+  const c = foundC
+  const pos = foundPos ?? emptyPos(c)
+  const jd = foundJd ?? emptyJd(c)
 
   const submit = () => {
     if (!draft.q.trim()) return
@@ -55,15 +72,15 @@ export default function Interviewer({ cid, go }: Props) {
     setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id])
 
   const roomBtn =
-    c.status === '待面试' ? (
+    c.status === '约面中' ? (
       <Btn variant="accent" onClick={() => go('room', cid)}>
         进入面试间（{picked.length} 题）
       </Btn>
-    ) : c.status === '待评价' ? (
+    ) : c.status === '面评中' ? (
       <Btn variant="accent" onClick={() => go('room', cid)}>
         去补填评价
       </Btn>
-    ) : c.status === '待约面' ? (
+    ) : c.status === '待联系' ? (
       <Btn variant="ghost" onClick={() => go('room', cid)}>
         进入面试间（{picked.length} 题）
       </Btn>
@@ -503,7 +520,7 @@ export default function Interviewer({ cid, go }: Props) {
                       <span>{p.dept}</span>
                       <span>·</span>
                       <span className="text-[#1d1d1f] font-medium">
-                        📋 装配标尺: {targetJd.title} ({targetJd.code})
+                        📋 装配标尺: {targetJd ? `${targetJd.title} (${targetJd.code})` : '该岗位尚未装配标尺'}
                       </span>
                     </div>
                   </div>

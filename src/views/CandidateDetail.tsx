@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { STAGES, type CandidateStage } from '../data'
+import { STAGES, type Candidate, type CandidateStage, type JD, type Position } from '../data'
 import {
   addCandidateNote,
   approvals,
@@ -23,10 +23,27 @@ import ResumeDoc from './ResumeDoc'
 
 type Props = { cid: string; go: Go }
 
+// 岗位 / 标尺缺失时的兜底展示对象：不把数据静默绑到其他岗位或标尺上（store 的 findPos / findJd 找不到返回 undefined）
+const emptyPos = (c: Candidate): Position => ({ id: '', code: '—', name: c.role, jdId: '', dept: '', recruiter: c.assignee, hiringManager: c.assignee, hc: 0, hired: 0, status: '招募中', createdAt: '' })
+const emptyJd = (c: Candidate): JD => ({ id: '', code: '—', title: '未装配标尺', dept: c.role, exp: '—', edu: '—', salary: '—', skills: [], summary: '', responsibilities: [], requirements: [], updatedAt: '' })
+
+// 审批轨状态中文标签：发起 / 处理中 / 通过 / 退回 / 拒绝 / 撤销如实展示（FR-C4）
+const trackLabel: Record<string, string> = { pending: '流转中', approved: '✓ 已通过', returned: '↩ 已退回', rejected: '✕ 已拒绝', canceled: '⊘ 已撤销' }
+
+// 聚合结论中文标签：单边通过（partial）不得显示为已录用，负向态如实展示（FR-C4）
+const finalLabel: Record<string, string> = {
+  approved: '✓ 双审批全部通过 (已完成)',
+  partial: '⚠ 单边通过：另一侧仍在处理中',
+  returned: '↩ 审批被退回，需补充材料后重走',
+  rejected: '✕ 审批被拒绝',
+  canceled: '⊘ 审批已撤销',
+  processing: '⏳ 双流程并行流转中',
+}
+
 export default function CandidateDetail({ cid, go }: Props) {
-  const c = findC(cid)
-  const pos = findPos(c.positionId)
-  const jd = findJd(c.jdId || pos?.jdId)
+  const foundC = findC(cid)
+  const foundPos = findPos(foundC?.positionId)
+  const foundJd = findJd(foundC?.jdId || foundPos?.jdId)
   const room = rooms[cid]
   const review = room?.review || buildReviewFor(cid)
   const app = approvals.find((a) => a.candidateId === cid)
@@ -39,6 +56,19 @@ export default function CandidateDetail({ cid, go }: Props) {
   const [schedRound, setSchedRound] = useState('一面')
   const [schedChannel, setSchedChannel] = useState<'sms' | 'email'>('sms')
 
+  // 找不到候选人时给出空态，避免把详情页静默绑到其他候选人
+  if (!foundC) {
+    return (
+      <div className="ws-paper rounded-2xl p-12 text-center text-xs text-[#86868b]">
+        未找到候选人记录（{cid}），可能已被来源库标记失效，请返回候选人大池重新选择。
+      </div>
+    )
+  }
+
+  const c = foundC
+  const pos = foundPos ?? emptyPos(c)
+  const jd = foundJd ?? emptyJd(c)
+
   const handleAddNote = () => {
     if (!newNote.trim()) return
     addCandidateNote(cid, newNote)
@@ -46,7 +76,8 @@ export default function CandidateDetail({ cid, go }: Props) {
   }
 
   const handleConfirmSchedule = () => {
-    schedule(cid, schedDate, schedRound, 'online', schedChannel)
+    // 统一约面入口：同一候选人 + 轮次 + 时段重复提交时复用既有场次，不重复建场（幂等）
+    schedule({ cid, slot: schedDate, round: schedRound, type: 'online', channel: schedChannel })
     setShowScheduleModal(false)
   }
 
@@ -119,16 +150,16 @@ export default function CandidateDetail({ cid, go }: Props) {
               调岗换标尺 ↻
             </button>
 
-            {c.status === '待初筛' && (
+            {c.status === '筛选中' && (
               <button
-                onClick={() => handleStageChange('待约面')}
+                onClick={() => handleStageChange('待联系')}
                 className="cursor-pointer rounded-full bg-gradient-to-b from-white to-zinc-200 px-4 py-2 text-xs font-semibold text-black hover:brightness-105 transition-all shadow-md active:scale-95"
               >
                 初筛通过，去约面 →
               </button>
             )}
 
-            {c.status === '待约面' && (
+            {c.status === '待联系' && (
               <button
                 onClick={() => setShowScheduleModal(true)}
                 className="cursor-pointer rounded-full bg-gradient-to-b from-white to-zinc-200 px-4 py-2 text-xs font-semibold text-black hover:brightness-105 transition-all shadow-md active:scale-95"
@@ -137,7 +168,7 @@ export default function CandidateDetail({ cid, go }: Props) {
               </button>
             )}
 
-            {c.status === '待面试' && (
+            {c.status === '约面中' && (
               <button
                 onClick={() => go('room', c.id)}
                 className="cursor-pointer rounded-full bg-gradient-to-b from-white to-zinc-200 px-4 py-2 text-xs font-semibold text-black hover:brightness-105 transition-all shadow-md active:scale-95"
@@ -146,7 +177,7 @@ export default function CandidateDetail({ cid, go }: Props) {
               </button>
             )}
 
-            {c.status === '待评价' && (
+            {c.status === '面评中' && (
               <button
                 onClick={() => go('room', c.id)}
                 className="cursor-pointer rounded-full bg-gradient-to-b from-white to-zinc-200 px-4 py-2 text-xs font-semibold text-black hover:brightness-105 transition-all shadow-md active:scale-95"
@@ -178,7 +209,7 @@ export default function CandidateDetail({ cid, go }: Props) {
             当前处于：{c.status}
           </span>
         </div>
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 text-center text-xs">
+        <div className="grid grid-cols-3 sm:grid-cols-9 gap-2 text-center text-xs">
           {STAGES.map((s, idx) => {
             const isCurrent = c.status === s
             const isPast = STAGES.indexOf(c.status) > idx
@@ -351,6 +382,37 @@ export default function CandidateDetail({ cid, go }: Props) {
                 </div>
               ))}
             </div>
+
+            {/* 责任人与下一步：阶段、负责人、下一步动作可查（FR-A4 / PRD 非功能「记录、负责人和下一步可查」） */}
+            <div className="grid gap-3 sm:grid-cols-2 pt-1 border-t border-black/[0.05] text-xs">
+              <div className="rounded-xl border border-black/[0.06] p-3 space-y-1">
+                <div className="font-semibold text-[#1d1d1f]">下一步动作</div>
+                {c.nextAction ? (
+                  <>
+                    <div className="text-[#515154] leading-relaxed">{c.nextAction.text}</div>
+                    <div className="text-[11px] text-[#86868b]">责任人：{c.nextAction.owner} · 期限：{c.nextAction.dueAt}</div>
+                  </>
+                ) : (
+                  <div className="text-[#86868b]">暂无登记，可在沟通后补充下一步与责任人。</div>
+                )}
+                <div className="text-[11px] text-[#86868b]">当前负责人：{c.assignee}</div>
+              </div>
+              <div className="rounded-xl border border-black/[0.06] p-3 space-y-1">
+                <div className="font-semibold text-[#1d1d1f]">阶段流转历史（追加不覆盖）</div>
+                <ol className="space-y-1">
+                  {(c.stageHistory ?? []).map((h, i) => (
+                    <li key={i} className="text-[11px] text-[#515154] leading-relaxed">
+                      <span className="font-mono text-[#86868b]">{h.at}</span> · <b className="font-medium text-[#1d1d1f]">{h.stage}</b> · {h.by}
+                      {h.reason ? ` · ${h.reason}` : ''}
+                    </li>
+                  ))}
+                  {!c.stageHistory?.length && <li className="text-[11px] text-[#86868b]">暂无阶段流转记录。</li>}
+                </ol>
+                <div className="text-[11px] text-[#86868b] pt-1 border-t border-black/[0.04]">
+                  来源库最后更新：{c.sourceUpdatedAt ?? '未知（来源侧未提供更新时间）'}
+                </div>
+              </div>
+            </div>
           </section>
         )}
 
@@ -365,7 +427,7 @@ export default function CandidateDetail({ cid, go }: Props) {
                 </p>
               </div>
 
-              {c.status === '待面试' && (
+              {c.status === '约面中' && (
                 <div className="flex items-center gap-2">
                   <Btn variant="ghost" className="!h-8 !px-3" onClick={() => resendNotice(c.id)}>
                     重发候选人通知
@@ -380,12 +442,13 @@ export default function CandidateDetail({ cid, go }: Props) {
               )}
             </div>
 
-            {/* 飞书与第三方通知卡片 */}
+            {/* 飞书与第三方通知卡片：场次、日程与通知异常全部显式展示（FR-B1 / FR-B2） */}
             {c.scheduleDetail && (
               <div className="rounded-xl bg-[#f4f5f8] border border-black/[0.06] p-4 text-xs space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-semibold text-[#1d1d1f]">
-                    飞书日历与会议：{c.scheduleDetail.feishuCalendarStatus === 'synced' ? '已同步' : '待同步'}
+                    场次 {c.scheduleDetail.interviewId} · {c.scheduleDetail.type === 'offline' ? '线下面试' : '线上飞书会议'} · {c.scheduleDetail.durationMin} 分钟 · 面试官 {c.scheduleDetail.interviewer}
+                    {c.scheduleDetail.status === 'canceled' && <span className="ml-2 text-amber-700">（已取消，历史保留）</span>}
                   </span>
                   {c.scheduleDetail.feishuMeetingUrl && (
                     <a
@@ -398,9 +461,36 @@ export default function CandidateDetail({ cid, go }: Props) {
                     </a>
                   )}
                 </div>
+                <div className="flex flex-wrap items-center gap-2 text-[#515154]">
+                  <span>飞书日历与会议：</span>
+                  <strong className={c.scheduleDetail.feishuCalendarStatus === 'synced' ? 'text-emerald-700' : 'text-amber-700'}>
+                    {c.scheduleDetail.feishuCalendarStatus === 'synced'
+                      ? '已同步'
+                      : c.scheduleDetail.feishuCalendarStatus === 'failed'
+                      ? '同步失败（可重试，不重复建场）'
+                      : '待同步（已提交飞书 API，等待回调）'}
+                  </strong>
+                </div>
                 <div className="text-[#515154]">
                   候选人通知通道：{c.scheduleDetail.noticeChannel === 'sms' ? '短信服务 (第三方)' : '邮件 SMTP'} · 状态：
-                  <strong className="text-[#1d1d1f]">{c.scheduleDetail.noticeStatus === 'sent' ? '已发送待确认' : c.scheduleDetail.noticeStatus === 'confirmed' ? '候选人已确认' : '处理中'}</strong>
+                  <strong className={c.scheduleDetail.noticeStatus === 'failed' ? 'text-red-600' : 'text-[#1d1d1f]'}>
+                    {c.scheduleDetail.noticeStatus === 'sent'
+                      ? '已发送待确认'
+                      : c.scheduleDetail.noticeStatus === 'confirmed'
+                      ? '候选人已确认'
+                      : c.scheduleDetail.noticeStatus === 'failed'
+                      ? `发送失败（已尝试 ${c.scheduleDetail.noticeAttempts} 次）`
+                      : '待发送'}
+                  </strong>
+                </div>
+                {c.scheduleDetail.failureReason && (
+                  <div className="rounded-lg bg-red-50/70 border border-red-200/60 px-2.5 py-1.5 text-[11px] text-red-700">
+                    异常原因：{c.scheduleDetail.failureReason}
+                  </div>
+                )}
+                <div className="text-[11px] text-[#86868b] pt-1 border-t border-black/[0.04]">
+                  改期 / 通知历史（{c.scheduleDetail.history.length} 条，追加不覆盖）：
+                  {c.scheduleDetail.history.slice(-2).map((h) => ` ${h.at} ${h.by} ${h.action}${h.to ? `→${h.to}` : ''}`).join('；')}
                 </div>
               </div>
             )}
@@ -491,10 +581,14 @@ export default function CandidateDetail({ cid, go }: Props) {
                       className={`rounded-full px-2.5 py-0.5 text-[11px] ${
                         app.finalStatus === 'approved'
                           ? 'bg-emerald-100 text-emerald-800'
+                          : app.finalStatus === 'partial'
+                          ? 'bg-amber-100 text-amber-800'
+                          : app.finalStatus === 'returned' || app.finalStatus === 'rejected'
+                          ? 'bg-rose-100 text-rose-800'
                           : 'bg-black/[0.04] text-[#1d1d1f] ring-1 ring-inset ring-black/10'
                       }`}
                     >
-                      {app.finalStatus === 'approved' ? '✓ 双审批全部通过 (已录取)' : '⏳ 审批流转中'}
+                      {finalLabel[app.finalStatus] ?? '⏳ 审批流转中'}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[#515154] pt-2 border-t border-black/[0.04]">
@@ -511,23 +605,62 @@ export default function CandidateDetail({ cid, go }: Props) {
                   <div className="rounded-xl border border-black/[0.06] p-4 bg-white space-y-2">
                     <div className="flex items-center justify-between font-semibold">
                       <span className="text-[#1d1d1f]">飞书审批流</span>
-                      <span className="text-[#1d1d1f] font-semibold">{app.feishu.status === 'approved' ? '✓ 已通过' : '流转中'}</span>
+                      <span className="text-[#1d1d1f] font-semibold">{trackLabel[app.feishu.status] ?? app.feishu.status}</span>
                     </div>
                     <div className="text-[#86868b]">实例 ID: {app.feishu.instanceId}</div>
                     <div className="text-[#515154]">当前节点: {app.feishu.currentNode}</div>
                     <div className="text-[11px] text-[#86868b]">更新时间: {app.feishu.updateTime}</div>
+                    {app.feishu.retryCount > 0 && <div className="text-[11px] text-amber-700">同步重试 {app.feishu.retryCount} 次（沿用原实例，未重复发起）</div>}
+                    {app.feishu.lastError && <div className="text-[11px] text-red-600">最近异常：{app.feishu.lastError}</div>}
                   </div>
 
                   {/* BPM 内部 OA */}
                   <div className="rounded-xl border border-black/[0.06] p-4 bg-white space-y-2">
                     <div className="flex items-center justify-between font-semibold">
                       <span className="text-[#1d1d1f]">BPM (内部 OA) 录取流程</span>
-                      <span className="text-[#1d1d1f] font-semibold">{app.bpm.status === 'approved' ? '✓ 已通过' : '流转中'}</span>
+                      <span className="text-[#1d1d1f] font-semibold">{trackLabel[app.bpm.status] ?? app.bpm.status}</span>
                     </div>
                     <div className="text-[#86868b]">流程编号: {app.bpm.processId}</div>
                     <div className="text-[#515154]">当前节点: {app.bpm.currentNode}</div>
                     <div className="text-[11px] text-[#86868b]">更新时间: {app.bpm.updateTime}</div>
+                    {app.bpm.retryCount > 0 && <div className="text-[11px] text-amber-700">同步重试 {app.bpm.retryCount} 次（沿用原流程号，未重复发起）</div>}
+                    {app.bpm.lastError && <div className="text-[11px] text-red-600">最近异常：{app.bpm.lastError}</div>}
                   </div>
+                </div>
+
+                {/* 申请材料核对清单：缺失 / 待补传逐项可见（FR-C1） */}
+                <div className="rounded-xl border border-black/[0.06] p-4 bg-white text-xs space-y-2">
+                  <div className="font-semibold text-[#1d1d1f]">申请材料核对清单</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {app.materials.map((m) => (
+                      <span
+                        key={m.key}
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          m.status === 'done' ? 'bg-emerald-50 text-emerald-800' : m.status === 'pending' ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'
+                        }`}
+                      >
+                        {m.status === 'done' ? '✓' : m.status === 'pending' ? '⏳ 待补传' : '✕ 缺失'} {m.name}
+                        {m.required ? '' : '（选填）'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 两轨状态流转历史：退回 / 拒绝等负向结论带审批意见（FR-C4） */}
+                <div className="grid gap-4 sm:grid-cols-2 text-xs">
+                  {([['飞书审批', app.feishu], ['BPM (内部 OA)', app.bpm]] as const).map(([name, track]) => (
+                    <div key={name} className="rounded-xl border border-black/[0.06] p-4 bg-white space-y-1.5">
+                      <div className="font-semibold text-[#1d1d1f]">{name} · 流转历史（{track.history.length} 条）</div>
+                      <ol className="space-y-1">
+                        {track.history.map((h, i) => (
+                          <li key={i} className="text-[11px] text-[#515154] leading-relaxed">
+                            <span className="font-mono text-[#86868b]">{h.at}</span> · <b className="font-medium text-[#1d1d1f]">{trackLabel[h.status] ?? h.status}</b> · {h.node} · {h.by}
+                            {h.comment ? ` · 意见：${h.comment}` : ''}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : (
@@ -566,7 +699,7 @@ export default function CandidateDetail({ cid, go }: Props) {
                       <span>{p.name}</span>
                       {isCur && <span className="text-[#1d1d1f] font-semibold">当前岗位</span>}
                     </div>
-                    <div className="mt-1 text-[#86868b]">标尺: {targetJd.title} ({targetJd.code})</div>
+                    <div className="mt-1 text-[#86868b]">标尺: {targetJd ? `${targetJd.title} (${targetJd.code})` : '该岗位尚未装配标尺'}</div>
                   </div>
                 )
               })}

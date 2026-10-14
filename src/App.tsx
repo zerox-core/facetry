@@ -124,32 +124,44 @@ export default function App() {
 
   const tab = stack[0].view
 
+  const isDarkTheme = view === 'bento'
+
   return (
-    <div className="ws-canvas min-h-screen">
-      {/* 苹果官网风格超薄磨砂玻璃顶栏 */}
-      <header className="sticky top-0 z-30 ws-bar">
-        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-6">
+    <div className={`min-h-screen transition-colors duration-300 ${isDarkTheme ? 'bg-[#0c0d12] text-white' : 'ws-canvas text-[#1d1d1f]'}`}>
+      {/* 顶栏：自适应深色科技质感 / 满屏铺展 */}
+      <header className={`sticky top-0 z-30 transition-colors duration-300 ${
+        isDarkTheme
+          ? 'bg-[#121318]/90 backdrop-blur-xl border-b border-white/10 shadow-lg'
+          : 'ws-bar'
+      }`}>
+        <div className="mx-auto flex h-14 max-w-[1720px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-6">
-            <button onClick={() => enter('workbench')} className="group flex cursor-pointer items-center gap-2">
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-[#1d1d1f] text-[11px] font-bold text-white tracking-tighter shadow-2xs group-hover:bg-black/80 transition-colors">
+            <button onClick={() => enter('bento')} className="group flex cursor-pointer items-center gap-2.5">
+              <span className="grid h-7 w-7 place-items-center rounded-xl bg-gradient-to-tr from-[#FF5A36] to-[#6366F1] text-xs font-black text-white shadow-md group-hover:scale-105 transition-transform">
                 F
               </span>
-              <span className="text-sm font-semibold tracking-tight text-[#1d1d1f]">FaceTry</span>
-              <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-medium text-[#86868b]">招聘工作台</span>
+              <div className="text-left">
+                <div className={`text-sm font-bold tracking-tight ${isDarkTheme ? 'text-white' : 'text-[#1d1d1f]'}`}>FaceTry</div>
+                <div className={`text-[10px] ${isDarkTheme ? 'text-white/50' : 'text-[#86868b]'}`}>AI 智能招聘控制中枢</div>
+              </div>
             </button>
 
             {/* 顶栏分段导航胶囊 */}
-            <nav className="hidden lg:flex items-center gap-1 overflow-x-auto">
+            <nav className="hidden lg:flex items-center gap-1.5 overflow-x-auto">
               {nav.map(([k, label]) => {
                 const on = tab === k
                 return (
                   <button
                     key={k}
                     onClick={() => enter(k)}
-                    className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                    className={`cursor-pointer rounded-full px-3.5 py-1 text-xs font-medium transition-all ${
                       on
-                        ? 'bg-[#1d1d1f] text-white shadow-2xs'
-                        : 'text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.04]'
+                        ? isDarkTheme
+                          ? 'bg-gradient-to-r from-[#FF5A36] to-[#6366F1] text-white shadow-md font-bold'
+                          : 'bg-[#1d1d1f] text-white shadow-2xs'
+                        : isDarkTheme
+                          ? 'text-white/60 hover:text-white hover:bg-white/10'
+                          : 'text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.04]'
                     }`}
                   >
                     {label}
@@ -162,16 +174,16 @@ export default function App() {
           <div className="flex items-center gap-3">
             <button
               onClick={resetDemo}
-              className="hidden sm:inline cursor-pointer text-[11px] text-[#86868b] hover:text-[#1d1d1f] transition-colors"
+              className={`hidden sm:inline cursor-pointer text-[11px] transition-colors ${isDarkTheme ? 'text-white/50 hover:text-white' : 'text-[#86868b] hover:text-[#1d1d1f]'}`}
               title="一键恢复系统出厂纯净数据"
             >
               重置数据
             </button>
-            <div className="flex items-center gap-2 rounded-full bg-black/[0.04] py-1 pl-2.5 pr-1.5 text-xs">
-              <span className="font-medium text-[#1d1d1f]">{user}</span>
+            <div className={`flex items-center gap-2 rounded-full py-1 pl-2.5 pr-1.5 text-xs ${isDarkTheme ? 'bg-white/10 border border-white/10' : 'bg-black/[0.04]'}`}>
+              <span className={`font-medium ${isDarkTheme ? 'text-white' : 'text-[#1d1d1f]'}`}>{user}</span>
               <button
                 onClick={logout}
-                className="grid h-5 w-5 cursor-pointer place-items-center rounded-full text-[#86868b] hover:bg-black/10 hover:text-[#1d1d1f] transition-colors"
+                className={`grid h-5 w-5 cursor-pointer place-items-center rounded-full transition-colors ${isDarkTheme ? 'text-white/50 hover:bg-white/20 hover:text-white' : 'text-[#86868b] hover:bg-black/10 hover:text-[#1d1d1f]'}`}
                 title="退出登录"
               >
                 ✕
@@ -181,7 +193,7 @@ export default function App() {
         </div>
 
         {/* 移动端/小屏顶栏导航条 */}
-        <div className="lg:hidden flex items-center gap-1 px-4 pb-2 overflow-x-auto border-t border-black/[0.04] pt-1">
+        <div className={`lg:hidden flex items-center gap-1 px-4 pb-2 overflow-x-auto border-t pt-1 ${isDarkTheme ? 'border-white/10' : 'border-black/[0.04]'}`}>
           {nav.map(([k, label]) => {
             const on = tab === k
             return (
@@ -189,7 +201,9 @@ export default function App() {
                 key={k}
                 onClick={() => enter(k)}
                 className={`whitespace-nowrap cursor-pointer rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
-                  on ? 'bg-[#1d1d1f] text-white' : 'text-[#86868b]'
+                  on
+                    ? isDarkTheme ? 'bg-[#FF5A36] text-white font-bold' : 'bg-[#1d1d1f] text-white'
+                    : isDarkTheme ? 'text-white/60' : 'text-[#86868b]'
                 }`}
               >
                 {label}
@@ -199,7 +213,8 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      {/* 主工作区：全屏铺开 */}
+      <main className="mx-auto max-w-[1720px] w-full px-4 sm:px-6 lg:px-8 py-6">
         {view === 'bento' && <ColorBentoDashboard go={go} onSwitchView={() => go('workbench')} />}
         {view === 'workbench' && <Workbench go={go} />}
         {view === 'candidates' && <Candidates go={go} />}

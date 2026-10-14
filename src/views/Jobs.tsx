@@ -1,70 +1,145 @@
 import type React from 'react'
 import { useState } from 'react'
 import { candidates, JD_TEMPLATES, type JD, type Position } from '../data'
-import { addJd, addPosition, commit, findJd, jds, positions, updateJd, updatePosition } from '../store'
+import { addJd, addPosition, demoNow, findJd, jds, positions, updateJd, updatePosition, useStore } from '../store'
 import type { Go } from '../App'
-import { Btn, Card } from './ui'
+import { Btn, Card, Chip, Empty, Field, Label, Modal, type Tone } from './ui'
+
+/* ───────────── 岗位管理（模块 A / B5）─────────────
+   在招岗位维护 + 来源库岗位标识（FR-A1）+ BPM 岗位草稿同步占位（FR-B5，P1，仅前端）。
+   颜色一律走 daisyUI 语义色；状态胶囊按真实 status 渲染，不再写死成功色。 */
+
+/** 岗位状态口径：只有「招募中」计入在招岗位与 HC 统计 */
+const POS_STATUS: Record<Position['status'], { tone: Tone; dot: string; hint: string }> = {
+  招募中: { tone: 'success', dot: 'status-success', hint: '计入在招口径：候选人入口、约面与 HC 统计生效' },
+  已暂停: { tone: 'ghost', dot: 'status-warning', hint: '已下架：不计入在招与 HC 口径，候选人关联保留，可随时恢复' },
+  已归档: { tone: 'ghost', dot: 'status-neutral', hint: '仅作历史留存，不再进入在招口径，可恢复为招募中' },
+}
+const POS_STATUS_OPTIONS: Position['status'][] = ['招募中', '已暂停', '已归档']
+
+/** 候选人阶段胶囊（阶段取值来自 data.ts 的 STAGES，这里只映射展示色调） */
+const STAGE_TONE: Record<string, Tone> = {
+  新入库: 'ghost',
+  筛选中: 'info',
+  待联系: 'ghost',
+  约面中: 'neutral',
+  面评中: 'info',
+  待录取: 'success',
+  已完成: 'success',
+  搁置: 'ghost',
+  已淘汰: 'error',
+}
+
+/** 日期一律按本地口径渲染 YYYY-MM-DD：经 toISOString 反推会按 UTC 差一天 */
+function localDate(v?: string): string {
+  if (!v) return '—'
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v)
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return v
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** 需要 form 属性把按钮关联到弹窗内表单时使用（ui.tsx 的 Btn 不接受 form 属性） */
+function SubmitBtn({ form, disabled, children }: { form: string; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="submit"
+      form={form}
+      disabled={disabled}
+      className="btn btn-primary h-9 min-h-9 rounded-full px-4 text-xs font-medium tracking-tight"
+    >
+      {children}
+    </button>
+  )
+}
+
+type PosForm = {
+  name: string
+  jdId: string
+  dept: string
+  recruiter: string
+  hiringManager: string
+  hc: number
+  hired: number
+  status: Position['status']
+}
+
+type JdForm = {
+  title: string
+  dept: string
+  exp: string
+  edu: string
+  salary: string
+  skills: string[]
+  summary: string
+  responsibilities: string
+  requirements: string
+}
+
+const emptyPosForm = (jdId: string): PosForm => ({
+  name: '',
+  jdId,
+  dept: '技术部',
+  recruiter: '林婉 (HRG)',
+  hiringManager: '技术主管',
+  hc: 2,
+  hired: 0,
+  status: '招募中',
+})
+
+const emptyJdForm = (dept: string): JdForm => ({
+  title: '',
+  dept,
+  exp: '3-5 年',
+  edu: '本科及以上',
+  salary: '25k-35k · 14薪',
+  skills: ['React / TypeScript'],
+  summary: '负责业务核心链路研发与架构建设。',
+  responsibilities: '负责核心业务系统的模块设计与代码实现。\n持续改善系统稳定性和用户体验。',
+  requirements: '统招本科及以上，相关领域 3 年以上扎实经历。\n具备良好的团队协作与抗压能力。',
+})
 
 export default function Jobs({ go }: { go: Go }) {
+  // 订阅 store：下架 / 恢复 / 换绑标尺等模块级改动后本页必须重渲染
+  useStore()
+
   // 选中的岗位 ID（右翼白皮书直接原地联动展示其装配的 JD）
   const [selectedPosId, setSelectedPosId] = useState<string>(positions[0]?.id ?? '')
   const [editingPos, setEditingPos] = useState<Position | 'new' | null>(null)
   const [editingJd, setEditingJd] = useState<JD | 'new' | null>(null)
+  // JD 弹窗由「新建/编辑岗位」表单唤起时记录来源，保存后只回填该表单，不误改当前选中的其他岗位
+  const [jdLinkTarget, setJdLinkTarget] = useState<'pos-form' | null>(null)
+  // 上下架的二次确认（破坏性操作必须确认并说明后果）
+  const [confirmStatus, setConfirmStatus] = useState<{ pos: Position; next: Position['status'] } | null>(null)
+  // 岗位 → 候选人入口
+  const [candidatePanel, setCandidatePanel] = useState<Position | null>(null)
+  // BPM 岗位草稿同步：P1 仅前端占位，不做任何接口调用
+  const [bpmAttemptAt, setBpmAttemptAt] = useState<string | null>(null)
+  const [bpmNotice, setBpmNotice] = useState(false)
 
-  const activePos = positions.find((p) => p.id === selectedPosId) || positions[0]
-  const boundJd = activePos ? findJd(activePos.jdId) : jds[0]
-
-  // 岗位弹窗表单状态
-  const [posForm, setPosForm] = useState({
-    name: '',
-    jdId: jds[0]?.id ?? '',
-    dept: '技术部',
-    recruiter: '林婉 (HRG)',
-    hiringManager: '技术主管',
-    hc: 2,
-    hired: 0,
-    status: '招募中' as Position['status'],
-  })
-
-  // JD 抽屉表单状态
-  const [jdForm, setJdForm] = useState({
-    title: '',
-    dept: '技术部 · 业务研发组',
-    exp: '3-5 年',
-    edu: '本科及以上',
-    salary: '25k-35k · 14薪',
-    skills: ['React', 'TypeScript', '工程化'],
-    summary: '',
-    responsibilities: '主导核心业务系统前端架构设计与性能调优。\n沉淀跨业务通用组件与工程规范。',
-    requirements: '3 年以上大型中后台研发经验，精通核心技术栈。\n具备量化性能调优战果与架构抽象能力。',
-  })
+  const [posForm, setPosForm] = useState<PosForm>(() => emptyPosForm(jds[0]?.id ?? ''))
+  const [jdForm, setJdForm] = useState<JdForm>(() => emptyJdForm('技术部 · 业务研发组'))
   const [tagInput, setTagInput] = useState('')
 
-  // 标尺缺失时给出空态：findJd 找不到返回 undefined，不静默绑到其他 JD 上
-  if (!boundJd) {
-    return (
-      <div className="ws-paper rounded-2xl p-12 text-center text-xs text-[#86868b]">
-        当前岗位尚未装配 JD 标尺，请先在左侧能力标尺库创建标尺后重新装配。
-      </div>
-    )
-  }
+  const activePos = positions.find((p) => p.id === selectedPosId) ?? positions[0]
+  const boundJd = activePos ? findJd(activePos.jdId) : undefined
 
-  // 打开新建岗位
+  const openCount = positions.filter((p) => p.status === '招募中').length
+  const pausedCount = positions.filter((p) => p.status === '已暂停').length
+  const archivedCount = positions.filter((p) => p.status === '已归档').length
+  const recruiting = positions.filter((p) => p.status === '招募中')
+  const totalHc = recruiting.reduce((acc, p) => acc + (p.hc || 0), 0)
+  const totalHired = recruiting.reduce((acc, p) => acc + (p.hired || 0), 0)
+  const hcRate = totalHc ? Math.min(100, Math.round((totalHired / totalHc) * 100)) : 0
+  const boundCount = positions.filter((p) => !!findJd(p.jdId)).length
+
+  /* ── 岗位弹窗 ── */
   const openNewPos = () => {
-    setPosForm({
-      name: '',
-      jdId: boundJd?.id ?? jds[0]?.id ?? '',
-      dept: '技术部',
-      recruiter: '林婉 (HRG)',
-      hiringManager: '技术主管',
-      hc: 2,
-      hired: 0,
-      status: '招募中',
-    })
+    setPosForm(emptyPosForm(boundJd?.id ?? jds[0]?.id ?? ''))
     setEditingPos('new')
   }
 
-  // 打开编辑岗位
   const openEditPos = (p: Position) => {
     setPosForm({
       name: p.name,
@@ -79,36 +154,27 @@ export default function Jobs({ go }: { go: Go }) {
     setEditingPos(p)
   }
 
-  // 保存岗位
+  const closePosModal = () => setEditingPos(null)
+
   const savePos = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!posForm.name.trim()) return
+    if (!posForm.name.trim() || !posForm.jdId) return
     if (editingPos === 'new') {
-      const created = addPosition(posForm)
+      const created = addPosition({ ...posForm, name: posForm.name.trim() })
       setSelectedPosId(created.id)
     } else if (editingPos) {
-      updatePosition(editingPos.id, posForm)
+      updatePosition(editingPos.id, { ...posForm, name: posForm.name.trim() })
     }
     setEditingPos(null)
   }
 
-  // 打开新建 JD
-  const openNewJd = () => {
-    setJdForm({
-      title: '',
-      dept: activePos?.dept || '技术部 · 创新业务组',
-      exp: '3-5 年',
-      edu: '本科及以上',
-      salary: '25k-35k · 14薪',
-      skills: ['React / TypeScript', '性能调优', '架构设计'],
-      summary: '负责业务核心链路研发与架构建设。',
-      responsibilities: '负责核心业务系统的模块设计与代码实现。\n持续改善系统稳定性和用户体验。',
-      requirements: '统招本科及以上，相关领域 3 年以上扎实经历。\n具备良好的团队协作与抗压能力。',
-    })
+  /* ── JD 弹窗 ── */
+  const openNewJd = (from: 'pos-form' | null) => {
+    setJdForm(emptyJdForm(activePos?.dept || '技术部 · 创新业务组'))
+    setJdLinkTarget(from)
     setEditingJd('new')
   }
 
-  // 打开编辑 JD
   const openEditJd = (j: JD) => {
     setJdForm({
       title: j.title,
@@ -121,10 +187,15 @@ export default function Jobs({ go }: { go: Go }) {
       responsibilities: j.responsibilities.join('\n'),
       requirements: j.requirements.join('\n'),
     })
+    setJdLinkTarget(null)
     setEditingJd(j)
   }
 
-  // 载入模板
+  const closeJdModal = () => {
+    setEditingJd(null)
+    setJdLinkTarget(null)
+  }
+
   const loadTemplate = (idx: number) => {
     const t = JD_TEMPLATES[idx]
     if (!t) return
@@ -141,7 +212,6 @@ export default function Jobs({ go }: { go: Go }) {
     })
   }
 
-  // 保存 JD
   const saveJd = (e: React.FormEvent) => {
     e.preventDefault()
     if (!jdForm.title.trim()) return
@@ -158,17 +228,14 @@ export default function Jobs({ go }: { go: Go }) {
     }
     if (editingJd === 'new') {
       const created = addJd(payload)
-      // 如果当前选中了岗位，且在编辑岗位时触发，则自动关联
-      if (activePos) {
-        updatePosition(activePos.id, { jdId: created.id })
-      }
+      // 只有从岗位表单唤起时才把新标尺回填给「正在创建/编辑的那个岗位」
+      if (jdLinkTarget === 'pos-form') setPosForm((prev) => ({ ...prev, jdId: created.id }))
     } else if (editingJd) {
       updateJd(editingJd.id, payload)
     }
-    setEditingJd(null)
+    closeJdModal()
   }
 
-  // 添加 Skill 标签
   const addTag = () => {
     const v = tagInput.trim()
     if (v && !jdForm.skills.includes(v)) {
@@ -177,599 +244,841 @@ export default function Jobs({ go }: { go: Go }) {
     }
   }
 
-  // 统计在招岗位下的候选人
-  const countForPos = (posId: string) => {
+  /* ── 上下架 / 岗位数据统计 ── */
+  const applyStatusChange = () => {
+    if (!confirmStatus) return
+    updatePosition(confirmStatus.pos.id, { status: confirmStatus.next })
+    setConfirmStatus(null)
+  }
+
+  const statForPos = (posId: string) => {
     const matched = candidates.filter((c) => c.positionId === posId)
+    const sessions = matched.filter((c) => c.scheduleDetail)
     return {
       total: matched.length,
-      waitMeet: matched.filter((c) => c.status === '约面中').length,
-      waitEval: matched.filter((c) => c.status === '面评中').length,
+      inflight: matched.filter((c) => c.status === '约面中' || c.status === '面评中').length,
+      sessions: sessions.length,
+      scheduled: sessions.filter((c) => c.scheduleDetail?.status === 'scheduled').length,
     }
   }
 
-  // 全局概览统计
-  const totalHc = positions.reduce((acc, p) => acc + (p.hc || 0), 0)
-  const totalHired = positions.reduce((acc, p) => acc + (p.hired || 0), 0)
-  const hcRate = totalHc ? Math.round((totalHired / totalHc) * 100) : 0
+  const panelCandidates = candidatePanel ? candidates.filter((c) => c.positionId === candidatePanel.id) : []
+
+  /* ── 空态：一个岗位都没有时不留白 ── */
+  if (!positions.length) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold tracking-tight text-base-content">岗位管理</h1>
+        <Card className="p-2">
+          <Empty
+            title="暂无在招岗位"
+            hint="岗位用于串联候选人、约面与录取申请；先新建一个岗位并装配标准 JD 标尺。"
+            action={<Btn onClick={openNewPos}>新建岗位</Btn>}
+          />
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8">
-      {/* 顶部：编制与能力标尺标题区 */}
-      <div className="ws-rise flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black/[0.08] pb-6">
+      {/* 页头：标题 + 同步入口 + 岗位状态统计 */}
+      <div className="ws-rise flex flex-col gap-6 border-b border-base-300 pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold tracking-tight text-[#1d1d1f] sm:text-3xl">
-              在招编制与能力标尺
-            </h1>
-            <span className="inline-flex items-center rounded-full bg-black/[0.04] px-2.5 py-0.5 text-xs font-semibold text-[#1d1d1f] ring-1 ring-inset ring-black/10">
-              {positions.length} 个岗位招募中
-            </span>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-base-content sm:text-3xl">在招岗位与能力标尺</h1>
+            <Chip tone="ghost" title="只有招募中的岗位计入在招口径">
+              在招 {openCount}
+            </Chip>
+            {pausedCount > 0 && <span className="text-xs text-base-content/60">已暂停 {pausedCount}</span>}
+            {archivedCount > 0 && <span className="text-xs text-base-content/60">已归档 {archivedCount}</span>}
           </div>
-          <p className="mt-1.5 text-xs text-[#6e6e73] max-w-2xl leading-relaxed">
-            业务编制配属用人标尺白皮书 · 自动对齐 AI 初筛阈值 · 面试定制题目与评价维度统一
+          <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-base-content/60">
+            岗位关联来源库岗位标识（FR-A1）· 装配标准 JD 标尺统一初筛与出题口径 · 已批准岗位可同步 BPM 生成草稿（FR-B5，P1）
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          <Btn variant="ghost" onClick={openNewJd}>
+        <div className="flex shrink-0 items-center gap-3">
+          <Btn variant="ghost" onClick={() => openNewJd(null)}>
             + 拟定新用人标尺 (JD)
           </Btn>
           <Btn variant="solid" onClick={openNewPos}>
-            + 新增在招岗位
+            + 新建岗位
           </Btn>
         </div>
       </div>
 
-      {/* 顶部横幅：Apple Bento 概览指标行 (3联卡片) */}
-      <div className="ws-rise [--i:1] grid gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl bg-white p-5 border border-black/[0.04] shadow-2xs">
-          <span className="text-[11px] font-medium text-[#86868b]">总在招岗位编制</span>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl font-bold tracking-tight text-[#1d1d1f] tabular-nums">
-              {positions.length} <span className="text-xs font-normal text-[#86868b]">个职位进行中</span>
-            </span>
-            <span className="text-xs font-semibold text-[#1d1d1f]">{totalHired} / {totalHc} HC</span>
+      {/* BPM 岗位草稿同步：P1 前端占位，不调用任何接口 */}
+      <Card className="ws-rise [--i:1] flex flex-col gap-3 p-5 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-base-content">BPM 岗位草稿同步</span>
+            <Chip tone="info">草稿 · 待接入</Chip>
+            <Chip tone="ghost">P1 · FR-B5</Chip>
           </div>
-          <div className="mt-2.5 h-1 w-full rounded-full bg-[#f5f5f7] overflow-hidden">
-            <div className="h-full bg-[#1d1d1f] rounded-full" style={{ width: `${hcRate}%` }} />
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white p-5 border border-black/[0.04] shadow-2xs">
-          <span className="text-[11px] font-medium text-[#86868b]">标准用人标尺库 (JD Repository)</span>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl font-bold tracking-tight text-[#1d1d1f] tabular-nums">
-              {jds.length} <span className="text-xs font-normal text-[#86868b]">套标准化指标</span>
-            </span>
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">100% 覆盖</span>
-          </div>
-          <p className="mt-2 text-[11px] text-[#86868b] truncate">
-            已涵盖：前端架构、Go 分布式、B 端商业化、大模型应用
+          <p className="mt-1.5 max-w-3xl text-xs leading-relaxed text-base-content/60">
+            接入后按已批准岗位同步名称、职责与要求，生成岗位草稿再人工确认上架；与录取审批是两条独立对接，不互为前置条件。
+          </p>
+          <p className="mt-1 text-xs text-base-content/50">
+            最近同步：
+            {bpmAttemptAt
+              ? `${bpmAttemptAt}（本地演示记录，未产生草稿）`
+              : '暂无记录 · 接口待接入（BPM 认证与字段映射尚未开放）'}
           </p>
         </div>
+        <Btn
+          variant="outline"
+          className="shrink-0"
+          ariaLabel="从 BPM 同步岗位草稿（当前待接入）"
+          onClick={() => {
+            setBpmAttemptAt(demoNow())
+            setBpmNotice(true)
+          }}
+        >
+          从 BPM 同步岗位
+        </Btn>
+      </Card>
 
-        <div className="rounded-2xl bg-white p-5 border border-black/[0.04] shadow-2xs">
-          <span className="text-[11px] font-medium text-[#86868b]">当前在池对标候选人</span>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl font-bold tracking-tight text-[#1d1d1f] tabular-nums">
-              {candidates.length} <span className="text-xs font-normal text-[#86868b]">人全链路推进中</span>
-            </span>
-            <button
-              onClick={() => go('candidates', undefined)}
-              className="text-xs font-semibold text-[#1d1d1f] hover:underline"
-            >
-              前往人才库 ↗
-            </button>
-          </div>
-          <p className="mt-2 text-[11px] text-[#86868b]">
-            各岗位均严格绑定 JD 规范，初筛与题目实时联动
-          </p>
+      {bpmNotice && (
+        <div className="alert alert-soft alert-info ws-rise items-start text-xs" role="status">
+          <span className="leading-relaxed">
+            BPM 岗位同步（P1）尚未接入：本页只保留入口、草稿位与最近同步时间字段，未发起任何后端 / 接口调用。
+            接入后将在此列出草稿（岗位名称 / 职责 / 要求）并支持人工确认上架。
+          </span>
+          <button type="button" className="btn btn-ghost btn-xs" onClick={() => setBpmNotice(false)}>
+            知道了
+          </button>
         </div>
+      )}
+
+      {/* 概览指标 */}
+      <div className="ws-rise [--i:2] grid gap-4 sm:grid-cols-3">
+        <Card className="p-5">
+          <Label>在招岗位（招募中）</Label>
+          <div className="mt-2 flex items-baseline justify-between">
+            <span className="text-2xl font-bold tabular-nums tracking-tight text-base-content">
+              {openCount} <span className="text-xs font-normal text-base-content/60">个岗位进行中</span>
+            </span>
+            <span className="text-xs font-semibold text-base-content">
+              {totalHired} / {totalHc} HC
+            </span>
+          </div>
+          <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-base-200" role="progressbar" aria-label="在招岗位 HC 完成度" aria-valuenow={hcRate} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-full rounded-full bg-primary" style={{ width: `${hcRate}%` }} />
+          </div>
+          <p className="mt-2 text-xs text-base-content/50">
+            已暂停 {pausedCount} · 已归档 {archivedCount}（不计入在招口径）
+          </p>
+        </Card>
+
+        <Card className="p-5">
+          <Label>标准用人标尺库 (JD Repository)</Label>
+          <div className="mt-2 flex items-baseline justify-between">
+            <span className="text-2xl font-bold tabular-nums tracking-tight text-base-content">
+              {jds.length} <span className="text-xs font-normal text-base-content/60">套标准化指标</span>
+            </span>
+            <Chip tone="ghost">
+              {boundCount} / {positions.length} 已装配
+            </Chip>
+          </div>
+          <p className="mt-2 truncate text-xs text-base-content/60">
+            已涵盖：{jds.map((j) => j.title).join('、') || '暂无标尺'}
+          </p>
+        </Card>
+
+        <Card className="p-5">
+          <Label>在池对标候选人</Label>
+          <div className="mt-2 flex items-baseline justify-between">
+            <span className="text-2xl font-bold tabular-nums tracking-tight text-base-content">
+              {candidates.length} <span className="text-xs font-normal text-base-content/60">人全链路推进中</span>
+            </span>
+            <Btn variant="ghost" ariaLabel="前往候选人大池" onClick={() => go('candidates')}>
+              前往人才库
+            </Btn>
+          </div>
+          <p className="mt-2 text-xs text-base-content/60">
+            {recruiting.reduce((acc, p) => acc + statForPos(p.id).inflight, 0)} 人在在招岗位的约面 / 面评环节
+          </p>
+        </Card>
       </div>
 
-      {/* 主体布局大重构：联动双翼工作台 (Master-Detail Asymmetric Split) */}
-      <div className="ws-rise [--i:2] grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.18fr)] items-start">
-        {/* 左翼：在招编制列表 (Master List) */}
+      {/* 主体：左翼岗位列表 + 右翼标尺白皮书 */}
+      <div className="ws-rise [--i:3] grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.18fr)]">
         <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-sm font-semibold tracking-tight text-[#1d1d1f] uppercase text-[11px]">
-              业务在招编制矩阵 ({positions.length})
-            </h2>
-            <span className="text-xs text-[#86868b]">点击岗位原地对标右侧标尺</span>
+            <h2 className="text-sm font-semibold tracking-tight text-base-content">业务岗位编制矩阵（{positions.length}）</h2>
+            <span className="text-xs text-base-content/50">选中岗位后在右侧原地对标标尺</span>
           </div>
 
           <div className="space-y-3.5">
             {positions.map((p) => {
               const jd = findJd(p.jdId)
-              const stat = countForPos(p.id)
+              const stat = statForPos(p.id)
               const isSelected = p.id === activePos?.id
-              const hcPct = Math.min(100, Math.round((p.hired / (p.hc || 1)) * 100))
+              const st = POS_STATUS[p.status]
+              const hcPct = p.hc ? Math.min(100, Math.round((p.hired / p.hc) * 100)) : 0
 
               return (
-                <div
+                <Card
                   key={p.id}
-                  onClick={() => setSelectedPosId(p.id)}
-                  className={`group cursor-pointer rounded-2xl bg-white p-5 transition-all relative ${
-                    isSelected
-                      ? 'border-2 border-[#1d1d1f] shadow-md ring-2 ring-black/10'
-                      : 'border border-black/[0.04] shadow-2xs hover:border-black/[0.08] hover:shadow-sm'
-                  }`}
+                  className={`p-0 transition-shadow hover:shadow-[var(--shadow-lift)] ${isSelected ? 'border-primary' : ''}`}
                 >
-                  {/* 顶部信息 */}
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="rounded-full bg-[#f5f5f7] px-2.5 py-0.5 text-[11px] font-medium text-[#86868b]">
-                      {p.dept} · {p.code}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      {p.status}
-                    </span>
-                  </div>
-
-                  {/* 岗位大字 */}
-                  <h3 className="mt-2.5 text-base font-semibold tracking-tight text-[#1d1d1f] flex items-center justify-between">
-                    <span>{p.name}</span>
-                    {isSelected && (
-                      <span className="text-xs font-semibold text-[#1d1d1f]">正在对标 ➔</span>
-                    )}
-                  </h3>
-
-                  {/* 装配的 JD 标尺微型胶囊 */}
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-black/[0.04] px-2.5 py-1 text-xs font-medium text-[#1d1d1f] ring-1 ring-inset ring-black/10">
-                      <span>📋</span>
-                      {jd?.title ?? '未装配标尺'} ({jd?.code ?? '—'})
-                    </span>
-                    <span className="text-xs text-[#86868b]">{jd?.salary ?? '薪酬待定'}</span>
-                  </div>
-
-                  {/* HC 进度与协同人 */}
-                  <div className="mt-4 grid grid-cols-2 gap-4 border-t border-black/[0.04] pt-3 text-xs text-[#86868b]">
-                    <div>
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span>招聘 HC</span>
-                        <span className="font-semibold text-[#1d1d1f]">{p.hired} / {p.hc}</span>
-                      </div>
-                      <div className="mt-1 h-1 w-full rounded-full bg-[#f5f5f7] overflow-hidden">
-                        <div className="h-full rounded-full bg-[#1d1d1f]" style={{ width: `${hcPct}%` }} />
-                      </div>
+                  {/* 可点击区域：只承载信息，操作按钮放在下面的独立行，避免嵌套交互元素 */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
+                    aria-label={`对标 ${p.name} 的能力标尺`}
+                    onClick={() => setSelectedPosId(p.id)}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setSelectedPosId(p.id)
+                      }
+                    }}
+                    className="card-body cursor-pointer gap-0 rounded-2xl p-5 pb-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Chip tone="ghost">
+                        {p.dept} · {p.code}
+                      </Chip>
+                      <Chip tone={st.tone} title={st.hint}>
+                        <span className={`status status-sm ${st.dot}`} aria-hidden="true" />
+                        {p.status}
+                      </Chip>
                     </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span>负责 HR: <strong className="font-medium text-[#1d1d1f]">{p.recruiter.split(' ')[0]}</strong></span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openEditPos(p) }}
-                        className="text-[#86868b] hover:text-[#1d1d1f] font-medium underline"
-                      >
-                        编辑
-                      </button>
-                    </div>
-                  </div>
 
-                  {/* 候选人快捷漏斗 */}
-                  <div className="mt-3 flex items-center justify-between border-t border-black/[0.04] pt-2.5 text-[11px]">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); go('candidates', undefined) }}
-                      className="text-[#1d1d1f] hover:underline font-medium flex items-center gap-1"
-                    >
-                      已对标候选人: <strong className="font-bold">{stat.total}</strong> 人
-                    </button>
-                    {stat.waitMeet > 0 && (
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800 font-medium text-[10px]">
-                        {stat.waitMeet} 位约面中
+                    <h3 className="card-title mt-2.5 flex items-center justify-between text-base font-semibold tracking-tight text-base-content">
+                      <span className="min-w-0">{p.name}</span>
+                      {isSelected && <span className="text-xs font-semibold text-base-content/60">正在对标</span>}
+                    </h3>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                      <Chip tone="ghost" title={jd ? '该岗位初筛基准与 AI 出题依据' : '尚未装配标尺'}>
+                        标尺：{jd ? `${jd.title}（${jd.code}）` : '未装配'}
+                      </Chip>
+                      <span className="text-base-content/60">{jd?.salary ?? '薪酬待定'}</span>
+                    </div>
+
+                    {/* 来源库岗位标识：只读 */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-mono text-base-content">
+                        来源库岗位标识：{p.sourcePositionId ?? '未关联'}
                       </span>
-                    )}
+                      <span className="text-base-content/50">来自来源库，本地不可修改</span>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-4 border-t border-base-300 pt-3 text-xs text-base-content/60">
+                      <div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span>招聘 HC</span>
+                          <span className="font-semibold text-base-content">
+                            {p.hired} / {p.hc}
+                          </span>
+                        </div>
+                        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-base-200">
+                          <div className="h-full rounded-full bg-primary" style={{ width: `${hcPct}%` }} />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span>
+                          负责 HR：<strong className="font-medium text-base-content">{p.recruiter.split(' ')[0]}</strong>
+                        </span>
+                        <span>建编 {localDate(p.createdAt)}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+
+                  {/* 操作行 */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-base-300 px-5 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Btn
+                        variant="ghost"
+                        ariaLabel={`查看岗位 ${p.name} 的候选人（进入候选人大池按本岗位口径）`}
+                        title="进入候选人大池，按本岗位筛选口径查看"
+                        onClick={() => setCandidatePanel(p)}
+                      >
+                        已对标候选人 {stat.total} 人
+                      </Btn>
+                      <Btn
+                        variant="ghost"
+                        ariaLabel={`前往约面管理查看岗位 ${p.name} 的 ${stat.sessions} 场面试`}
+                        title="前往约面管理：改期、取消与通知状态"
+                        onClick={() => go('schedule')}
+                      >
+                        {stat.sessions} 场面试
+                        {stat.scheduled > 0 && <span className="text-base-content/50">（{stat.scheduled} 场待进行）</span>}
+                      </Btn>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Btn variant="ghost" ariaLabel={`编辑岗位 ${p.name}`} onClick={() => openEditPos(p)}>
+                        编辑
+                      </Btn>
+                      {p.status === '招募中' ? (
+                        <Btn
+                          variant="ghost"
+                          className="text-error"
+                          ariaLabel={`下架岗位 ${p.name}`}
+                          onClick={() => setConfirmStatus({ pos: p, next: '已暂停' })}
+                        >
+                          下架
+                        </Btn>
+                      ) : (
+                        <Btn
+                          variant="ghost"
+                          ariaLabel={`恢复岗位 ${p.name} 为招募中`}
+                          onClick={() => setConfirmStatus({ pos: p, next: '招募中' })}
+                        >
+                          恢复
+                        </Btn>
+                      )}
+                    </div>
+                  </div>
+                </Card>
               )
             })}
           </div>
         </div>
 
-        {/* 右翼：原地展开的用人能力白皮书 (Interactive Detail Spec Sheet - Sticky) */}
+        {/* 右翼：标尺白皮书 */}
         <div className="sticky top-20">
-          <Card className="p-7 shadow-sm border border-black/[0.05] rounded-3xl bg-white">
-            {/* 白皮书抬头 */}
-            <div className="flex items-start justify-between border-b border-black/[0.06] pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-semibold text-[#1d1d1f] tracking-wide">
-                    {boundJd.code} · 标准能力白皮书
-                  </span>
-                  <span className="rounded-full bg-[#f5f5f7] px-2 py-0.5 text-[10px] text-[#86868b]">
-                    最后修订: {boundJd.updatedAt}
-                  </span>
+          <Card className="p-7">
+            {!boundJd ? (
+              <Empty
+                title="当前岗位尚未装配 JD 标尺"
+                hint="请在表单中为该岗位选择或新建一份标准标尺；未装配标尺时初筛基准与 AI 出题无法联动。"
+                action={
+                  activePos && (
+                    <Btn variant="solid" onClick={() => openEditPos(activePos)}>
+                      去装配标尺
+                    </Btn>
+                  )
+                }
+              />
+            ) : (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-base-300 pb-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs font-semibold tracking-wide text-base-content">
+                        {boundJd.code} · 标准能力白皮书
+                      </span>
+                      <Chip tone="ghost">最后修订 {localDate(boundJd.updatedAt)}</Chip>
+                    </div>
+                    <h3 className="mt-1 text-2xl font-bold tracking-tight text-base-content">{boundJd.title}</h3>
+                    <p className="mt-1 text-xs text-base-content/60">
+                      当前已装配至岗位：<strong className="text-base-content">{activePos?.name}</strong>
+                    </p>
+                    <p className="mt-1 font-mono text-xs text-base-content/60">
+                      来源库岗位标识：{activePos?.sourcePositionId ?? '未关联'}
+                      <span className="ml-1 font-sans text-base-content/50">（只读，来源库 / BPM 写入）</span>
+                    </p>
+                  </div>
+                  <Btn variant="outline" onClick={() => openEditJd(boundJd)} ariaLabel="修订当前标尺">
+                    修订标尺
+                  </Btn>
                 </div>
-                <h3 className="mt-1 text-2xl font-bold tracking-tight text-[#1d1d1f]">
-                  {boundJd.title}
-                </h3>
-                <p className="mt-1 text-xs text-[#86868b]">
-                  当前已装配至在招岗位：<strong className="text-[#1d1d1f]">{activePos?.name}</strong>
-                </p>
-              </div>
 
-              {/* 右侧微操作 */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => openEditJd(boundJd)}
-                  className="cursor-pointer rounded-full bg-[#f5f5f7] px-3 py-1.5 text-xs font-medium text-[#1d1d1f] hover:bg-[#e8e8ed] transition-colors"
-                >
-                  修订标尺 ✎
-                </button>
-              </div>
-            </div>
+                <div className="mt-5 flex flex-wrap items-center gap-2 text-xs">
+                  <Chip tone="neutral">薪酬范围 {boundJd.salary}</Chip>
+                  <Chip tone="ghost">经验门槛 {boundJd.exp}</Chip>
+                  <Chip tone="ghost">学历门槛 {boundJd.edu}</Chip>
+                </div>
 
-            {/* 硬性门槛徽章栏 */}
-            <div className="mt-5 flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-800">
-                薪酬范围：{boundJd.salary}
-              </span>
-              <span className="rounded-full bg-[#f5f5f7] px-3 py-1 font-medium text-[#1d1d1f]">
-                经验门槛：{boundJd.exp}
-              </span>
-              <span className="rounded-full bg-[#f5f5f7] px-3 py-1 font-medium text-[#1d1d1f]">
-                学历门槛：{boundJd.edu}
-              </span>
-            </div>
+                <div className="mt-5">
+                  <Label>核心考核技能基准（AI 定制出题依据）</Label>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {boundJd.skills.map((s) => (
+                      <span key={s} className="badge badge-sm badge-soft border-none font-medium">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
 
-            {/* 核心考核技能刻度 */}
-            <div className="mt-5">
-              <span className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider">
-                核心考核技能基准 (AI 定制出题依据)
-              </span>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {boundJd.skills.map((s) => (
-                  <span key={s} className="rounded-full bg-[#f5f5f7] px-3 py-1 text-xs font-medium text-[#1d1d1f]">
-                    {s}
-                  </span>
-                ))}
-              </div>
-            </div>
+                <div className="mt-5 rounded-2xl bg-base-200/70 p-4 text-xs leading-relaxed text-base-content/80">
+                  <strong className="font-semibold text-base-content">岗位定位：</strong>
+                  {boundJd.summary || '尚未填写岗位定位。'}
+                </div>
 
-            {/* 定位摘要 */}
-            <div className="mt-5 rounded-2xl bg-[#f5f5f7]/70 p-4 text-xs text-[#1d1d1f]/80 leading-relaxed">
-              <strong className="font-semibold text-[#1d1d1f]">岗位定位：</strong>
-              {boundJd.summary || '负责核心业务系统的模块设计与代码实现，推动团队架构演进。'}
-            </div>
+                <div className="mt-5">
+                  <Label>岗位职责标准</Label>
+                  <ul className="mt-2 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
+                    {boundJd.responsibilities.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
 
-            {/* 职责清单 */}
-            <div className="mt-5">
-              <span className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider">
-                岗位职责标准
-              </span>
-              <ul className="mt-2 list-disc space-y-1.5 pl-4 text-xs text-[#1d1d1f]/80 leading-relaxed">
-                {boundJd.responsibilities.map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
-              </ul>
-            </div>
+                <div className="mt-5">
+                  <Label>任职资格与考核要点（对标初筛基准）</Label>
+                  <ul className="mt-2 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
+                    {boundJd.requirements.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
 
-            {/* 任职资格与初筛考核点 */}
-            <div className="mt-5">
-              <span className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider">
-                任职资格与考核要点（对标初筛基准）
-              </span>
-              <ul className="mt-2 list-disc space-y-1.5 pl-4 text-xs text-[#1d1d1f]/80 leading-relaxed">
-                {boundJd.requirements.map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
-              </ul>
-            </div>
-
-            {/* 底部换绑小工具 */}
-            <div className="mt-6 flex items-center justify-between border-t border-black/[0.04] pt-4 text-xs">
-              <span className="text-[#86868b]">为该岗位更换装配标尺：</span>
-              <select
-                value={activePos?.jdId}
-                onChange={(e) => {
-                  if (activePos) updatePosition(activePos.id, { jdId: e.target.value })
-                }}
-                className="rounded-full bg-[#f5f5f7] px-3 py-1 text-xs font-medium text-[#1d1d1f] outline-none border-0"
-              >
-                {jds.map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.code} · {j.title}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 pt-4">
+                  <Field label="为该岗位更换装配标尺" htmlFor="pos-rebind" className="min-w-0 flex-1">
+                    <select
+                      id="pos-rebind"
+                      value={activePos?.jdId ?? ''}
+                      onChange={(e) => {
+                        if (activePos) updatePosition(activePos.id, { jdId: e.target.value })
+                      }}
+                      className="select w-full max-w-xs"
+                      aria-label="为该岗位更换装配标尺"
+                    >
+                      {jds.map((j) => (
+                        <option key={j.id} value={j.id}>
+                          {j.code} · {j.title}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              </>
+            )}
           </Card>
         </div>
       </div>
 
-      {/* 弹窗 1：新建 / 编辑在招编制 */}
-      {editingPos && (
-        <div className="ws-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <Card className="login-fade max-h-[90vh] w-full max-w-lg overflow-y-auto p-8 shadow-2xl rounded-3xl">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
-              <div>
-                <h3 className="text-xl font-semibold tracking-tight text-[#1d1d1f]">
-                  {editingPos === 'new' ? '新建在招岗位编制' : '编辑岗位编制'}
-                </h3>
-                <p className="mt-0.5 text-xs text-[#86868b]">装配一份标准 JD 作为能力考核与初筛对标基准</p>
-              </div>
-              <button
-                onClick={() => setEditingPos(null)}
-                className="grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-[#f5f5f7] text-[#86868b] hover:text-[#1d1d1f]"
+      {/* 弹窗 1：新建 / 编辑岗位 */}
+      <Modal
+        open={!!editingPos && !jdLinkTarget}
+        onClose={closePosModal}
+        title={editingPos === 'new' ? '新建在招岗位' : '编辑在招岗位'}
+        sub="装配一份标准 JD 作为初筛与出题的对标基准；岗位标识由来源库 / BPM 写入，本地不可修改"
+        className="md:max-w-2xl"
+        footer={
+          <>
+            <Btn variant="ghost" onClick={closePosModal}>
+              取消
+            </Btn>
+            <SubmitBtn form="pos-form" disabled={!posForm.name.trim() || !posForm.jdId}>
+              保存岗位
+            </SubmitBtn>
+          </>
+        }
+      >
+        <form id="pos-form" onSubmit={savePos} className="space-y-4">
+          <Field label="在招岗位名称" htmlFor="pos-name" required hint="例如：商业化大前端研发组 · 高级前端工程师">
+            <input
+              id="pos-name"
+              required
+              value={posForm.name}
+              onChange={(e) => setPosForm({ ...posForm, name: e.target.value })}
+              placeholder="填写对外使用的岗位名称"
+              className="input w-full"
+            />
+          </Field>
+
+          <Field label="装配标准能力标尺 (JD)" htmlFor="pos-jd" required hint="初筛基准、面试题与评价维度都按此标尺联动">
+            <div className="flex items-center gap-2">
+              <select
+                id="pos-jd"
+                value={posForm.jdId}
+                onChange={(e) => setPosForm({ ...posForm, jdId: e.target.value })}
+                className="select w-full"
               >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={savePos} className="mt-5 space-y-4 text-xs">
-              <div>
-                <label className="font-medium text-[#1d1d1f]">在招岗位名称 *</label>
-                <input
-                  required
-                  value={posForm.name}
-                  onChange={(e) => setPosForm({ ...posForm, name: e.target.value })}
-                  placeholder="例如：商业化大前端研发组 · 高级前端工程师"
-                  className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3.5 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="font-medium text-[#1d1d1f]">装配标准能力标尺 (JD) *</label>
-                  <button
-                    type="button"
-                    onClick={() => openNewJd()}
-                    className="cursor-pointer text-xs font-medium text-[#1d1d1f] hover:underline"
-                  >
-                    + 拟定新 JD
-                  </button>
-                </div>
-                <select
-                  value={posForm.jdId}
-                  onChange={(e) => setPosForm({ ...posForm, jdId: e.target.value })}
-                  className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                >
-                  {jds.map((j) => (
-                    <option key={j.id} value={j.id}>
-                      {j.code} · {j.title} ({j.exp} / {j.salary})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-medium text-[#1d1d1f]">所属部门</label>
-                  <input
-                    value={posForm.dept}
-                    onChange={(e) => setPosForm({ ...posForm, dept: e.target.value })}
-                    className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3.5 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                  />
-                </div>
-                <div>
-                  <label className="font-medium text-[#1d1d1f]">招聘编制 (HC)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={posForm.hc}
-                    onChange={(e) => setPosForm({ ...posForm, hc: Number(e.target.value) })}
-                    className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3.5 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-medium text-[#1d1d1f]">负责 HR</label>
-                  <input
-                    value={posForm.recruiter}
-                    onChange={(e) => setPosForm({ ...posForm, recruiter: e.target.value })}
-                    className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3.5 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                  />
-                </div>
-                <div>
-                  <label className="font-medium text-[#1d1d1f]">用人主管 / 面试官</label>
-                  <input
-                    value={posForm.hiringManager}
-                    onChange={(e) => setPosForm({ ...posForm, hiringManager: e.target.value })}
-                    className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3.5 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-black/[0.06]">
-                <Btn variant="ghost" onClick={() => setEditingPos(null)}>取消</Btn>
-                <Btn variant="solid">保存编制</Btn>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* 弹窗 2：拟定 / 修订 JD 抽屉 (Bifold Spec Sheet) */}
-      {editingJd && (
-        <div className="ws-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <Card className="login-fade max-h-[92vh] w-full max-w-4xl overflow-hidden p-0 shadow-2xl rounded-3xl flex flex-col">
-            <div className="flex items-center justify-between border-b border-black/[0.06] bg-[#f5f5f7]/70 px-8 py-4">
-              <div>
-                <h3 className="text-lg font-semibold tracking-tight text-[#1d1d1f]">
-                  {editingJd === 'new' ? '拟定用人能力标尺 (JD)' : '修订用人能力标尺 (JD)'}
-                </h3>
-                <span className="text-xs text-[#86868b]">左侧定义标准，右侧实时排印生成白皮书规格样张</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[#86868b]">套用模板:</span>
-                {JD_TEMPLATES.map((tmpl, idx) => (
-                  <button
-                    key={tmpl.title}
-                    type="button"
-                    onClick={() => loadTemplate(idx)}
-                    className="cursor-pointer rounded-full bg-white px-3 py-1 text-xs font-medium text-[#1d1d1f] shadow-2xs border border-black/[0.05] hover:border-black/30"
-                  >
-                    {tmpl.title.slice(0, 4)}…
-                  </button>
+                {jds.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.code} · {j.title}（{j.exp} / {j.salary}）
+                  </option>
                 ))}
-                <button
-                  onClick={() => setEditingJd(null)}
-                  className="ml-3 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-black/5 text-[#86868b] hover:text-[#1d1d1f]"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            <div className="grid flex-1 overflow-y-auto md:grid-cols-2">
-              <form onSubmit={saveJd} id="jd-form" className="space-y-4 border-r border-black/[0.06] p-7 text-xs">
-                <div>
-                  <label className="font-medium text-[#1d1d1f]">标尺职位名称 *</label>
-                  <input
-                    required
-                    value={jdForm.title}
-                    onChange={(e) => setJdForm({ ...jdForm, title: e.target.value })}
-                    placeholder="例如：高级前端开发工程师"
-                    className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3.5 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-medium text-[#1d1d1f]">归属部门</label>
-                    <input
-                      value={jdForm.dept}
-                      onChange={(e) => setJdForm({ ...jdForm, dept: e.target.value })}
-                      className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3.5 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-medium text-[#1d1d1f]">薪酬标准</label>
-                    <input
-                      value={jdForm.salary}
-                      onChange={(e) => setJdForm({ ...jdForm, salary: e.target.value })}
-                      className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3.5 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-medium text-[#1d1d1f]">经验门槛</label>
-                    <input
-                      value={jdForm.exp}
-                      onChange={(e) => setJdForm({ ...jdForm, exp: e.target.value })}
-                      className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3.5 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-medium text-[#1d1d1f]">学历要求</label>
-                    <input
-                      value={jdForm.edu}
-                      onChange={(e) => setJdForm({ ...jdForm, edu: e.target.value })}
-                      className="mt-1.5 h-10 w-full rounded-xl bg-[#f5f5f7] px-3.5 text-sm outline-none focus:ring-2 focus:ring-black/20"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="font-medium text-[#1d1d1f]">核心考核技能 (回车键打标)</label>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5 rounded-xl bg-[#f5f5f7] p-2.5">
-                    {jdForm.skills.map((s, idx) => (
-                      <span key={s} className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs text-[#1d1d1f] shadow-2xs">
-                        {s}
-                        <button
-                          type="button"
-                          onClick={() => setJdForm({ ...jdForm, skills: jdForm.skills.filter((_, i) => i !== idx) })}
-                          className="cursor-pointer text-[#86868b] hover:text-red-500"
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    ))}
-                    <input
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
-                      placeholder="输入技能后回车…"
-                      className="min-w-[120px] flex-1 bg-transparent text-xs outline-none px-1"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="font-medium text-[#1d1d1f]">核心职责 (每行一条)</label>
-                  <textarea
-                    rows={3}
-                    value={jdForm.responsibilities}
-                    onChange={(e) => setJdForm({ ...jdForm, responsibilities: e.target.value })}
-                    className="mt-1.5 w-full rounded-xl bg-[#f5f5f7] p-3 text-xs outline-none focus:ring-2 focus:ring-black/20 leading-relaxed"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-medium text-[#1d1d1f]">任职资格与考核重点 (每行一条)</label>
-                  <textarea
-                    rows={3}
-                    value={jdForm.requirements}
-                    onChange={(e) => setJdForm({ ...jdForm, requirements: e.target.value })}
-                    className="mt-1.5 w-full rounded-xl bg-[#f5f5f7] p-3 text-xs outline-none focus:ring-2 focus:ring-black/20 leading-relaxed"
-                  />
-                </div>
-              </form>
-
-              {/* 右侧规格样张 */}
-              <div className="bg-[#f5f5f7]/60 p-7 flex flex-col justify-between">
-                <div className="rounded-2xl bg-white p-6 shadow-sm border border-black/[0.04]">
-                  <div className="border-b border-black/[0.06] pb-3">
-                    <span className="font-mono text-[10px] text-[#1d1d1f] uppercase tracking-wider font-semibold">
-                      FACETRY SPEC SHEET · PRO V1.0
-                    </span>
-                    <h4 className="mt-1 text-xl font-semibold tracking-tight text-[#1d1d1f]">
-                      {jdForm.title || '（职位标题待输入）'}
-                    </h4>
-                    <div className="mt-1.5 text-xs text-[#86868b]">
-                      {jdForm.dept} · {jdForm.exp} · {jdForm.edu} · <strong className="text-[#1d1d1f] font-semibold">{jdForm.salary}</strong>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <span className="text-[11px] font-semibold text-[#86868b] uppercase">考核要项技能</span>
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {jdForm.skills.map((s) => (
-                        <span key={s} className="rounded-full bg-[#f5f5f7] px-2.5 py-0.5 text-[11px] text-[#1d1d1f] font-medium">
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <span className="text-[11px] font-semibold text-[#86868b] uppercase">岗位职责要求</span>
-                    <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs text-[#1d1d1f]/80 leading-relaxed">
-                      {jdForm.responsibilities.split('\n').filter(Boolean).map((r, i) => (
-                        <li key={i}>{r}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="mt-4">
-                    <span className="text-[11px] font-semibold text-[#86868b] uppercase">考核指标</span>
-                    <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs text-[#1d1d1f]/80 leading-relaxed">
-                      {jdForm.requirements.split('\n').filter(Boolean).map((r, i) => (
-                        <li key={i}>{r}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-
-                <div className="mt-4 text-xs text-[#86868b]">
-                  发布后将立即对所有装配该 JD 的在招岗位生效
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t border-black/[0.06] bg-white px-8 py-4">
-              <Btn variant="ghost" onClick={() => setEditingJd(null)}>取消</Btn>
-              <Btn variant="solid" onClick={() => (document.getElementById('jd-form') as HTMLFormElement)?.requestSubmit()}>
-                发布用人标尺
+              </select>
+              <Btn variant="ghost" className="shrink-0" onClick={() => openNewJd('pos-form')}>
+                + 拟定新 JD
               </Btn>
             </div>
-          </Card>
+          </Field>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="所属部门" htmlFor="pos-dept">
+              <input
+                id="pos-dept"
+                value={posForm.dept}
+                onChange={(e) => setPosForm({ ...posForm, dept: e.target.value })}
+                className="input w-full"
+              />
+            </Field>
+            <Field label="招聘编制 (HC)" htmlFor="pos-hc">
+              <input
+                id="pos-hc"
+                type="number"
+                min="1"
+                value={posForm.hc}
+                onChange={(e) => setPosForm({ ...posForm, hc: Number(e.target.value) })}
+                className="input w-full"
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="负责 HR" htmlFor="pos-recruiter">
+              <input
+                id="pos-recruiter"
+                value={posForm.recruiter}
+                onChange={(e) => setPosForm({ ...posForm, recruiter: e.target.value })}
+                className="input w-full"
+              />
+            </Field>
+            <Field label="用人主管 / 面试官" htmlFor="pos-manager">
+              <input
+                id="pos-manager"
+                value={posForm.hiringManager}
+                onChange={(e) => setPosForm({ ...posForm, hiringManager: e.target.value })}
+                className="input w-full"
+              />
+            </Field>
+          </div>
+
+          <Field label="岗位状态" htmlFor="pos-status" hint={POS_STATUS[posForm.status].hint}>
+            <select
+              id="pos-status"
+              value={posForm.status}
+              onChange={(e) => setPosForm({ ...posForm, status: e.target.value as Position['status'] })}
+              className="select w-full"
+            >
+              {POS_STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field
+            label="来源库岗位标识 (sourcePositionId)"
+            htmlFor="pos-source"
+            hint="只读：由来源库 / BPM 同步写入的岗位唯一识别码（形如 SRC-POS-…），工作台内不可修改。"
+          >
+            <input
+              id="pos-source"
+              readOnly
+              aria-readonly="true"
+              value={
+                editingPos && editingPos !== 'new'
+                  ? editingPos.sourcePositionId ?? '未关联来源库岗位'
+                  : '本地新建岗位：保存后等待来源库 / BPM 同步写入'
+              }
+              className="input w-full bg-base-200 font-mono text-xs"
+            />
+          </Field>
+        </form>
+      </Modal>
+
+      {/* 弹窗 2：拟定 / 修订 JD */}
+      <Modal
+        open={!!editingJd}
+        onClose={closeJdModal}
+        title={editingJd === 'new' ? '拟定用人能力标尺 (JD)' : '修订用人能力标尺 (JD)'}
+        sub="左侧定义标准，右侧实时排印生成白皮书规格样张"
+        className="md:max-w-4xl"
+        footer={
+          <>
+            <Btn variant="ghost" onClick={closeJdModal}>
+              取消
+            </Btn>
+            <SubmitBtn form="jd-form" disabled={!jdForm.title.trim()}>
+              {editingJd === 'new' ? '发布用人标尺' : '保存修订'}
+            </SubmitBtn>
+          </>
+        }
+      >
+        <div className="-mx-5 -my-4">
+          <div className="flex flex-wrap items-center gap-2 border-b border-base-300 bg-base-200/60 px-5 py-3">
+            <span className="text-xs text-base-content/60">套用模板：</span>
+            {JD_TEMPLATES.map((tmpl, idx) => (
+              <button
+                key={tmpl.title}
+                type="button"
+                onClick={() => loadTemplate(idx)}
+                className="btn btn-xs rounded-full"
+              >
+                {tmpl.title.slice(0, 6)}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid md:grid-cols-2">
+            <form id="jd-form" onSubmit={saveJd} className="space-y-4 border-base-300 p-6 md:border-r">
+              <Field label="标尺职位名称" htmlFor="jd-title" required hint="用于岗位装配与能力对标展示">
+                <input
+                  id="jd-title"
+                  required
+                  value={jdForm.title}
+                  onChange={(e) => setJdForm({ ...jdForm, title: e.target.value })}
+                  placeholder="例如：高级前端开发工程师"
+                  className="input w-full"
+                />
+              </Field>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="归属部门" htmlFor="jd-dept">
+                  <input
+                    id="jd-dept"
+                    value={jdForm.dept}
+                    onChange={(e) => setJdForm({ ...jdForm, dept: e.target.value })}
+                    className="input w-full"
+                  />
+                </Field>
+                <Field label="薪酬标准" htmlFor="jd-salary">
+                  <input
+                    id="jd-salary"
+                    value={jdForm.salary}
+                    onChange={(e) => setJdForm({ ...jdForm, salary: e.target.value })}
+                    className="input w-full"
+                  />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="经验门槛" htmlFor="jd-exp">
+                  <input
+                    id="jd-exp"
+                    value={jdForm.exp}
+                    onChange={(e) => setJdForm({ ...jdForm, exp: e.target.value })}
+                    className="input w-full"
+                  />
+                </Field>
+                <Field label="学历要求" htmlFor="jd-edu">
+                  <input
+                    id="jd-edu"
+                    value={jdForm.edu}
+                    onChange={(e) => setJdForm({ ...jdForm, edu: e.target.value })}
+                    className="input w-full"
+                  />
+                </Field>
+              </div>
+
+              <Field label="岗位定位" htmlFor="jd-summary">
+                <textarea
+                  id="jd-summary"
+                  rows={2}
+                  value={jdForm.summary}
+                  onChange={(e) => setJdForm({ ...jdForm, summary: e.target.value })}
+                  className="textarea w-full leading-relaxed"
+                />
+              </Field>
+
+              <Field label="核心考核技能" htmlFor="jd-tag" hint="输入技能后回车打标">
+                <div className="flex flex-wrap gap-1.5 rounded-xl bg-base-200 p-2.5">
+                  {jdForm.skills.map((s, idx) => (
+                    <span key={s} className="badge badge-sm badge-soft gap-1.5 border-none bg-base-100 font-medium">
+                      {s}
+                      <button
+                        type="button"
+                        aria-label={`移除技能 ${s}`}
+                        onClick={() => setJdForm({ ...jdForm, skills: jdForm.skills.filter((_, i) => i !== idx) })}
+                        className="cursor-pointer text-base-content/50 hover:text-error"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    id="jd-tag"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        addTag()
+                      }
+                    }}
+                    placeholder="输入技能后回车…"
+                    className="min-w-[120px] flex-1 bg-transparent px-1 text-xs outline-none"
+                  />
+                </div>
+              </Field>
+
+              <Field label="核心职责" htmlFor="jd-resp" hint="每行一条">
+                <textarea
+                  id="jd-resp"
+                  rows={3}
+                  value={jdForm.responsibilities}
+                  onChange={(e) => setJdForm({ ...jdForm, responsibilities: e.target.value })}
+                  className="textarea w-full leading-relaxed"
+                />
+              </Field>
+
+              <Field label="任职资格与考核重点" htmlFor="jd-req" hint="每行一条">
+                <textarea
+                  id="jd-req"
+                  rows={3}
+                  value={jdForm.requirements}
+                  onChange={(e) => setJdForm({ ...jdForm, requirements: e.target.value })}
+                  className="textarea w-full leading-relaxed"
+                />
+              </Field>
+            </form>
+
+            {/* 右侧规格样张 */}
+            <div className="flex flex-col justify-between gap-4 bg-base-200/60 p-6">
+              <div className="rounded-2xl bg-base-100 p-6 shadow-[var(--shadow-paper)]">
+                <div className="border-b border-base-300 pb-3">
+                  <span className="font-mono text-xs font-semibold tracking-wide text-base-content">
+                    FACETRY SPEC SHEET · PRO V1.0
+                  </span>
+                  <h4 className="mt-1 text-xl font-semibold tracking-tight text-base-content">
+                    {jdForm.title || '（职位标题待输入）'}
+                  </h4>
+                  <div className="mt-1.5 text-xs text-base-content/60">
+                    {jdForm.dept} · {jdForm.exp} · {jdForm.edu} ·{' '}
+                    <strong className="font-semibold text-base-content">{jdForm.salary}</strong>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <Label>岗位定位</Label>
+                  <p className="mt-1 text-xs leading-relaxed text-base-content/80">{jdForm.summary || '（待输入）'}</p>
+                </div>
+
+                <div className="mt-4">
+                  <Label>考核要项技能</Label>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {jdForm.skills.map((s) => (
+                      <span key={s} className="badge badge-sm badge-soft border-none font-medium">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <Label>岗位职责要求</Label>
+                  <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-relaxed text-base-content/80">
+                    {jdForm.responsibilities
+                      .split('\n')
+                      .filter(Boolean)
+                      .map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                  </ul>
+                </div>
+
+                <div className="mt-4">
+                  <Label>考核指标</Label>
+                  <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-relaxed text-base-content/80">
+                    {jdForm.requirements
+                      .split('\n')
+                      .filter(Boolean)
+                      .map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                  </ul>
+                </div>
+              </div>
+
+              <p className="text-xs text-base-content/60">
+                {jdLinkTarget === 'pos-form'
+                  ? '保存后自动装配到正在创建的岗位，不影响其他岗位的标尺。'
+                  : '修订已发布标尺会立即对所有装配该标尺的岗位生效。'}
+              </p>
+            </div>
+          </div>
         </div>
-      )}
+      </Modal>
+
+      {/* 弹窗 3：下架 / 恢复二次确认 */}
+      <Modal
+        open={!!confirmStatus}
+        onClose={() => setConfirmStatus(null)}
+        title={confirmStatus?.next === '已暂停' ? '确认下架该岗位？' : '确认恢复该岗位？'}
+        sub={confirmStatus?.pos.name}
+        footer={
+          <>
+            <Btn variant="ghost" onClick={() => setConfirmStatus(null)}>
+              取消
+            </Btn>
+            <Btn
+              variant={confirmStatus?.next === '已暂停' ? 'danger' : 'solid'}
+              onClick={applyStatusChange}
+              ariaLabel={confirmStatus?.next === '已暂停' ? '确认下架该岗位' : '确认恢复该岗位'}
+            >
+              {confirmStatus?.next === '已暂停' ? '确认下架' : '确认恢复'}
+            </Btn>
+          </>
+        }
+      >
+        <p className="text-xs leading-relaxed text-base-content/80">
+          {confirmStatus?.next === '已暂停' ? (
+            <>
+              下架后岗位状态变为「已暂停」：不再计入在招岗位与 HC 口径，但仍保留在列表中可查看。
+              <br />
+              该岗位已关联的候选人、面试场次与录取申请记录<b>全部保留</b>，可随时「恢复」为招募中；不会删除任何数据。
+            </>
+          ) : (
+            <>
+              恢复后岗位状态变为「招募中」，重新计入在招口径（HC 统计、候选人入口、约面统计）。
+              <br />
+              既有候选人关联与历史记录不变。
+            </>
+          )}
+        </p>
+      </Modal>
+
+      {/* 弹窗 4：岗位候选人入口（带上岗位语义） */}
+      <Modal
+        open={!!candidatePanel}
+        onClose={() => setCandidatePanel(null)}
+        title={`岗位候选人 · ${candidatePanel?.name ?? ''}`}
+        sub={`来源库岗位标识 ${candidatePanel?.sourcePositionId ?? '未关联'} · 共 ${panelCandidates.length} 人`}
+        className="md:max-w-2xl"
+        footer={
+          <>
+            <Btn variant="ghost" onClick={() => setCandidatePanel(null)}>
+              关闭
+            </Btn>
+            <Btn
+              variant="solid"
+              ariaLabel="进入候选人大池按该岗位筛选"
+              onClick={() => {
+                setCandidatePanel(null)
+                go('candidates')
+              }}
+            >
+              进入候选人大池
+            </Btn>
+          </>
+        }
+      >
+        {panelCandidates.length ? (
+          <>
+            <p className="mb-3 text-xs text-base-content/60">
+              下列为「{candidatePanel?.name}」口径下的候选人。候选人大池暂未接收岗位参数，进入后请在「岗位」筛选中选择本岗位。
+            </p>
+            <ul className="list">
+              {panelCandidates.map((c) => (
+                <li key={c.id} className="list-row items-center gap-3 px-0">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-base-content">{c.name}</span>
+                      <Chip tone={STAGE_TONE[c.status] ?? 'ghost'}>{c.status}</Chip>
+                      <span className="text-xs text-base-content/50">渠道 {c.source}</span>
+                    </div>
+                    <p className="mt-1 truncate text-xs text-base-content/60">
+                      {c.nextAction ? `下一步：${c.nextAction.text} · ${c.nextAction.owner}` : c.aiScreening?.looseMatch || c.summary}
+                    </p>
+                  </div>
+                  <Btn variant="ghost" ariaLabel={`查看候选人 ${c.name} 的详情`} onClick={() => go('detail', c.id)}>
+                    详情
+                  </Btn>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <Empty
+            title="该岗位暂无候选人"
+            hint="候选人由来源库同步后按岗位关联入库；可在候选人大池按渠道或阶段继续检索。"
+            action={<Btn onClick={() => go('candidates')}>前往候选人大池</Btn>}
+          />
+        )}
+      </Modal>
     </div>
   )
 }

@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import type React from 'react'
-import { findC, pickedOf, rooms, buildReviewFor, commit } from '../store'
+import { buildReviewFor, can, commit, confirmReview, currentUser, findC, pickedOf, rooms } from '../store'
 import type { Go } from '../App'
-import { Btn, Card, SectionHead } from './ui'
+import { Btn, Card, Chip, Empty, Modal, SectionHead } from './ui'
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 const verdictCls: Record<string, string> = { 推荐: 'bg-emerald-50 text-emerald-700', 待定: 'bg-slate-100 text-slate-600', 不推荐: 'bg-amber-50 text-amber-700' }
@@ -11,10 +12,19 @@ const verdictCls: Record<string, string> = { 推荐: 'bg-emerald-50 text-emerald
 export default function Result({ cid, go }: { cid: string; go: Go }) {
   const c = findC(cid)
   const room = rooms[cid]
+  // hooks 必须在条件返回之前（findC / rooms 都可能取不到）
+  const [askConfirm, setAskConfirm] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [regening, setRegening] = useState(false)
+  const [msg, setMsg] = useState('')
+  // 找不到候选人、或本场没有任何面试间记录时给可读空态，不静默展示其他数据
   if (!c || !room) return (
-    <Card className="ws-rise px-6 py-16 text-center">
-      <p className="text-slate-600">这场面试还没有记录</p>
-      <Btn className="mt-4" variant="ghost" onClick={() => go('back')}>返回{go.from}</Btn>
+    <Card className="ws-rise">
+      <Empty
+        title="这场面试还没有记录"
+        hint={`没有找到候选人 ${cid} 的面试间记录：可能尚未进入面试间，或该候选人已被来源库标记失效。`}
+        action={<Btn className="mt-2" variant="ghost" onClick={() => go('back')}>返回{go.from}</Btn>}
+      />
     </Card>
   )
   const picked = pickedOf(cid)
@@ -31,11 +41,29 @@ export default function Result({ cid, go }: { cid: string; go: Go }) {
   const by = (w: string) => talk.filter((t) => t.who === w).length
   const cand = by('候选人'), me = by('面试官')
   const rv = room.review
+  const canConfirm = can('evaluation:submit')
 
-  // 报告只基于已保存的评分与记录重建，不改动任何面试结果
+  // 报告只基于已保存的评分与记录重建，不改动任何面试结果；重新生成会回到「AI 草稿 · 待人工确认」
   const regen = () => {
-    const r = buildReviewFor(cid)
-    if (r) { room.review = r; commit() }
+    if (regening) return
+    setRegening(true)
+    setMsg('')
+    setTimeout(() => {
+      const r = buildReviewFor(cid)
+      if (r) { room.review = r; commit(); setMsg('已重新生成 AI 草稿，需再次人工确认后才作为面评结论。') }
+      else setMsg('生成失败：本场没有可用的评分与记录，请先在面试间完成评分。')
+      setRegening(false)
+    }, 400)
+  }
+  // 人工确认 AI 面评草稿（FR-B3）：确认后才作为正式面评结论，并记录确认人与确认时间
+  const doConfirm = () => {
+    if (confirming) return
+    setConfirming(true)
+    setMsg('')
+    const r = confirmReview(cid, currentUser.name)
+    setConfirming(false)
+    setAskConfirm(false)
+    if (!r) setMsg('确认失败：本场评价记录已失效，请先重新生成综合评价后再确认。')
   }
 
   return (

@@ -1,18 +1,38 @@
 import { useState } from 'react'
 import { candidates } from '../data'
-import { approvals, createApproval, updateApprovalNode } from '../store'
+import { approvals, createApproval, retryApprovalTrack, updateApprovalNode } from '../store'
 import type { Go } from '../App'
 import { Btn, Card } from './ui'
+
+// 聚合结论中文标签：单边通过（partial）绝不写成已录用，退回 / 拒绝 / 撤销如实展示（PRD FR-C4）
+const finalCls: Record<string, string> = {
+  approved: 'bg-emerald-50 text-emerald-800 border border-emerald-200/50',
+  partial: 'bg-amber-50 text-amber-800 border border-amber-200/50',
+  returned: 'bg-rose-50 text-rose-800 border border-rose-200/50',
+  rejected: 'bg-rose-50 text-rose-800 border border-rose-200/50',
+  canceled: 'bg-black/[0.04] text-[#86868b] border border-black/10',
+  processing: 'bg-black/[0.04] text-[#1d1d1f] border border-black/10 ring-1 ring-inset ring-black/5',
+}
+const finalLabel: Record<string, string> = {
+  approved: '✓ 双审批全部通过 (已完成)',
+  partial: '⚠ 单边通过：另一侧仍在处理中',
+  returned: '↩ 被退回，需补充材料后重走',
+  rejected: '✕ 审批被拒绝',
+  canceled: '⊘ 审批已撤销',
+  processing: '⏳ 双流程并行流转中',
+}
+// 单轨状态：发起 / 处理中 / 通过 / 退回 / 拒绝 / 撤销
+const trackLabel: Record<string, string> = { pending: '流转审批中', approved: '✓ 节点已通过', returned: '↩ 已退回', rejected: '✕ 已拒绝', canceled: '⊘ 已撤销' }
 
 export default function Approvals({ go }: { go: Go }) {
   const [showModal, setShowModal] = useState(false)
   const [selectedCid, setSelectedCid] = useState(candidates.find((c) => c.status === '待录取')?.id || candidates[0].id)
   const [salary, setSalary] = useState('32k · 14薪 + 绩效')
   const [level, setLevel] = useState('P7 资深研发工程师')
-  const [onboardDate, setOnboardDate] = useState('2026-11-01')
+  const [onboardDate, setOnboardDate] = useState('2026-10-27')
   const [toast, setToast] = useState('')
 
-  const eligibleCandidates = candidates.filter((c) => ['待评价', '待录取', '跟进中'].includes(c.status) && !c.approvalId)
+  const eligibleCandidates = candidates.filter((c) => ['面评中', '待录取', '待联系'].includes(c.status) && !c.approvalId)
 
   const handleSubmitApproval = () => {
     const c = candidates.find((x) => x.id === selectedCid)
@@ -22,10 +42,11 @@ export default function Approvals({ go }: { go: Go }) {
       salary,
       level,
       onboardDate,
+      // 材料清单逐项核对：缺失 / 待补传项照实标注，不阻断提交但可见（FR-C1）
       materials: [
-        `技术与综合面评报告 (${c.match}% 契合)`,
-        `${c.edu.split('·')[0].trim()} 学历验证证书`,
-        '背景调查授权书与近半年薪资证明',
+        { key: 'interview-review', name: `技术与综合面评报告 (${c.match}% 契合)`, required: true, status: 'done', fileRef: `minio://facetry/materials/${c.id}/final-review.pdf` },
+        { key: 'diploma', name: `${c.edu.split('·')[0].trim()} 学历验证证书`, required: true, status: 'pending' },
+        { key: 'background', name: '背景调查授权书与近半年薪资证明', required: true, status: 'missing' },
       ],
     })
     setShowModal(false)
@@ -41,7 +62,7 @@ export default function Approvals({ go }: { go: Go }) {
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl font-bold tracking-tight text-[#1d1d1f]">录取流程与双审批中心</h1>
             <span className="inline-flex items-center rounded-full bg-black/[0.04] px-2.5 py-0.5 text-xs font-semibold text-[#1d1d1f] ring-1 ring-inset ring-black/10">
-              流转中 {approvals.filter((a) => a.finalStatus === 'processing').length} 单
+              流转中 {approvals.filter((a) => a.finalStatus === 'processing' || a.finalStatus === 'partial').length} 单
             </span>
           </div>
           <p className="mt-1.5 text-xs text-[#6e6e73]">
@@ -73,9 +94,9 @@ export default function Approvals({ go }: { go: Go }) {
             <span className="h-2 w-2 rounded-full bg-rose-400 animate-pulse" />
           </div>
           <div className="mt-2 text-3xl font-bold tracking-tight text-white tabular-nums">
-            {approvals.filter((a) => a.finalStatus === 'processing').length} <span className="text-sm font-normal text-white/50">份</span>
+            {approvals.filter((a) => a.finalStatus === 'processing' || a.finalStatus === 'partial').length} <span className="text-sm font-normal text-white/50">份</span>
           </div>
-          <div className="mt-2 text-[11px] text-white/60">任一必需审批未完成不标为录用</div>
+          <div className="mt-2 text-[11px] text-white/60">单边通过（partial）计入流转中，不标为录用</div>
         </div>
 
         {/* 双审批完成 - 极光翡翠卡 */}
@@ -118,20 +139,8 @@ export default function Approvals({ go }: { go: Go }) {
               </div>
 
               <div className="flex items-center gap-2">
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    app.finalStatus === 'approved'
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/50'
-                      : app.finalStatus === 'rejected'
-                      ? 'bg-amber-50 text-amber-800 border border-amber-200/50'
-                      : 'bg-black/[0.04] text-[#1d1d1f] border border-black/10 ring-1 ring-inset ring-black/5'
-                  }`}
-                >
-                  {app.finalStatus === 'approved'
-                    ? '✓ 双审批全部通过 (已正式录用)'
-                    : app.finalStatus === 'rejected'
-                    ? '✕ 审批被驳回 / 撤销'
-                    : '⏳ 双流程并行流转中'}
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${finalCls[app.finalStatus] ?? finalCls.processing}`}>
+                  {finalLabel[app.finalStatus] ?? '⏳ 双流程并行流转中'}
                 </span>
                 <Btn
                   variant="ghost"
@@ -174,17 +183,28 @@ export default function Approvals({ go }: { go: Go }) {
                   </span>
                   <span
                     className={`font-semibold ${
-                      app.feishu.status === 'approved' ? 'text-emerald-700' : 'text-[#1d1d1f]'
+                      app.feishu.status === 'approved' ? 'text-emerald-700' : app.feishu.status === 'pending' ? 'text-[#1d1d1f]' : 'text-rose-700'
                     }`}
                   >
-                    {app.feishu.status === 'approved' ? '✓ 节点已通过' : '流转审批中'}
+                    {trackLabel[app.feishu.status] ?? app.feishu.status}
                   </span>
                 </div>
-                <div className="text-[11px] text-[#86868b]">实例编码: {app.feishu.instanceId}</div>
+                <div className="text-[11px] text-[#86868b]">实例编码: {app.feishu.instanceId} · 幂等键: {app.idempotencyKey}</div>
                 <div className="text-[#1d1d1f]">当前节点: {app.feishu.currentNode}</div>
                 <div className="text-[11px] text-[#86868b]">审批人: {app.feishu.approver} · 更新: {app.feishu.updateTime}</div>
+                {app.feishu.retryCount > 0 && (
+                  <div className="text-[11px] text-amber-700">同步重试 {app.feishu.retryCount} 次（沿用原实例，未重复发起）</div>
+                )}
+                {app.feishu.lastError && (
+                  <div className="rounded-lg bg-red-50/70 border border-red-200/60 px-2.5 py-1.5 text-[11px] text-red-700">
+                    最近异常：{app.feishu.lastError}
+                    <button onClick={() => retryApprovalTrack(app.id, 'feishu')} className="ml-2 cursor-pointer font-semibold underline">
+                      重试
+                    </button>
+                  </div>
+                )}
 
-                {app.feishu.status !== 'approved' && (
+                {app.feishu.status === 'pending' && (
                   <div className="pt-2 border-t border-black/[0.04] flex justify-end gap-2">
                     <button
                       onClick={() => updateApprovalNode(app.id, 'feishu', 'approved')}
@@ -205,17 +225,28 @@ export default function Approvals({ go }: { go: Go }) {
                   </span>
                   <span
                     className={`font-semibold ${
-                      app.bpm.status === 'approved' ? 'text-emerald-700' : 'text-[#1d1d1f]'
+                      app.bpm.status === 'approved' ? 'text-emerald-700' : app.bpm.status === 'pending' ? 'text-[#1d1d1f]' : 'text-rose-700'
                     }`}
                   >
-                    {app.bpm.status === 'approved' ? '✓ OA 已归档通过' : '内部流转中'}
+                    {app.bpm.status === 'approved' ? '✓ OA 已归档通过' : trackLabel[app.bpm.status] ?? app.bpm.status}
                   </span>
                 </div>
                 <div className="text-[11px] text-[#86868b]">流程单号: {app.bpm.processId}</div>
                 <div className="text-[#1d1d1f]">当前处理: {app.bpm.currentNode}</div>
                 <div className="text-[11px] text-[#86868b]">经办: {app.bpm.approver} · 更新: {app.bpm.updateTime}</div>
+                {app.bpm.retryCount > 0 && (
+                  <div className="text-[11px] text-amber-700">同步重试 {app.bpm.retryCount} 次（沿用原流程号，未重复发起）</div>
+                )}
+                {app.bpm.lastError && (
+                  <div className="rounded-lg bg-red-50/70 border border-red-200/60 px-2.5 py-1.5 text-[11px] text-red-700">
+                    最近异常：{app.bpm.lastError}
+                    <button onClick={() => retryApprovalTrack(app.id, 'bpm')} className="ml-2 cursor-pointer font-semibold underline">
+                      重试
+                    </button>
+                  </div>
+                )}
 
-                {app.bpm.status !== 'approved' && (
+                {app.bpm.status === 'pending' && (
                   <div className="pt-2 border-t border-black/[0.04] flex justify-end gap-2">
                     <button
                       onClick={() => updateApprovalNode(app.id, 'bpm', 'approved')}
@@ -228,10 +259,26 @@ export default function Approvals({ go }: { go: Go }) {
               </div>
             </div>
 
-            {/* 证明材料列表 */}
-            <div className="text-[11px] text-[#86868b]">
-              <span>附带证明与材料：</span>
-              <span className="text-[#515154]">{app.materials.join('； ')}</span>
+            {/* 证明材料核对清单：逐项状态可见，缺失 / 待补传不隐藏（FR-C1 / FR-C2） */}
+            <div className="text-[11px] text-[#86868b] space-y-1.5">
+              <div>申请材料核对清单：</div>
+              <div className="flex flex-wrap gap-1.5">
+                {app.materials.map((m) => (
+                  <span
+                    key={m.key}
+                    className={`rounded-full px-2 py-0.5 font-medium ${
+                      m.status === 'done'
+                        ? 'bg-emerald-50 text-emerald-800'
+                        : m.status === 'pending'
+                        ? 'bg-amber-50 text-amber-800'
+                        : 'bg-red-50 text-red-700'
+                    }`}
+                  >
+                    {m.status === 'done' ? '✓' : m.status === 'pending' ? '⏳ 待补传' : '✕ 缺失'} {m.name}
+                    {m.required ? '' : '（选填）'}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         ))}
