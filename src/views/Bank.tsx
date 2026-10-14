@@ -58,7 +58,7 @@ export default function Bank() {
   const [entering, setEntering] = useState(false)
   // 分类兜底：bankCats 为空（例如数据被重置）时退回题库里实际存在的分类，不依赖 bankCats[0]
   const cats = bankCats.length ? bankCats : Array.from(new Set(bank.map((b) => b.cat)))
-  const firstCat = cats[0] ?? bank[0].cat
+  const firstCat = cats[0] ?? bank[0]?.cat ?? '未分类'
   const [draft, setDraft] = useState<Draft>({ cat: firstCat, tag: '基础', diff: '中等', q: '', points: '', answer: '', follow: '', flag: '' })
   const [stash, setStash] = useState<Draft | null>(loadStash) // 暂存：只保留最近一道题
 

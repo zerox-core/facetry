@@ -60,6 +60,7 @@ function ActRow({ onActivate, ariaLabel, className = '', children }: { onActivat
         onActivate()
       }}
       onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
+        if (e.target !== e.currentTarget) return // 键盘事件从内部控件冒泡时不触发整行跳转
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onActivate()
@@ -152,6 +153,7 @@ export default function Workbench({ go }: { go: Go }) {
       aria-label={`${title}，${count} ${unit}`}
       onClick={() => setActiveTab(key)}
       onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           setActiveTab(key)
@@ -352,7 +354,7 @@ export default function Workbench({ go }: { go: Go }) {
           {/* 2. 待联系：点击带候选人上下文进入约面管理 */}
           {pendingSchedule.length > 0 && (activeTab === 'all' || activeTab === 'schedule') && (
             <div className="space-y-3">
-              <GroupHead title="待联系 / 待约面" count={pendingSchedule.length} tone="warning" hint="初筛通过，待确认双方时间并发起预约" />
+              <GroupHead title="待联系" count={pendingSchedule.length} tone="warning" hint="初筛通过，待确认双方时间并发起预约" />
               {pendingSchedule.map((c) => (
                 <ActRow key={c.id} ariaLabel={`待联系：${c.name}，点击进入约面管理`} onActivate={() => go('schedule', c.id)}>
                   <div className="card-body flex-row items-center justify-between gap-4 p-4">
@@ -378,7 +380,7 @@ export default function Workbench({ go }: { go: Go }) {
                       <Btn variant="ghost" className="!h-8 !px-3" onClick={() => go('detail', c.id)}>
                         候选人详情
                       </Btn>
-                      <Btn variant="solid" className="!h-8 !px-3.5" onClick={() => go('schedule', c.id)}>
+                      <Btn variant="outline" className="!h-8 !px-3.5" onClick={() => go('schedule', c.id)}>
                         去排期
                       </Btn>
                     </div>

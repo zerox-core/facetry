@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { candidates } from '../data'
-import { liveChannel, type LiveMsg, type Talk } from '../store'
+import { findC, liveChannel, type LiveMsg, type Talk } from '../store'
 import { canTranscribe, clock, readFile, uid, useVoice } from '../voice'
 import { Composer, Speaker, TalkList, VoiceBars } from './live'
+import { Btn, Modal } from './ui'
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 
 /** 候选人面试间：通过面试官分享的链接（?join=候选人 id）进入，只能看到题干与会话，看不到任何分析与评分 */
 export default function Join({ cid }: { cid: string }) {
-  const c = candidates.find((x) => x.id === cid)
+  const c = findC(cid)
   const [phase, setPhase] = useState<'lobby' | 'in' | 'left'>('lobby')
   const [media, setMedia] = useState<MediaStream | null>(null)
   const [cam, setCam] = useState(false)
   const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [leaveAsk, setLeaveAsk] = useState(false)
   const [st, setSt] = useState<Extract<LiveMsg, { type: 'state' }> | null>(null)
   const [talk, setTalk] = useState<Talk[]>([])
   const [peer, setPeer] = useState(false)
@@ -43,8 +45,10 @@ export default function Join({ cid }: { cid: string }) {
   useEffect(() => { if (video.current && media) video.current.srcObject = media }, [media, cam, phase])
   useEffect(() => { if (phase === 'in' && media?.getAudioTracks().length) voice.start() }, [phase, media])
 
-  // 先申请摄像头 + 麦克风；摄像头被拒则退回仅麦克风；都被拒仍可文字参与
+  // 先申请摄像头 + 麦克风；摄像头被拒则退回仅麦克风；都被拒仍可文字参与。请求期间禁用按钮防重复
   const enter = async () => {
+    if (busy) return
+    setBusy(true)
     setErr('')
     let s: MediaStream | null = null
     try { s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); setCam(true) } catch {
@@ -52,6 +56,7 @@ export default function Join({ cid }: { cid: string }) {
     }
     setMedia(s)
     setPhase('in')
+    setBusy(false)
   }
   const leave = () => { voice.stop(); media?.getTracks().forEach((t) => t.stop()); setMedia(null); setPhase('left') }
   const toggleCam = () => { const t = media?.getVideoTracks()[0]; if (t) { t.enabled = !t.enabled; setCam(t.enabled) } }
@@ -72,7 +77,7 @@ export default function Join({ cid }: { cid: string }) {
             <li>· 你的发言会实时转写成文字，作为面试记录的补充</li>
             <li>· 可以发送文字、文件或图片（例如作品截图）</li>
           </ul>
-          <button onClick={enter} className="ws-press mt-6 h-11 w-full cursor-pointer rounded-lg bg-amber-400 text-sm font-medium text-[#1d2939] hover:bg-amber-300">开启设备并进入面试间</button>
+          <button onClick={enter} disabled={busy} className="ws-press mt-6 h-11 w-full cursor-pointer rounded-lg bg-amber-400 text-sm font-medium text-[#1d2939] hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60">{busy ? '正在请求设备权限…' : '开启设备并进入面试间'}</button>
         </div>
       }
     />
@@ -115,7 +120,7 @@ export default function Join({ cid }: { cid: string }) {
           <div className="absolute bottom-6 flex items-center gap-2">
             <Ctl on={voice.status === 'on'} onClick={toggleMic} disabled={!media?.getAudioTracks().length}>{voice.status === 'on' ? '麦克风开' : '麦克风关'}</Ctl>
             <Ctl on={cam} onClick={toggleCam} disabled={!media?.getVideoTracks().length}>{cam ? '摄像头开' : '摄像头关'}</Ctl>
-            <button onClick={leave} className="ws-press h-10 cursor-pointer rounded-full bg-red-500/90 px-5 text-sm font-medium hover:bg-red-500">离开</button>
+            <button onClick={() => setLeaveAsk(true)} className="ws-press h-10 cursor-pointer rounded-full bg-red-500/90 px-5 text-sm font-medium hover:bg-red-500">离开</button>
           </div>
         </main>
 
@@ -127,6 +132,26 @@ export default function Join({ cid }: { cid: string }) {
           <div className="shrink-0 p-4 pt-0"><Composer dark onText={(text) => add({ id: uid(), who: '候选人', kind: 'text', text, t: clock() })} onFiles={files} placeholder="发送文字、文件或图片…" /></div>
         </aside>
       </div>
+
+      {/* 离开面试间是收尾动作：二次确认后再关设备，避免误触掉线 */}
+      <Modal
+        open={leaveAsk}
+        onClose={() => setLeaveAsk(false)}
+        title="确认离开面试间？"
+        sub="离开后麦克风与摄像头会立即关闭"
+        footer={
+          <>
+            <Btn variant="ghost" onClick={() => setLeaveAsk(false)}>继续面试</Btn>
+            <Btn variant="danger" onClick={() => { setLeaveAsk(false); leave() }}>确认离开</Btn>
+          </>
+        }
+      >
+        <ul className="space-y-1.5 text-sm leading-6 text-base-content/70">
+          <li>· 麦克风与摄像头立即关闭，本轮语音转写停止</li>
+          <li>· 已发送的文字与文件会保留在面试记录里</li>
+          <li>· 需要继续时可由面试官重新分享链接，或在本页重新进入</li>
+        </ul>
+      </Modal>
     </div>
   )
 }

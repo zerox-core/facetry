@@ -17,20 +17,20 @@ import Result from './views/Result'
 import { elapsedOf, findC, resetDemo, rooms, runningRoomId, useStore } from './store'
 
 const nav = [
-  ['workbench', '工作台'],
-  ['bento', '四色指挥舱(DaisyUI)'],
+  ['bento', '首页指挥舱'],
   ['candidates', '候选人大池'],
   ['jobs', '岗位管理'],
   ['schedule', '约面管理'],
   ['approvals', '录取审批'],
   ['bank', '题库管理'],
   ['admin', '管理后台'],
+  ['workbench', '待办卡片轨'],
   ['overview', '数据看板(P2)'],
 ]
 
 const LABEL: Record<string, string> = {
-  workbench: '工作台',
-  bento: '四色指挥舱',
+  bento: '首页指挥舱',
+  workbench: '待办卡片轨',
   candidates: '候选人大池',
   detail: '候选人详情',
   jobs: '岗位管理',
@@ -127,15 +127,17 @@ export default function App() {
   const isDarkTheme = view === 'bento'
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${isDarkTheme ? 'bg-[#0c0d12] text-white' : 'ws-canvas text-[#1d1d1f]'}`}>
+    <div className={`min-h-screen transition-colors duration-300 ${
+      isDarkTheme ? 'bg-[#0c0d12] text-white h-screen overflow-hidden flex flex-col' : 'ws-canvas text-[#1d1d1f]'
+    }`}>
       {/* 顶栏：自适应深色科技质感 / 满屏铺展 */}
-      <header className={`sticky top-0 z-30 transition-colors duration-300 ${
+      <header className={`sticky top-0 z-30 transition-colors duration-300 shrink-0 ${
         isDarkTheme
           ? 'bg-[#121318]/90 backdrop-blur-xl border-b border-white/10 shadow-lg'
           : 'ws-bar'
       }`}>
-        <div className="mx-auto flex h-14 max-w-[1720px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-6">
+        <div className="mx-auto flex h-13 max-w-[1780px] items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-5">
             <button onClick={() => enter('bento')} className="group flex cursor-pointer items-center gap-2.5">
               <span className="grid h-7 w-7 place-items-center rounded-xl bg-gradient-to-tr from-[#FF5A36] to-[#6366F1] text-xs font-black text-white shadow-md group-hover:scale-105 transition-transform">
                 F
@@ -147,17 +149,17 @@ export default function App() {
             </button>
 
             {/* 顶栏分段导航胶囊 */}
-            <nav className="hidden lg:flex items-center gap-1.5 overflow-x-auto">
+            <nav className="hidden lg:flex items-center gap-1 overflow-x-auto">
               {nav.map(([k, label]) => {
                 const on = tab === k
                 return (
                   <button
                     key={k}
                     onClick={() => enter(k)}
-                    className={`cursor-pointer rounded-full px-3.5 py-1 text-xs font-medium transition-all ${
+                    className={`cursor-pointer rounded-full px-3 py-0.5 text-xs font-medium transition-all ${
                       on
                         ? isDarkTheme
-                          ? 'bg-gradient-to-r from-[#FF5A36] to-[#6366F1] text-white shadow-md font-bold'
+                          ? 'bg-gradient-to-r from-[#FF5A36] to-[#6366F1] text-white shadow font-bold'
                           : 'bg-[#1d1d1f] text-white shadow-2xs'
                         : isDarkTheme
                           ? 'text-white/60 hover:text-white hover:bg-white/10'
@@ -179,7 +181,7 @@ export default function App() {
             >
               重置数据
             </button>
-            <div className={`flex items-center gap-2 rounded-full py-1 pl-2.5 pr-1.5 text-xs ${isDarkTheme ? 'bg-white/10 border border-white/10' : 'bg-black/[0.04]'}`}>
+            <div className={`flex items-center gap-2 rounded-full py-0.5 pl-2.5 pr-1.5 text-xs ${isDarkTheme ? 'bg-white/10 border border-white/10' : 'bg-black/[0.04]'}`}>
               <span className={`font-medium ${isDarkTheme ? 'text-white' : 'text-[#1d1d1f]'}`}>{user}</span>
               <button
                 onClick={logout}
@@ -193,7 +195,7 @@ export default function App() {
         </div>
 
         {/* 移动端/小屏顶栏导航条 */}
-        <div className={`lg:hidden flex items-center gap-1 px-4 pb-2 overflow-x-auto border-t pt-1 ${isDarkTheme ? 'border-white/10' : 'border-black/[0.04]'}`}>
+        <div className={`lg:hidden flex items-center gap-1 px-4 pb-1.5 overflow-x-auto border-t pt-1 ${isDarkTheme ? 'border-white/10' : 'border-black/[0.04]'}`}>
           {nav.map(([k, label]) => {
             const on = tab === k
             return (
@@ -213,8 +215,12 @@ export default function App() {
         </div>
       </header>
 
-      {/* 主工作区：全屏铺开 */}
-      <main className="mx-auto max-w-[1720px] w-full px-4 sm:px-6 lg:px-8 py-6">
+      {/* 主工作区：首页指挥舱 100vh 单屏锁定，其他页面自然滚动 */}
+      <main className={`w-full ${
+        isDarkTheme
+          ? 'flex-1 min-h-0 overflow-hidden px-4 py-2 max-w-[1780px] mx-auto flex flex-col'
+          : 'mx-auto max-w-[1720px] px-4 sm:px-6 lg:px-8 py-6'
+      }`}>
         {view === 'bento' && <ColorBentoDashboard go={go} onSwitchView={() => go('workbench')} />}
         {view === 'workbench' && <Workbench go={go} />}
         {view === 'candidates' && <Candidates go={go} />}

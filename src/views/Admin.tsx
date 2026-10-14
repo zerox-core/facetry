@@ -136,10 +136,18 @@ const INTEGRATIONS: Integration[] = [
 
 type Toast = { tone: 'success' | 'error' | 'warning'; text: string }
 
+/** [演示] 模拟失败的候选原因：覆盖超时 / 权限失效 / 来源视图变更三类真实异常口气 */
+const FAIL_REASONS = [
+  '来源数据库只读连接超时（演示异常）',
+  '来源数据库只读账号权限失效（演示异常）',
+  '来源视图字段变更，本批解析失败（演示异常）',
+]
+
 export default function Admin({ go }: { go: Go }) {
   useStore()
   const [busy, setBusy] = useState<'sync' | 'retry' | 'fail' | ''>('')
   const [toast, setToast] = useState<Toast | null>(null)
+  const [demoReason, setDemoReason] = useState(FAIL_REASONS[0])
   // 权限：can('admin:view') 只对 admin 角色为真；非管理员进来只能只读查看，需显式开启演示开关才可写
   const isAdmin = can('admin:view')
   const [demoAdmin, setDemoAdmin] = useState(false)
@@ -178,7 +186,7 @@ export default function Admin({ go }: { go: Go }) {
     setBusy(mode)
     window.setTimeout(() => {
       if (mode === 'fail') {
-        const st = simulateSyncFailure()
+        const st = simulateSyncFailure(demoReason)
         say({ tone: 'error', text: `已模拟来源库读取异常：${st.lastError}；本批 ${st.failedBatch?.count ?? 0} 条进入可重跑队列` })
       } else if (mode === 'retry') {
         const res = retryFailedBatch()
@@ -409,19 +417,40 @@ export default function Admin({ go }: { go: Go }) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-base-300 pt-3">
-            <Btn
-              variant="ghost"
-              disabled={!allowed || busy !== ''}
-              loading={busy === 'fail'}
-              title={needPerm ?? '演示：模拟只读连接超时，用于查看异常态与重跑入口'}
-              onClick={() => runSync('fail')}
-            >
-              [演示] 模拟来源库异常
-            </Btn>
-            <span className="text-[11px] text-base-content/50">
-              失败不静默：异常会保留最后成功时间、失败原因与影响条数，失败批次可重跑且不重复建档。
-            </span>
+          <div className="border-t border-base-300 pt-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <Field
+                label="[演示] 异常原因"
+                htmlFor="demo-fail-reason"
+                className="w-full max-w-sm"
+                hint="仅用于演示异常态与重跑入口，不影响已确认的业务数据"
+              >
+                <select
+                  id="demo-fail-reason"
+                  className="select select-sm w-full"
+                  value={demoReason}
+                  onChange={(e) => setDemoReason(e.target.value)}
+                >
+                  {FAIL_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Btn
+                variant="ghost"
+                disabled={!allowed || busy !== ''}
+                loading={busy === 'fail'}
+                title={needPerm ?? '演示：模拟来源库读取失败，用于查看异常态与「重跑失败批次」入口'}
+                onClick={() => runSync('fail')}
+              >
+                [演示] 模拟来源库异常
+              </Btn>
+            </div>
+            <p className="mt-2 text-[11px] text-base-content/50">
+              失败不静默：异常会保留最后成功时间、失败原因与影响条数，失败批次可重跑且沿用同一幂等键，不重复建档。
+            </p>
           </div>
         </div>
       </section>

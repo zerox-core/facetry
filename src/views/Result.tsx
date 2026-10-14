@@ -14,6 +14,7 @@ export default function Result({ cid, go }: { cid: string; go: Go }) {
   const room = rooms[cid]
   // hooks 必须在条件返回之前（findC / rooms 都可能取不到）
   const [askConfirm, setAskConfirm] = useState(false)
+  const [askRegen, setAskRegen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [regening, setRegening] = useState(false)
   const [msg, setMsg] = useState('')
@@ -149,12 +150,37 @@ export default function Result({ cid, go }: { cid: string; go: Go }) {
       <section className="ws-rise" style={{ '--i': 5 } as React.CSSProperties}>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">综合评价</h2>
-            <p className="mt-0.5 text-sm text-slate-400">{rv ? `生成于 ${rv.at} · 评分提交后不可修改，报告可随时重新生成` : '基于已保存的评分与记录生成，面试结束后任何时间都可以回来生成'}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-slate-900">综合评价</h2>
+              {rv && <Chip tone={rv.draft ? 'warning' : 'success'}>{rv.draft ? 'AI 草稿 · 待人工确认' : '已人工确认'}</Chip>}
+            </div>
+            <p className="mt-0.5 text-sm text-slate-400">
+              {rv
+                ? rv.draft
+                  ? `生成于 ${rv.at} · 由 AI 依据评分与记录辅助生成，未经人工确认前不作为面评结论`
+                  : `生成于 ${rv.at} · ${rv.confirmedBy ?? '—'} 于 ${rv.confirmedAt ?? '—'} 人工确认`
+                : '基于已保存的评分与记录生成（产出为 AI 草稿，需人工确认），面试结束后任何时间都可以回来生成'}
+            </p>
           </div>
-          <Btn variant={rv ? 'ghost' : 'accent'} className="!h-9 !px-3.5" onClick={regen}>{rv ? '重新生成报告' : '生成综合评价'}</Btn>
+          <div className="flex items-center gap-2">
+            {rv?.draft && (
+              <Btn
+                variant="accent"
+                className="!h-9 !px-3.5"
+                onClick={() => setAskConfirm(true)}
+                disabled={!canConfirm}
+                title={canConfirm ? '确认为正式面评结论并记录确认人与时间' : `当前角色（${currentUser.role}）无面评确认权限`}
+              >
+                人工确认
+              </Btn>
+            )}
+            <Btn variant={rv ? 'ghost' : 'accent'} className="!h-9 !px-3.5" onClick={() => { if (rv) setAskRegen(true); else regen() }} loading={regening} disabled={regening}>
+              {rv ? '重新生成报告' : '生成综合评价'}
+            </Btn>
+          </div>
         </div>
-        <Card className="px-6 py-5">
+        {msg && <p className="mb-3 rounded-lg border border-black/[0.06] bg-base-200 px-4 py-2 text-sm leading-6 text-base-content/70">{msg}</p>}
+        <Card className={`px-6 py-5 ${rv ? (rv.draft ? 'border-warning/60' : 'border-success/40') : ''}`}>
           {rv ? (
             <div className="space-y-4 text-sm leading-7 text-slate-700">
               <p className="text-slate-900">{rv.overall}</p>
@@ -164,10 +190,52 @@ export default function Result({ cid, go }: { cid: string; go: Go }) {
                 ))}
               </div>
               <p className="rounded-lg bg-slate-50 px-3 py-2">建议：{rv.suggestion}</p>
+              {rv.draft ? (
+                <p className="rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-xs leading-5 text-base-content/70">
+                  这是 AI 辅助草稿，尚未经人工确认：请核对上方证据后点「人工确认」，确认前不得作为最终面评结论，也不得据此发起录取审批。
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500">已由 {rv.confirmedBy ?? '—'} 于 {rv.confirmedAt ?? '—'} 人工确认，可作为面评结论核对后进入后续流程。</p>
+              )}
             </div>
-          ) : <p className="whitespace-pre-line text-sm leading-7 text-slate-700">{room.summary || '还没有生成报告——点击右上角「生成综合评价」即可基于本场记录生成。'}</p>}
+          ) : <p className="whitespace-pre-line text-sm leading-7 text-slate-700">{room.summary || '还没有生成报告——点击右上角「生成综合评价」即可基于本场记录生成一份 AI 草稿，草稿需人工确认后才生效。'}</p>}
         </Card>
       </section>
+
+      {/* 重新生成会覆盖现有报告（已确认的结论会回到待确认）：二次确认后再重建 */}
+      <Modal
+        open={askRegen}
+        onClose={() => setAskRegen(false)}
+        title="重新生成综合评价报告？"
+        sub={rv && !rv.draft ? '当前报告已人工确认，重新生成后会回到「待人工确认」' : '当前报告会被覆盖，且无法撤销'}
+        footer={
+          <>
+            <Btn variant="ghost" onClick={() => setAskRegen(false)}>保留现有报告</Btn>
+            <Btn variant="accent" onClick={() => { setAskRegen(false); regen() }}>覆盖并重新生成</Btn>
+          </>
+        }
+      >
+        <p className="text-sm leading-6 text-base-content/70">重新生成只依据已保存的评分、备注与会话记录，不改动面试结果；报告内容会被替换，需要再次人工确认后才作为面评结论。</p>
+      </Modal>
+
+      {/* AI 面评草稿的人工确认（FR-B3）：确认后记录确认人与确认时间，防重复点击 */}
+      <Modal
+        open={askConfirm}
+        onClose={() => { if (!confirming) setAskConfirm(false) }}
+        title="确认 AI 综合评价草稿"
+        sub="FR-B3：AI 辅助生成的评价必须经人工确认后才作为面评结论"
+        footer={
+          <>
+            <Btn variant="ghost" disabled={confirming} onClick={() => setAskConfirm(false)}>取消</Btn>
+            <Btn variant="accent" loading={confirming} onClick={doConfirm}>确认并保存</Btn>
+          </>
+        }
+      >
+        <p className="text-sm leading-6 text-base-content/70">
+          确认后报告标记为「已人工确认」，并记录确认人（{currentUser.name}）与确认时间，可作为面评结论使用；报告内容仍可重新生成，重新生成后会回到「待人工确认」。
+        </p>
+        <p className="mt-2 text-xs leading-5 text-base-content/50">AI 只依据评分、备注与会话记录提供辅助证据，不会自动作录用决定，也不触发审批。</p>
+      </Modal>
     </div>
   )
 }

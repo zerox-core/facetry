@@ -12,7 +12,7 @@ import {
   slotLabel,
 } from '../store'
 import type { Go } from '../App'
-import { Btn } from './ui'
+import { Btn, Chip, Empty } from './ui'
 import ResumeDoc from './ResumeDoc'
 
 const TOPICS = ['技术深挖', '项目细节', '简历核实', '行为面试']
@@ -35,6 +35,9 @@ export default function Interviewer({ cid, go }: Props) {
   const [adding, setAdding] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true) // 是否展开左侧 JD 白皮书常驻栏
   const [showSwitchPos, setShowSwitchPos] = useState(false)
+  const [pendingPos, setPendingPos] = useState<string>() // 待确认切换的目标岗位（避免误触即调岗）
+  // 打开调岗弹窗时清空待选状态，避免上次的选择残留
+  const openSwitchPos = () => { setPendingPos(undefined); setShowSwitchPos(true) }
   const [activeDeckTab, setActiveDeckTab] = useState<'picked' | 'bank'>('picked')
   const [draft, setDraft] = useState({ q: '', topic: TOPICS[0], points: '', follow: '' })
 
@@ -68,6 +71,7 @@ export default function Interviewer({ cid, go }: Props) {
     setAdding(false)
   }
   const used = new Set(c.qs.map((q) => q.q))
+  const bankLeft = bank.filter((b) => !used.has(b.q))
   const toggle = (id: string) =>
     setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id])
 
@@ -107,6 +111,8 @@ export default function Interviewer({ cid, go }: Props) {
             <span className="rounded-full bg-black/[0.04] px-3 py-1 text-xs font-semibold text-[#1d1d1f] border border-black/10">
               对标标尺: {jd.code}
             </span>
+            {!foundJd && <Chip tone="warning">该岗位尚未装配标尺</Chip>}
+            {!foundPos && <Chip tone="info">岗位档案缺失</Chip>}
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
               契合度 {c.match}%
             </span>
@@ -173,7 +179,7 @@ export default function Interviewer({ cid, go }: Props) {
             {sidebarOpen ? '隐藏 JD 标尺常驻栏 ⇥' : '展开 JD 标尺常驻栏 ⇤'}
           </button>
           <button
-            onClick={() => setShowSwitchPos(true)}
+            onClick={openSwitchPos}
             className="cursor-pointer text-xs font-medium text-white/80 hover:text-white underline-offset-4 hover:underline"
           >
             换岗对标 ↻
@@ -236,7 +242,7 @@ export default function Interviewer({ cid, go }: Props) {
 
             <div className="pt-2 border-t border-black/[0.04]">
               <button
-                onClick={() => setShowSwitchPos(true)}
+                onClick={openSwitchPos}
                 className="w-full cursor-pointer rounded-xl bg-black/[0.03] py-2 text-center text-xs font-medium text-[#1d1d1f] hover:bg-black/[0.06] transition-colors"
               >
                 调换对标岗位与标尺 ↻
@@ -368,8 +374,9 @@ export default function Interviewer({ cid, go }: Props) {
                     className={field}
                   />
                 </div>
-                <div className="flex justify-end gap-2">
-                  <Btn onClick={submit}>加入本场出题</Btn>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {!draft.q.trim() && <span className="text-[11px] text-error">请先填写题干</span>}
+                  <Btn onClick={submit} disabled={!draft.q.trim()}>加入本场出题</Btn>
                 </div>
               </div>
             )}
@@ -382,9 +389,12 @@ export default function Interviewer({ cid, go }: Props) {
                 依据《{jd.title}》定制的 {c.qs.length} 道针对性题目（已选 {picked.length} 道入场）
               </div>
 
-              {c.qs.map((q, i) => {
-                const on = picked.includes(q.id)
-                return (
+              {c.qs.length === 0 ? (
+                <Empty title="本场还没有题目" hint="从下方「题库补充」装载标准题，或点上方「+ 自拟题目」新增一道。" />
+              ) : (
+                c.qs.map((q, i) => {
+                  const on = picked.includes(q.id)
+                  return (
                   <div
                     key={q.id}
                     onMouseEnter={() => setHover(q.id)}
@@ -423,8 +433,9 @@ export default function Interviewer({ cid, go }: Props) {
                       </div>
                     </div>
                   </div>
-                )
-              })}
+                  )
+                })
+              )}
             </div>
           ) : (
             /* 选项卡二：团队题库补充 */
@@ -432,9 +443,8 @@ export default function Interviewer({ cid, go }: Props) {
               <div className="text-xs font-medium text-[#86868b] px-1">
                 标准能力题库储备（点击直接装载进本候选人题本）
               </div>
-              {bank
-                .filter((b) => !used.has(b.q))
-                .map((b) => (
+              {bankLeft.length ? (
+                bankLeft.map((b) => (
                   <div
                     key={b.q}
                     className="ws-paper rounded-2xl p-3.5 border border-black/[0.04] hover:border-black/20 transition-all flex items-start justify-between gap-3"
@@ -464,7 +474,10 @@ export default function Interviewer({ cid, go }: Props) {
                       + 装载
                     </button>
                   </div>
-                ))}
+                ))
+              ) : (
+                <Empty title="题库里没有可装载的新题" hint="本场题目已覆盖现有题库，可用上方「+ 自拟题目」补充题目。" />
+              )}
             </div>
           )}
         </aside>
@@ -494,20 +507,23 @@ export default function Interviewer({ cid, go }: Props) {
             </div>
 
             <div className="mt-4 space-y-2.5">
+              {positions.length === 0 && <Empty title="还没有在招岗位" hint="先到岗位管理创建岗位并装配标尺，再回来对标。" />}
               {positions.map((p) => {
                 const targetJd = findJd(p.jdId)
                 const isCur = c.positionId === p.id
+                const on = pendingPos === p.id
                 return (
-                  <div
+                  <button
                     key={p.id}
-                    onClick={() => {
-                      bindCandidatePosition(c.id, p.id)
-                      setShowSwitchPos(false)
-                    }}
-                    className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
-                      isCur
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setPendingPos(p.id)}
+                    className={`w-full cursor-pointer rounded-xl border p-3.5 text-left transition-all ${
+                      on
                         ? 'border-[#1d1d1f] bg-black/[0.03] shadow-xs'
-                        : 'border-black/[0.06] bg-white hover:border-black/30'
+                        : isCur
+                          ? 'border-black/20 bg-black/[0.02] hover:border-black/30'
+                          : 'border-black/[0.06] bg-white hover:border-black/30'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -515,22 +531,40 @@ export default function Interviewer({ cid, go }: Props) {
                       {isCur && (
                         <span className="rounded-full bg-[#1d1d1f] px-2 py-0.5 text-[10px] text-white">当前岗位</span>
                       )}
+                      {!isCur && on && (
+                        <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] text-[#1d1d1f]">待确认切换</span>
+                      )}
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-xs text-[#86868b]">
                       <span>{p.dept}</span>
                       <span>·</span>
                       <span className="text-[#1d1d1f] font-medium">
-                        📋 装配标尺: {targetJd ? `${targetJd.title} (${targetJd.code})` : '该岗位尚未装配标尺'}
+                        装配标尺: {targetJd ? `${targetJd.title} (${targetJd.code})` : '该岗位尚未装配标尺'}
                       </span>
                     </div>
-                  </div>
+                  </button>
                 )
               })}
             </div>
 
-            <div className="mt-5 flex justify-end">
-              <Btn variant="ghost" onClick={() => setShowSwitchPos(false)}>
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+              {pendingPos && pendingPos !== c.positionId && (
+                <span className="mr-auto text-xs text-[#86868b]">调岗会即时替换考核标尺与评价维度，请在下一步确认</span>
+              )}
+              <Btn variant="ghost" onClick={() => { setPendingPos(undefined); setShowSwitchPos(false) }}>
                 取消
+              </Btn>
+              <Btn
+                variant="accent"
+                disabled={!pendingPos || pendingPos === c.positionId}
+                onClick={() => {
+                  if (!pendingPos) return
+                  bindCandidatePosition(c.id, pendingPos)
+                  setPendingPos(undefined)
+                  setShowSwitchPos(false)
+                }}
+              >
+                确认调岗
               </Btn>
             </div>
           </div>

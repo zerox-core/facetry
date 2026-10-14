@@ -91,7 +91,7 @@ function slotError(slot: string): string {
   const v = slot.trim()
   if (!v) return '请填写面试时间'
   const m = SLOT_RE.exec(v)
-  if (!m) return '时间格式应为 YYYY-MM-DD HH:mm（示例 2026-10-02 10:00）'
+  if (!m) return `时间格式应为 YYYY-MM-DD HH:mm（示例 ${demoToday()} 10:00）`
   if (+m[2] < 1 || +m[2] > 12 || +m[3] < 1 || +m[3] > 31) return '日期不合法，请检查月份与日期'
   if (+m[4] > 23 || +m[5] > 59) return '时间不合法，请检查小时与分钟'
   return ''
@@ -451,7 +451,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
               <span className="text-sm font-semibold text-base-content">{c.name}</span>
               <span className="text-xs text-base-content/60">{c.role}</span>
               <Chip tone="ghost">{d.round}</Chip>
-              <Chip tone={d.type === 'offline' ? 'accent' : 'info'}>{d.type === 'offline' ? '线下现场' : '线上飞书会议'}</Chip>
+              <Chip tone={d.type === 'offline' ? 'neutral' : 'info'}>{d.type === 'offline' ? '线下现场' : '线上飞书会议'}</Chip>
               {d.status === 'canceled' && <Chip tone="warning">已取消 · 保留历史</Chip>}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-base-content">
@@ -683,7 +683,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center justify-between gap-2 text-xs">
                 <Btn variant="ghost" className="!h-7 !px-2.5" onClick={() => shiftWeek(-1)} ariaLabel="查看上一周">
                   上一周
                 </Btn>
@@ -692,12 +692,17 @@ export default function ScheduleManager({ go }: { go: Go }) {
                   onClick={goToday}
                   className="cursor-pointer rounded-full bg-base-200 px-3 py-1 font-medium text-base-content hover:bg-base-300"
                 >
-                  回到今天 {demoToday()} · {weekdayCn(demoToday())}
+                  回到今天
                 </button>
                 <Btn variant="ghost" className="!h-7 !px-2.5" onClick={() => shiftWeek(1)} ariaLabel="查看下一周">
                   下一周
                 </Btn>
               </div>
+
+              <p className="text-[11px] text-base-content/50">
+                当前选中：{selectedDate} {weekdayCn(selectedDate)}（{relativeDay(selectedDate)}）· 该日在排{' '}
+                {selectedStat.live} 场、已取消 {selectedStat.canceled} 场
+              </p>
 
               <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-base-content/50">
                 {WEEKDAYS.map((w) => (
@@ -932,7 +937,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
             <Btn variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
               取消
             </Btn>
-            <Btn variant="solid" onClick={submitSchedule} loading={creating} disabled={creating}>
+            <Btn variant="accent" onClick={submitSchedule} loading={creating} disabled={creating}>
               确认发起约面
             </Btn>
           </>
@@ -1099,7 +1104,8 @@ export default function ScheduleManager({ go }: { go: Go }) {
         )}
 
         <p className="mt-3 text-[11px] text-base-content/50">
-          提交后场次初始为「飞书日历同步中 + 通知待发送」；取消或改期会重置这两项状态并追加变更历史。
+          提交后场次初始为「飞书日历同步中 + 通知待发送」；同一候选人 + 轮次 + 时段重复提交会命中幂等键、不重复建场；
+          若该候选人已有在排场次，新时段按改期链路覆盖并写入变更历史。取消或改期都会重置这两项状态。
         </p>
       </Modal>
 
@@ -1115,7 +1121,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
               取消
             </Btn>
             <Btn
-              variant="solid"
+              variant="accent"
               onClick={confirmResched}
               loading={busy?.kind === 'reschedule'}
               disabled={busy?.kind === 'reschedule'}
@@ -1136,7 +1142,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
               htmlFor="resched-slot"
               required
               error={reschedError || undefined}
-              hint="格式 YYYY-MM-DD HH:mm，例如 2026-10-02 10:00"
+              hint={`格式 YYYY-MM-DD HH:mm，例如 ${demoToday()} 10:00`}
             >
               <input
                 id="resched-slot"

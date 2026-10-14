@@ -76,6 +76,8 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   const [endAsk, setEndAsk] = useState(false)
   const [submitAsk, setSubmitAsk] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [summaryAsk, setSummaryAsk] = useState(false) // 重新生成综合评语会覆盖手写内容
+  const [regenAsk, setRegenAsk] = useState(false) // 重新生成评价报告会覆盖（含已确认结论）
   // 分享面试间：候选人通过链接进入后，双方语音自动转写进会话记录；未分享时只记录面试官一侧
   const [shared, setShared] = useState(saved?.shared ?? false)
   const [talk, setTalk] = useState<Talk[]>(saved?.talk ?? [])
@@ -250,6 +252,8 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   }
   // 报告由已保存的评分与记录推导，提交前后都可以生成 / 重新生成
   const genReview = () => { setReviewing(true); setTimeout(() => { setReview(buildReview()); setReviewing(false); touch() }, 1200) }
+  // 重新生成会覆盖现有报告（已确认的会回到待确认）：先二次确认
+  const askGenReview = () => { if (review) setRegenAsk(true); else genReview() }
   // 导出 Markdown 完整记录：评分、备注、参考要点、排除状态与综合评价
   const exportMd = () => {
     const excluded = (c?.qs ?? []).filter((x) => !qs.includes(x))
@@ -284,7 +288,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   // 提交评价：二次确认后置 loading 并禁用按钮，防止重复提交
   const doSubmit = () => {
     if (submitting) return
-    setMiss(unscored ? 'questions' : '')
+    setMiss('')
     setSubmitting(true)
     setTimeout(() => { submitEvaluation(cid, avg, mmss(elapsed), verdict); go('result', cid, { replace: true }) }, 500)
   }
@@ -297,6 +301,8 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
       return
     }
     setWarn('')
+    // 未评分的题在列表里高亮，便于确认窗口打开时对照
+    setMiss(unscored ? 'questions' : '')
     setSubmitAsk(true)
   }
   // 人工确认 AI 综合评价草稿（FR-B3）：确认后才作为面评结论，并记录确认人与确认时间
@@ -779,7 +785,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
 
                   <div className="mt-8 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-[15px] font-semibold text-slate-900">综合评价</h2>
-                    <button onClick={genReview} disabled={reviewing} className="cursor-pointer text-sm font-medium text-[#1d1d1f] hover:underline disabled:cursor-default disabled:text-slate-400">{reviewing ? '生成中…' : review ? '重新生成报告' : '生成综合评价'}</button>
+                    <button onClick={askGenReview} disabled={reviewing} className="cursor-pointer text-sm font-medium text-[#1d1d1f] hover:underline disabled:cursor-default disabled:text-slate-400">{reviewing ? '生成中…' : review ? '重新生成报告' : '生成综合评价'}</button>
                   </div>
                   {reviewErr && <p className="mt-3 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-sm leading-6 text-base-content/80">{reviewErr}</p>}
                   {reviewing ? (
@@ -828,7 +834,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
 
                   <div className="mt-8 flex items-baseline justify-between">
                     <h2 className="text-[15px] font-semibold text-slate-900">综合评语</h2>
-                    {!locked && <button onClick={() => { setSummary(gen()); touch() }} className="cursor-pointer text-sm text-slate-500 hover:text-slate-900">根据记录重新生成</button>}
+                    {!locked && <button onClick={() => setSummaryAsk(true)} className="cursor-pointer text-sm text-slate-500 hover:text-slate-900">根据记录重新生成</button>}
                   </div>
                   <textarea value={summary} readOnly={locked} onChange={(e) => { setSummary(e.target.value); touch() }} rows={5} className="mt-3 w-full resize-none rounded-lg border border-slate-200 px-4 py-3 text-[15px] leading-7 outline-none focus:border-black/50 focus:ring-2 focus:ring-black/10" />
                   <div ref={verdictRef} className={`mt-8 rounded-xl transition ${miss === 'verdict' ? 'login-fade p-3 ring-2 ring-amber-400' : ''}`}>
@@ -845,11 +851,18 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
 
             <div className="flex shrink-0 items-center gap-2 border-t border-slate-200 bg-[#fffdf9] px-6 py-3">
               {!done ? (
+                qs.length === 0 ? (
+                  <>
+                    <span className="ml-auto text-sm text-slate-400">本场还没有题目，先回去勾选题目再进面试间</span>
+                    <Btn variant="ghost" onClick={() => go('back')}>返回{go.from}</Btn>
+                  </>
+                ) : (
                 <>
                   <Btn variant="ghost" onClick={() => move(Math.max(0, idx - 1))}>上一题</Btn>
                   <span className="ml-auto text-sm text-slate-400">{savedAt ? `已自动保存 ${savedAt}` : '记录会自动保存'}</span>
                   {idx < qs.length - 1 ? <Btn variant="accent" onClick={() => move(idx + 1)}>下一题 →</Btn> : <Btn variant="accent" onClick={askEnd}>去评价 →</Btn>}
                 </>
+                )
               ) : locked ? (
                 <>
                   <Btn variant="ghost" onClick={exportMd}>导出记录</Btn>
@@ -972,6 +985,38 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
             还有 {unscored} 题未评分，提交后这些题目会保留为「未评分」，也会出现在评价记录里。
           </p>
         )}
+      </Modal>
+
+      {/* 重新生成综合评语会覆盖手写内容：二次确认后再覆盖 */}
+      <Modal
+        open={summaryAsk}
+        onClose={() => setSummaryAsk(false)}
+        title="用本场记录重新生成综合评语？"
+        sub="当前综合评语会被覆盖，且无法撤销"
+        footer={
+          <>
+            <Btn variant="ghost" onClick={() => setSummaryAsk(false)}>保留现有评语</Btn>
+            <Btn variant="accent" onClick={() => { setSummary(gen()); touch(); setSummaryAsk(false) }}>覆盖并重新生成</Btn>
+          </>
+        }
+      >
+        <p className="text-sm leading-6 text-base-content/70">生成内容只依据已评分题目、备注与整体观察；你手动补充的措辞会被替换，请先确认不需要保留当前文本。</p>
+      </Modal>
+
+      {/* 重新生成评价报告会覆盖现有内容：二次确认后再生成 */}
+      <Modal
+        open={regenAsk}
+        onClose={() => setRegenAsk(false)}
+        title="重新生成综合评价报告？"
+        sub={review && !review.draft ? '当前报告已人工确认，重新生成后会回到「待人工确认」' : '当前报告会被覆盖'}
+        footer={
+          <>
+            <Btn variant="ghost" onClick={() => setRegenAsk(false)}>保留现有报告</Btn>
+            <Btn variant="accent" onClick={() => { setRegenAsk(false); genReview() }}>覆盖并重新生成</Btn>
+          </>
+        }
+      >
+        <p className="text-sm leading-6 text-base-content/70">重新生成只依据本场已评分题目、备注与整体观察，不改动评分与结论；报告内容会被替换，需要再次人工确认后才作为面评结论。</p>
       </Modal>
 
       {/* AI 综合评价草稿的人工确认（FR-B3）：确认后记录确认人与确认时间 */}
