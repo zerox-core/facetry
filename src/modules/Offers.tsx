@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Btn, Field, Kpis, Sec, Tabs, Th, useToast } from './ui'
+import { Btn, Field, Kpis, Pill, Sec, Tabs, Th, useToast } from './ui'
 
 const NODES = ['HR 发起', '部门负责人', 'HRD', '财务', 'VP', '发放', '候选人接受']
 type Of = { id: string; cand: string; role: string; dept: string; level: string; base: number; band: [number, number]; months: number; stock: string; at: number; days: number; join: string; owner: string; issue?: string; rejected?: boolean }
