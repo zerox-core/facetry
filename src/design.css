@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@theme {
+  --font-serif: 'Noto Serif SC', serif;
+  --font-sans: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --color-base: #18212b;
+  --color-canvas: #f3f1eb;
+  --color-paper: #fffefa;
+  --color-line: #e4e0d5;
+  --color-amber: #d7a62a;
+  --color-amber-soft: #f6ecd0;
+  --color-ink: #1b232c;
+}
+
+html, body, #root { height: 100%; }
+body { background: #f3f1eb; color: #1b232c; font-family: var(--font-sans); font-size: 12.5px; -webkit-font-smoothing: antialiased; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Refined ledger paper panels and layered elevation */
+.panel {
+  background: #fffefa;
+  border: 1px solid #e3ded3;
+  box-shadow: 0 1px 3px rgba(27, 35, 44, 0.04), 0 4px 14px -3px rgba(27, 35, 44, 0.06);
+}
+
+.panel-elevated {
+  background: #fffefa;
+  border: 1px solid #ded8cb;
+  box-shadow: 0 10px 32px -4px rgba(27, 35, 44, 0.12), 0 2px 8px -1px rgba(27, 35, 44, 0.04);
+}
+
+.panel-card {
+  background: #fffefa;
+  border: 1px solid #e6e1d6;
+  box-shadow: 0 1px 2px rgba(27, 35, 44, 0.04);
+}
+
+.hatch { background-image: repeating-linear-gradient(135deg, rgba(192,96,79,.18) 0 2px, transparent 2px 5px); }
+@keyframes rise { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: none;} }
+.rise { animation: rise .24s cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(215,166,42,.55);} 100% { box-shadow: 0 0 0 6px rgba(215,166,42,0);} }
+.pulse { animation: pulse-ring 1.6s ease-out infinite; }
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-thumb { background: #d6d0c2; border-radius: 4px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #b8b1a2; }
