@@ -16,9 +16,15 @@ const EVID = [
   { t: '离职原因', q: '希望从纯技术岗转向技术管理，看重团队规模与业务成长空间。', tag: '潜力与稳定性' },
 ]
 
-export default function Reviews() {
+interface ReviewsProps {
+  navTo?: (mod: string, params?: Record<string, any>) => void
+  initialCand?: string
+}
+
+export default function Reviews({ navTo, initialCand }: ReviewsProps) {
   const [list, setList] = useState(LIST)
-  const [sel, setSel] = useState(LIST[1].id)
+  const found = initialCand ? list.find(r => r.cand.includes(initialCand)) : null
+  const [sel, setSel] = useState(found ? found.id : LIST[1].id)
   const [sc, setSc] = useState<Record<string, number[]>>({})
   const [verdict, setVerdict] = useState<Record<string, string>>({})
   const [hl, setHl] = useState<string | null>(null)
@@ -102,8 +108,24 @@ export default function Reviews() {
             </div>
           </div>
           <div className="shrink-0 border-t border-line p-4 flex gap-2.5 bg-[#faf8f3]">
-            <Btn primary className="flex-1 h-9 text-[13px] font-semibold" disabled={cur.done || filled < 5 || !verdict[cur.id]} onClick={() => { setList(l => l.map(r => r.id === cur.id ? { ...r, done: true, due: '已提交' } : r)); toast(`${cur.cand} 面评已提交`) }}>{cur.done ? '已提交' : '提交面评'}</Btn>
-            <Btn className="h-9" onClick={() => toast('草稿已保存')}>存草稿</Btn>
+            {cur.done ? (
+              <>
+                <Btn primary className="flex-1 h-9 text-[13px] font-semibold" onClick={() => navTo && navTo('offers', { candName: cur.cand })}>
+                  去发起 Offer 审批 →
+                </Btn>
+                <Btn className="h-9" onClick={() => navTo && navTo('talent')}>返回人才库</Btn>
+              </>
+            ) : (
+              <>
+                <Btn primary className="flex-1 h-9 text-[13px] font-semibold" disabled={filled < 5 || !verdict[cur.id]} onClick={() => {
+                  setList(l => l.map(r => r.id === cur.id ? { ...r, done: true, due: '已提交' } : r))
+                  toast(`${cur.cand} 面评已提交成功！`)
+                }}>
+                  提交面评
+                </Btn>
+                <Btn className="h-9" onClick={() => toast('草稿已保存')}>存草稿</Btn>
+              </>
+            )}
           </div>
         </aside>
       </div>

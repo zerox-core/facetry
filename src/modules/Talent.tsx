@@ -98,18 +98,40 @@ function Skills({ v }: { v: number[] }) {
 
 const VIEWS = [['全部候选人', 20], ['我负责的', 6], ['待我处理', 4], ['高匹配 ≥85', 5], ['人才池回收', 12]] as const
 
-export default function Talent() {
+interface TalentProps {
+  navTo?: (mod: string, params?: Record<string, any>) => void
+  initialFilter?: Record<string, any>
+}
+
+export default function Talent({ navTo, initialFilter }: TalentProps) {
   const [list, setList] = useState(DATA)
   const [sel, setSel] = useState(DATA[0].id)
-  const [stage, setStage] = useState<Stage | '全部'>('全部')
-  const [q, setQ] = useState('')
+  const [stage, setStage] = useState<Stage | '全部'>(initialFilter?.stage || '全部')
+  const [q, setQ] = useState(initialFilter?.q || '')
   const [view, setView] = useState(0)
   const [tab, setTab] = useState(0)
   const [checked, setChecked] = useState<string[]>([])
   const [sort, setSort] = useState<'match' | 'days'>('match')
   const toastFn = useToast()
 
-  const shown = useMemo(() => list.filter(c => (stage === '全部' || c.stage === stage) && (c.name + c.role + c.tags.join() + c.id).includes(q)).sort((a, b) => sort === 'match' ? b.match - a.match : b.days - a.days), [list, stage, q, sort])
+  const shown = useMemo(() => {
+    return list.filter(c => {
+      // view 过滤
+      if (view === 1 && c.owner !== '王璐') return false
+      if (view === 2 && !['待筛', '初面'].includes(c.stage)) return false
+      if (view === 3 && c.match < 85) return false
+      if (view === 4 && c.stage !== '淘汰') return false
+      if (view !== 4 && c.stage === '淘汰') return false
+
+      // 阶段过滤
+      if (stage !== '全部' && c.stage !== stage) return false
+
+      // 搜索关键字
+      if (q && !(c.name + c.role + c.tags.join() + c.id + c.dept).toLowerCase().includes(q.toLowerCase())) return false
+
+      return true
+    }).sort((a, b) => sort === 'match' ? b.match - a.match : b.days - a.days)
+  }, [list, view, stage, q, sort])
   const cur = list.find(c => c.id === sel) ?? list[0]
   const idx = FLOW.indexOf(cur.stage)
   const avg = cur.ivs.length ? cur.ivs.reduce((a, b) => a + b.score, 0) / cur.ivs.length : 0
@@ -287,10 +309,48 @@ export default function Talent() {
           </div>
 
           <div className="shrink-0 border-t border-line p-4 flex gap-2.5 bg-[#faf8f3]">
-            <button onClick={() => move([cur.id], 'next')} disabled={cur.stage === 'Offer' || cur.stage === '淘汰'} className="flex-1 h-9 bg-amber text-base font-semibold text-[13px] rounded-[4px] shadow-xs hover:shadow hover:brightness-105 active:scale-[0.99] transition-all disabled:opacity-35 cursor-pointer">推进至 {FLOW[idx + 1] ?? '—'}</button>
-            <button className="h-9 px-3.5 border border-line bg-paper rounded-[4px] text-[12.5px] font-medium text-ink/80 hover:bg-[#f5f3ec] hover:border-[#d6d0c2] shadow-2xs active:scale-[0.99] transition-all cursor-pointer">安排面试</button>
-            <button className="h-9 px-3.5 border border-line bg-paper rounded-[4px] text-[12.5px] font-medium text-ink/80 hover:bg-[#f5f3ec] hover:border-[#d6d0c2] shadow-2xs active:scale-[0.99] transition-all cursor-pointer">待定</button>
-            <button onClick={() => move([cur.id], '淘汰')} disabled={cur.stage === '淘汰'} className="h-9 px-3.5 border border-[#e6c6bf] text-[#a8483a] bg-paper rounded-[4px] text-[12.5px] font-medium hover:bg-[#f6e3df] disabled:opacity-35 active:scale-[0.99] transition-all cursor-pointer">淘汰</button>
+            <button
+              onClick={() => {
+                const nextStage = FLOW[idx + 1]
+                move([cur.id], 'next')
+                if (nextStage === 'Offer' && navTo) {
+                  toastFn(`候选人 ${cur.name} 已进入 Offer 阶段，已就绪发起定薪审批`)
+                }
+              }}
+              disabled={cur.stage === 'Offer' || cur.stage === '淘汰'}
+              className="flex-1 h-9 bg-amber text-base font-semibold text-[13px] rounded-[4px] shadow-xs hover:shadow hover:brightness-105 active:scale-[0.99] transition-all disabled:opacity-35 cursor-pointer"
+            >
+              推进至 {FLOW[idx + 1] ?? '—'}
+            </button>
+            <button
+              onClick={() => {
+                if (navTo) {
+                  navTo('interviews', { candName: cur.name, candId: cur.id, role: cur.role })
+                  toastFn(`已为候选人 ${cur.name} 打开面试排期面板`)
+                } else {
+                  toastFn(`已为候选人 ${cur.name} 打开面试排期面板`)
+                }
+              }}
+              className="h-9 px-3.5 border border-line bg-paper rounded-[4px] text-[12.5px] font-medium text-ink/80 hover:bg-[#f5f3ec] hover:border-[#d6d0c2] shadow-2xs active:scale-[0.99] transition-all cursor-pointer"
+            >
+              安排面试
+            </button>
+            <button
+              onClick={() => {
+                setList(ls => ls.map(c => c.id === cur.id ? { ...c, flag: '待定复议', updated: '刚刚' } : c))
+                toastFn(`已将候选人 ${cur.name} 状态设为待定`)
+              }}
+              className="h-9 px-3.5 border border-line bg-paper rounded-[4px] text-[12.5px] font-medium text-ink/80 hover:bg-[#f5f3ec] hover:border-[#d6d0c2] shadow-2xs active:scale-[0.99] transition-all cursor-pointer"
+            >
+              待定
+            </button>
+            <button
+              onClick={() => move([cur.id], '淘汰')}
+              disabled={cur.stage === '淘汰'}
+              className="h-9 px-3.5 border border-[#e6c6bf] text-[#a8483a] bg-paper rounded-[4px] text-[12.5px] font-medium hover:bg-[#f6e3df] disabled:opacity-35 active:scale-[0.99] transition-all cursor-pointer"
+            >
+              淘汰
+            </button>
           </div>
         </aside>
       </div>

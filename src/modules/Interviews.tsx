@@ -23,10 +23,16 @@ const DATA: Iv[] = [
 
 const H0 = 9, H1 = 19, fmt = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${h % 1 ? String(Math.round((h % 1) * 60)).padStart(2, '0') : '00'}`
 
-export default function Interviews() {
+interface InterviewsProps {
+  navTo?: (mod: string, params?: Record<string, any>) => void
+  initialCand?: string
+}
+
+export default function Interviews({ navTo, initialCand }: InterviewsProps) {
   const [list, setList] = useState(DATA)
   const [day, setDay] = useState(2)
-  const [sel, setSel] = useState('IV-3083')
+  const foundIv = initialCand ? list.find(i => i.cand.includes(initialCand)) : null
+  const [sel, setSel] = useState(foundIv ? foundIv.id : 'IV-3083')
   const [tab, setTab] = useState(0)
   const toast = useToast()
   const today = list.filter(i => i.day === day)
@@ -109,11 +115,11 @@ export default function Interviews() {
             </> : <div className="p-4 space-y-2 text-[11.5px]">{['03-08 14:20 王璐 创建面试', '03-08 14:22 系统 已发送邀约短信', '03-09 09:10 候选人 确认参加'].map(l => <div key={l} className="flex gap-2"><span className="w-1.5 h-1.5 mt-1.5 rounded-full bg-amber" /><span className="font-mono text-ink/45">{l.slice(0, 11)}</span><span>{l.slice(12)}</span></div>)}</div>}
           </div>
           <div className="shrink-0 border-t border-line p-3 flex gap-2 bg-[#fbfaf6]">
-            {cur.st === '待开始' && <Btn primary className="flex-1 h-8" onClick={() => setSt('进行中', '面试已开始')}>开始面试</Btn>}
-            {cur.st === '进行中' && <Btn primary className="flex-1 h-8" onClick={() => setSt('待反馈', '面试结束，待提交面评')}>结束面试</Btn>}
-            {cur.st === '待反馈' && <Btn primary className="flex-1 h-8" onClick={() => setSt('已完成', '已催办面试官')}>催办面评</Btn>}
-            {(cur.st === '已完成' || cur.st === '已取消') && <Btn className="flex-1 h-8">查看面评</Btn>}
-            <Btn className="h-8">改期</Btn>
+            {cur.st === '待开始' && <Btn primary className="flex-1 h-8" onClick={() => { setSt('进行中', '面试已开始'); if (navTo) navTo('assist', { cand: cur.cand }) }}>开始面试 (进入副驾)</Btn>}
+            {cur.st === '进行中' && <Btn primary className="flex-1 h-8" onClick={() => { setSt('待反馈', '面试结束，待提交面评'); if (navTo) navTo('reviews', { candName: cur.cand }) }}>结束面试 (去评分)</Btn>}
+            {cur.st === '待反馈' && <Btn primary className="flex-1 h-8" onClick={() => { setSt('已完成', '已催办面试官'); if (navTo) navTo('reviews', { candName: cur.cand }) }}>前往评审</Btn>}
+            {(cur.st === '已完成' || cur.st === '已取消') && <Btn className="flex-1 h-8" onClick={() => { if (navTo) navTo('reviews', { candName: cur.cand }) }}>查看面评</Btn>}
+            <Btn className="h-8" onClick={() => toast('已开启改期日历选点')}>改期</Btn>
             <Btn danger className="h-8" disabled={cur.st === '已取消' || cur.st === '已完成'} onClick={() => setSt('已取消', '面试已取消')}>取消</Btn>
           </div>
         </aside>

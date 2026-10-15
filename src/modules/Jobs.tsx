@@ -16,7 +16,11 @@ const DATA: J[] = [
 const PRI: Record<string, Tone> = { P0: 'red', P1: 'amber', P2: 'gray' }
 const STT: Record<string, Tone> = { 招聘中: 'green', 暂停: 'amber', 已关闭: 'gray' }
 
-export default function Jobs() {
+interface JobsProps {
+  navTo?: (mod: string, params?: Record<string, any>) => void
+}
+
+export default function Jobs({ navTo }: JobsProps) {
   const [sel, setSel] = useState(DATA[0].id)
   const [tab, setTab] = useState(0)
   const [dt, setDt] = useState(0)
@@ -78,7 +82,15 @@ export default function Jobs() {
             </>}
             {dt === 2 && <Sec t="渠道效果" extra="投递 / 进面">{[['内推', 38, 11], ['Boss', 92, 4], ['猎头', 21, 6], ['官网', 44, 2], ['拉勾', 19, 1]].map(([k, a, b]) => <div key={k as string} className="flex items-center gap-2 h-7 border-b border-dashed border-line"><span className="w-12 text-[13px]">{k}</span><div className="flex-1 flex h-3"><div className="bg-[#d8d2c2]" style={{ width: `${a}%` }} /></div><span className="font-mono text-[11px] w-16 text-right">{a} / {b}</span><span className={`font-mono text-[11px] w-10 text-right ${(b as number) / (a as number) > .2 ? 'text-[#8a6410] font-semibold' : 'text-ink/45'}`}>{Math.round(((b as number) / (a as number)) * 100)}%</span></div>)}</Sec>}
           </div>
-          <div className="shrink-0 border-t border-line p-3 flex gap-2 bg-[#fbfaf6]"><Btn primary className="flex-1 h-8">查看候选人 ({cur.f[1]})</Btn><Btn className="h-8">编辑 JD</Btn><Btn className="h-8">{cur.st === '暂停' ? '恢复' : '暂停'}</Btn></div>
+          <div className="shrink-0 border-t border-line p-3 flex gap-2 bg-[#fbfaf6]">
+            <Btn primary className="flex-1 h-8" onClick={() => navTo && navTo('talent', { q: cur.title })}>
+              查看在聘候选人 ({cur.f[1]}) →
+            </Btn>
+            <Btn className="h-8" onClick={() => navTo && navTo('bank', { role: cur.title.includes('前端') ? '前端工程' : cur.title.includes('架构') ? '后端架构' : '数据科学' })}>
+              ✦ 对应题库
+            </Btn>
+            <Btn className="h-8">{cur.st === '暂停' ? '恢复' : '暂停'}</Btn>
+          </div>
         </aside>
       </div>
     </div>

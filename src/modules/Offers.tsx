@@ -21,9 +21,15 @@ function Nodes({ at, rej, big }: { at: number; rej?: boolean; big?: boolean }) {
     </div>) })}</div>
 }
 
-export default function Offers() {
+interface OffersProps {
+  navTo?: (mod: string, params?: Record<string, any>) => void
+  initialCand?: string
+}
+
+export default function Offers({ navTo, initialCand }: OffersProps) {
   const [list, setList] = useState(DATA)
-  const [sel, setSel] = useState(DATA[0].id)
+  const found = initialCand ? list.find(o => o.cand.includes(initialCand)) : null
+  const [sel, setSel] = useState(found ? found.id : DATA[0].id)
   const [tab, setTab] = useState(0)
   const toast = useToast()
   const cur = list.find(o => o.id === sel)!
