@@ -18,7 +18,7 @@
 
 <section id="db"><div class="num">06</div><h2>数据库设计要求</h2><ul><li>业务库使用 <strong>MySQL 8.x</strong>，InnoDB、utf8mb4；所有表带 <code>created_at</code> / <code>updated_at</code>；核心业务记录（候选人阶段、约面、面评、审批申请）只做状态流转与追加历史，不做物理删除。</li><li>幂等设计：候选人以来源库 <code>source + source_id</code> 建唯一约束；约面、审批申请带幂等键 / 去重约束。</li><li>来源库与工作台业务库<strong>写入权限分离</strong>：工作台对来源库只读（连接串独立配置）；工作台不回写来源库，除非双方明确约定。</li><li>Alembic 迁移脚本随代码提交，禁止手工改库。</li></ul></section>
 
-<section id="api"><div class="num">07</div><h2>接口与外部对接要求</h2><div class="table-wrap"><table><thead><tr><th>对接方</th><th>要求</th></tr></thead><tbody><tr><td>来源数据库</td><td>只读账号 / 授权视图；表结构、唯一标识、更新时间、删除失效语义、附件访问方式待采集侧提供样例后确认；同步任务可配置间隔，失败可见、可重跑</td></tr><tr><td>飞书（日历 / 会议 / 审批）</td><td>复用现有应用凭证；<strong>会议与日程预约一律走飞书开放平台 API</strong>（创建日程、线上会议、改期、取消、忙闲查询）；审批定义 ID、控件映射做成配置项；状态更新支持轮询 + 回调</td></tr><tr><td>BPM</td><td>接口地址、认证方式、字段映射、流程定义均配置化；联调前以 mock 适配层开发，接口契约单独文档化</td></tr><tr><td>短信 / 邮件通知</td><td><strong>需额外接入第三方服务</strong>（短信服务商、SMTP / 邮件服务），飞书 API 不承担候选人侧的短信与邮件发送；至少一个通道可用，通道选择配置化，发送失败进重试队列；<strong>通知模板在开发时由业务方提供</strong>，按占位符变量渲染，模板内容可配置、可调整，不硬编码</td></tr><tr><td>LLM</td><td>沿用 OpenAI 兼容协议与现有提示词资产（<code>server/prompts.js</code> 迁移为 Python 模块）</td></tr></tbody></table></div><div class="rule">所有外部对接的异常（超时、权限失效、风控、状态滞后）必须显式展示并进入可处理队列，不得静默吞错。</div></section>
+<section id="api"><div class="num">07</div><h2>接口与外部对接要求</h2><div class="table-wrap"><table><thead><tr><th>对接方</th><th>要求</th></tr></thead><tbody><tr><td>来源数据库</td><td>只读账号 / 授权视图；表结构、唯一标识、更新时间、删除失效语义、附件访问方式待采集侧提供样例后确认；同步任务可配置间隔，失败可见、可重跑</td></tr><tr><td>飞书（日历 / 会议 / 审批）</td><td>复用现有应用凭证；<strong>会议与日程预约一律走飞书开放平台 API</strong>（创建日程、线上会议、改期、取消、忙闲查询）；审批定义 ID、控件映射做成配置项；状态更新支持轮询 + 回调</td></tr><tr><td>BPM</td><td><strong>接入方式（开放 API / 数据库 / 其他）尚未确定</strong>，确认前不预设环境变量；先以 mock 适配层开发，接入方式、认证、字段映射与流程定义待确认后配置化，接口契约单独文档化</td></tr><tr><td>短信 / 邮件通知</td><td><strong>需额外接入第三方服务</strong>（短信服务商、SMTP / 邮件服务），飞书 API 不承担候选人侧的短信与邮件发送；至少一个通道可用，通道选择配置化，发送失败进重试队列；<strong>通知模板在开发时由业务方提供</strong>，按占位符变量渲染，模板内容可配置、可调整，不硬编码</td></tr><tr><td>LLM</td><td>沿用 OpenAI 兼容协议与现有提示词资产（<code>server/prompts.js</code> 迁移为 Python 模块）</td></tr></tbody></table></div><div class="rule">所有外部对接的异常（超时、权限失效、风控、状态滞后）必须显式展示并进入可处理队列，不得静默吞错。</div></section>
 
 <section id="env"><div class="num">08</div><h2>配置管理（.env）</h2><p><strong>所有配置一律通过 <code>.env</code> 环境变量读取，代码中不得出现任何硬编码的连接串、密钥、地址。</strong> 具体值本次留空，仅提供 <code>.env.example</code> 模板；<code>.env</code> 必须加入 <code>.gitignore</code>，真实密钥不得提交版本库。</p><p><code>.env.example</code> 需包含以下分组（值留空）：</p><pre><code># ---- 服务 ----
 APP_HOST=
@@ -53,11 +53,10 @@ FEISHU_APP_ID=
 FEISHU_APP_SECRET=
 FEISHU_REDIRECT_URI=
 
-# ---- 飞书审批 / BPM 录取流程 ----
+# ---- 飞书审批 ----
 FEISHU_APPROVAL_CODE=
-BPM_API_BASE=
-BPM_APP_KEY=
-BPM_APP_SECRET=
+
+# BPM 接入方式（接口 / 数据库 / 其他）尚未确定，确认后再补充对应环境变量
 
 # ---- 通知通道（第三方服务，开发时提供短信/邮件模板）----
 MAIL_SMTP_HOST=
