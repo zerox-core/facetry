@@ -173,3 +173,49 @@ export function useReviewSession(sessionId: string) {
 
   return { session, loadError, reload: load, patch, saveState, savedAt, job, jobError, setJobError, runJob }
 }
+
+/**
+ * 通用后台任务轮询（初筛 / 重筛 / 同步 / AI 草稿等）：
+ * run(POST 返回的 Job) 后轮询 /api/jobs/{id}，完成时回调 onDone；404 视为任务丢失，可重试。
+ */
+export function useJob(onDone: () => void | Promise<void>, doneMessage?: string) {
+  const [job, setJob] = useState<Job | null>(null)
+  const [jobError, setJobError] = useState('')
+  const doneRef = useRef(onDone)
+  doneRef.current = onDone
+
+  const run = useCallback(
+    async (start: Promise<Job>) => {
+      setJobError('')
+      let j: Job
+      try {
+        j = await start
+      } catch (e) {
+        setJobError(errMsg(e))
+        return
+      }
+      setJob(j)
+      try {
+        for (;;) {
+          const cur = await api.getJob(j.id)
+          if (cur.state === 'done') {
+            setJob(null)
+            await doneRef.current()
+            if (doneMessage) toast(doneMessage)
+            return
+          }
+          if (cur.state === 'error') throw new Error(cur.error || '任务失败，请重试')
+          await sleep(1500)
+        }
+      } catch (e) {
+        // 404 说明任务已丢失（如服务重启），允许用户重试
+        setJob(null)
+        setJobError(errMsg(e))
+        toast(errMsg(e))
+      }
+    },
+    [doneMessage],
+  )
+
+  return { job, jobError, run }
+}

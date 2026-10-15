@@ -7,8 +7,15 @@ export default function Login() {
   const [err, setErr] = useState('')
   const [feishuBusy, setFeishuBusy] = useState(false)
   const [feishuErr, setFeishuErr] = useState('')
+  // 演示模式：后端开启 ENABLE_DEMO_LOGIN 时，页脚出现一个不显眼的入口（仅供内部预览）
+  const [demo, setDemo] = useState(false)
+  const [demoBusy, setDemoBusy] = useState(false)
   // 登录卡平时藏在简历纸背后，只露出一枚书签；点击后从纸后抽出
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    api.status().then((s) => setDemo(!!s.demo)).catch(() => {})
+  }, [])
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
@@ -124,7 +131,24 @@ export default function Login() {
 
       <footer className="relative flex shrink-0 flex-col gap-1 py-5 text-xs text-slate-500 sm:flex-row sm:justify-between">
         <span>仅限企业内部使用 · 候选人数据按公司信息安全规范存储</span>
-        <span>登录即表示同意《内部系统使用规范》与《候选人信息保护协议》</span>
+        <span className="flex items-center gap-3">
+          {demo && (
+            <button
+              disabled={demoBusy}
+              onClick={() => {
+                setDemoBusy(true)
+                void api
+                  .demoLogin('演示用户')
+                  .then(() => location.reload())
+                  .catch(() => setDemoBusy(false))
+              }}
+              className="cursor-pointer text-slate-500 underline decoration-slate-600 underline-offset-4 transition-colors hover:text-slate-300"
+            >
+              {demoBusy ? '正在进入…' : '演示模式进入'}
+            </button>
+          )}
+          <span>登录即表示同意《内部系统使用规范》与《候选人信息保护协议》</span>
+        </span>
       </footer>
     </div>
   )

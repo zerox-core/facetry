@@ -5,10 +5,100 @@ import type { Go } from '../App'
 import { Chip } from '../components/Chip'
 import { toast } from '../components/Toast'
 import { Btn, Card, ScoreStamp, SectionHead, Spinner } from '../components/ui'
-import type { AdminOverview, AdminUser, AuthUser, Bank, DashboardData, JobDescription, OrgDept, SessionSummary } from '../types'
+import { useJob } from '../store'
+import type { AdminOverview, AdminUser, AuthUser, Bank, DashboardData, Integrations, JobDescription, OrgDept, SessionSummary } from '../types'
 import { fmtTime, PhaseChip, ProgressBar, shortPartName } from './shared'
 
 const rise = (i: number) => ({ '--i': i } as React.CSSProperties)
+
+/** 系统接入状态：LLM / 飞书 / MinIO / 邮件 / 短信+BPM / 来源数据库，附来源库同步 */
+function IntegrationsPanel() {
+  const [data, setData] = useState<Integrations | null>(null)
+  const [error, setError] = useState('')
+  const reload = useCallback(async () => {
+    try {
+      setData(await api.adminIntegrations())
+      setError('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '集成状态加载失败')
+    }
+  }, [])
+  useEffect(() => {
+    void reload()
+  }, [reload])
+  const { job, run } = useJob(async () => {
+    await reload()
+    toast('来源库同步完成')
+  })
+
+  const dot = (ok: boolean) => <span className={`h-2 w-2 shrink-0 rounded-full ${ok ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+  const block = (title: string, ok: boolean, lines: (string | null | undefined | false)[], extra?: React.ReactNode) => (
+    <Card className="px-4 py-3.5">
+      <div className="flex items-center gap-2">
+        {dot(ok)}
+        <span className="text-sm font-medium text-slate-900">{title}</span>
+        <span className={`ml-auto text-xs ${ok ? 'text-emerald-600' : 'text-slate-400'}`}>{ok ? '已配置' : '未配置'}</span>
+      </div>
+      <div className="mt-2 space-y-0.5 text-xs leading-5 text-slate-400">
+        {lines.filter((l): l is string => !!l).map((l, i) => (
+          <p key={i} className="truncate">{l}</p>
+        ))}
+      </div>
+      {extra}
+    </Card>
+  )
+
+  return (
+    <section className="space-y-4">
+      <SectionHead title="系统接入状态" sub="外部服务配置与来源库同步" />
+      {error && (
+        <Card className="px-5 py-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-amber-700">{error}</p>
+            <Btn variant="ghost" className="h-8 px-3 text-xs" onClick={() => void reload()}>
+              重试
+            </Btn>
+          </div>
+        </Card>
+      )}
+      {!data && !error && (
+        <Card className="flex items-center justify-center gap-2 py-10 text-sm text-slate-400">
+          <Spinner /> 正在加载…
+        </Card>
+      )}
+      {data && (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+          {block('LLM', data.llm.configured, [data.llm.configured ? `模型 ${data.llm.model || '默认'}` : 'AI 初筛 / 草稿将降级为本地规则'])}
+          {block('飞书', data.feishu.configured, [
+            data.feishu.calendar ? '日程已启用' : '日程未启用',
+            data.feishu.approval ? '审批已启用' : '审批未启用（走 mock）',
+          ])}
+          {block('MinIO', data.minio.configured, [data.minio.configured ? '对象存储模式' : `本地存储模式（${data.minio.mode || 'local'}）`])}
+          {block('邮件', data.smtp.configured, [data.smtp.configured ? 'SMTP 已配置' : '候选人邮件通知不可用'])}
+          {block('短信 + BPM', data.sms.configured && data.bpm.mode !== 'mock', [
+            data.sms.configured ? `短信：${data.sms.provider || '已配置'}` : '短信未配置',
+            `BPM：${data.bpm.mode === 'mock' ? 'mock 适配层' : data.bpm.mode}`,
+          ])}
+          {block(
+            '来源数据库',
+            data.sourceDb.configured,
+            [
+              data.sourceDb.configured ? `类型 ${data.sourceDb.type || '—'}` : '未配置时同步生成演示数据（channel=demo）',
+              data.sourceDb.lastSyncAt ? `上次同步 ${fmtTime(data.sourceDb.lastSyncAt)} · 新增 ${data.sourceDb.lastCount}` : '尚未同步过',
+              `累计候选人 ${data.sourceDb.totalCandidates}`,
+            ],
+            <div className="mt-2 flex items-center gap-2">
+              <Btn variant="ghost" className="h-8 px-3 text-xs" disabled={!!job} onClick={() => void run(api.adminSync())}>
+                {job ? '同步中…' : '立即同步'}
+              </Btn>
+              {data.sourceDb.lastError && <span className="truncate text-xs text-red-500" title={data.sourceDb.lastError}>上次错误：{data.sourceDb.lastError}</span>}
+            </div>,
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
 
 /** 组内容抽屉：超管从看板钻取查看某组的题库或岗位（只读） */
 function GroupDrawer({ group, kind, onClose }: { group: { groupId: string; groupName: string }; kind: 'bank' | 'jds'; onClose: () => void }) {
@@ -504,6 +594,17 @@ export default function Admin({ me, go }: { me: AuthUser; go: Go }) {
     }
   }
 
+  const toggleRole = async (u: AdminUser) => {
+    const next = u.role === 'interviewer' ? 'hr' : 'interviewer'
+    try {
+      await api.adminSetRole(u.id, next)
+      toast(next === 'interviewer' ? `已将 ${u.name} 设为面试官` : `已将 ${u.name} 设为 HR`)
+      await reload()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '操作失败，请重试')
+    }
+  }
+
   const kw = search.trim().toLowerCase()
   const users = (overview?.users || []).filter((u) => !kw || u.name.toLowerCase().includes(kw) || u.groupName.toLowerCase().includes(kw))
 
@@ -568,6 +669,7 @@ export default function Admin({ me, go }: { me: AuthUser; go: Go }) {
                     {u.name}
                     {u.isSuper && <Chip tone="emerald">超管</Chip>}
                     {u.isAdmin && !u.isSuper && <Chip tone="blue">管理员</Chip>}
+                    {u.role === 'interviewer' && <Chip tone="amber">面试官</Chip>}
                   </div>
                   <div className="truncate text-xs text-slate-400">{u.groupName || '未识别组织'}</div>
                 </div>
@@ -586,6 +688,16 @@ export default function Admin({ me, go }: { me: AuthUser; go: Go }) {
                 <Btn variant="ghost" className="h-8 px-3 text-xs" onClick={() => setGranting(u)}>
                   授权
                 </Btn>
+                <button
+                  type="button"
+                  onClick={() => void toggleRole(u)}
+                  title={u.role === 'interviewer' ? '改回 HR（可看候选人库）' : '设为面试官（只见分配的面试）'}
+                  className={`h-8 cursor-pointer rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 ${
+                    u.role === 'interviewer' ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {u.role === 'interviewer' ? '改回 HR' : '设为面试官'}
+                </button>
                 <button
                   type="button"
                   onClick={() => void toggleAdmin(u)}
@@ -623,6 +735,9 @@ export default function Admin({ me, go }: { me: AuthUser; go: Go }) {
           onSaved={() => void reload()}
         />
       )}
+      </div>
+      <div className="ws-rise" style={rise(3)}>
+        <IntegrationsPanel />
       </div>
     </div>
   )

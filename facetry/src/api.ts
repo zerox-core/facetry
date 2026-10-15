@@ -1,4 +1,19 @@
-import type { AdminOverview, AnalyzePayload, Bank, BankQuestion, BankQuestionInput, DashboardData, DirectoryUser, GeneratedQuestion, Job, JobDescription, JobDescriptionInput, MeResponse, Session, SessionPatch, SessionSummary } from './types'
+import type { AdminOverview, AnalyzePayload, AuthUser, Bank, BankQuestion, BankQuestionInput, Candidate, CandidateRow, DashboardData, DirectoryUser, Feedback, FollowUp, GeneratedQuestion, Integrations, Interview, Job, JobDescription, JobDescriptionInput, Match, MeResponse, Offer, Position, Session, SessionPatch, SessionSummary, Stage, Todos, UserRole } from './types'
+
+/** POST /api/interviews 的请求体 */
+export type NewInterviewInput = {
+  candidateId: string
+  positionId: string
+  round: string
+  mode: 'online' | 'offline'
+  startAt: string
+  endAt: string
+  location: string
+  interviewerIds: string[]
+  notifyEmail: string
+  notifySms: string
+  idempotencyKey: string
+}
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, options)
@@ -14,7 +29,10 @@ const json = (body: unknown): RequestInit => ({
 })
 
 export const api = {
-  status: () => request<{ configured: boolean; feishu: boolean }>('api/status'),
+  status: () => request<{ configured: boolean; feishu: boolean; demo?: boolean }>('api/status'),
+
+  // 演示登录：仅后端 ENABLE_DEMO_LOGIN=true 时可用（status.demo 为 true 才展示入口）
+  demoLogin: (name: string) => request<{ user: AuthUser }>('api/auth/demo', { method: 'POST', ...json({ name }) }),
 
   me: () => request<MeResponse>('api/auth/me'),
 
@@ -93,6 +111,108 @@ export const api = {
 
   adminSetSuper: (userId: string, isSuper: boolean) =>
     request<{ userId: string; super: boolean }>('api/admin/super-admins', { method: 'PUT', ...json({ userId, super: isSuper }) }),
+
+  adminSetRole: (userId: string, role: UserRole) =>
+    request<{ userId: string; role: UserRole }>('api/admin/roles', { method: 'PUT', ...json({ userId, role }) }),
+
+  // ══════════════ 招聘工作台 V2（api-contract-v2.md 第 3 节） ══════════════
+
+  todos: () => request<Todos>('api/todos'),
+
+  listCandidates: (params: { stage?: string; positionId?: string; channel?: string; ownerId?: string; q?: string; verdict?: string; page?: number; size?: number } = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v))
+    const s = qs.toString()
+    return request<{ total: number; candidates: CandidateRow[] }>('api/candidates' + (s ? '?' + s : ''))
+  },
+
+  getCandidate: (id: string) =>
+    request<{ candidate: Candidate; matches: Match[]; followups: FollowUp[]; interviews: Interview[]; offers: Offer[] }>(`api/candidates/${id}`),
+
+  patchCandidate: (id: string, patch: { stage?: Stage; ownerId?: string; nextStep?: string }) =>
+    request<Candidate>(`api/candidates/${id}`, { method: 'PATCH', ...json(patch) }),
+
+  addFollowUp: (id: string, body: { content: string; nextStep?: string }) =>
+    request<FollowUp>(`api/candidates/${id}/followups`, { method: 'POST', ...json(body) }),
+
+  addMatch: (id: string, positionId: string) =>
+    request<Match>(`api/candidates/${id}/matches`, { method: 'POST', ...json({ positionId }) }),
+
+  removeMatch: (id: string, matchId: string) => request<void>(`api/candidates/${id}/matches/${matchId}`, { method: 'DELETE' }),
+
+  screenMatch: (matchId: string) => request<Job>(`api/matches/${matchId}/screen`, { method: 'POST' }),
+
+  resumeText: (id: string) => request<{ text: string }>(`api/candidates/${id}/resume-text`),
+
+  listPositions: (params: { status?: string; q?: string } = {}) => {
+    const qs = new URLSearchParams()
+    if (params.status) qs.set('status', params.status)
+    if (params.q) qs.set('q', params.q)
+    const s = qs.toString()
+    return request<{ positions: Position[] }>('api/positions' + (s ? '?' + s : ''))
+  },
+
+  createPosition: (body: { title: string; city?: string; department?: string; jd: { content: string; requirements?: string; note?: string } }) =>
+    request<Position>('api/positions', { method: 'POST', ...json(body) }),
+
+  getPosition: (id: string) => request<Position>(`api/positions/${id}`),
+
+  patchPosition: (id: string, body: { title?: string; city?: string; department?: string; status?: Position['status']; jd?: { content: string; requirements?: string; note?: string } }) =>
+    request<Position>(`api/positions/${id}`, { method: 'PATCH', ...json(body) }),
+
+  deletePosition: (id: string) => request<void>(`api/positions/${id}`, { method: 'DELETE' }),
+
+  rescreenPosition: (id: string) => request<Job>(`api/positions/${id}/rescreen`, { method: 'POST' }),
+
+  listInterviews: (params: { from?: string; to?: string; candidateId?: string; mine?: boolean } = {}) => {
+    const qs = new URLSearchParams()
+    if (params.from) qs.set('from', params.from)
+    if (params.to) qs.set('to', params.to)
+    if (params.candidateId) qs.set('candidateId', params.candidateId)
+    if (params.mine) qs.set('mine', '1')
+    const s = qs.toString()
+    return request<{ interviews: Interview[] }>('api/interviews' + (s ? '?' + s : ''))
+  },
+
+  createInterview: (body: NewInterviewInput) => request<Interview>('api/interviews', { method: 'POST', ...json(body) }),
+
+  patchInterview: (id: string, body: { action: 'reschedule' | 'cancel' | 'complete'; startAt?: string; endAt?: string; reason?: string }) =>
+    request<Interview>(`api/interviews/${id}`, { method: 'PATCH', ...json(body) }),
+
+  resendInterview: (id: string, channel: 'email' | 'sms') =>
+    request<Interview>(`api/interviews/${id}/resend`, { method: 'POST', ...json({ channel }) }),
+
+  saveFeedback: (id: string, body: { scores?: { dimension: string; score: number }[]; note?: string; conclusion?: string }) =>
+    request<Feedback>(`api/interviews/${id}/feedback`, { method: 'POST', ...json(body) }),
+
+  aiDraftFeedback: (id: string) => request<Job>(`api/interviews/${id}/feedback/ai-draft`, { method: 'POST' }),
+
+  confirmFeedback: (id: string, body: { scores: { dimension: string; score: number }[]; note: string; conclusion: string }) =>
+    request<Feedback>(`api/interviews/${id}/feedback/confirm`, { method: 'POST', ...json(body) }),
+
+  linkInterviewSession: (id: string, sessionId: string) =>
+    request<Interview>(`api/interviews/${id}/link-session`, { method: 'POST', ...json({ sessionId }) }),
+
+  listOffers: (params: { state?: string; q?: string } = {}) => {
+    const qs = new URLSearchParams()
+    if (params.state) qs.set('state', params.state)
+    if (params.q) qs.set('q', params.q)
+    const s = qs.toString()
+    return request<{ offers: Offer[] }>('api/offers' + (s ? '?' + s : ''))
+  },
+
+  createOffer: (body: { candidateId: string; positionId: string; note?: string; materials?: { name: string; ok: boolean }[]; idempotencyKey?: string }) =>
+    request<Offer>('api/offers', { method: 'POST', ...json(body) }),
+
+  getOffer: (id: string) => request<Offer>(`api/offers/${id}`),
+
+  refreshOffer: (id: string) => request<Offer>(`api/offers/${id}/refresh`, { method: 'POST' }),
+
+  cancelOffer: (id: string) => request<Offer>(`api/offers/${id}/cancel`, { method: 'POST' }),
+
+  adminIntegrations: () => request<Integrations>('api/admin/integrations'),
+
+  adminSync: () => request<Job>('api/admin/sync', { method: 'POST' }),
 }
 
 const MAX_SIZE = 20 * 1024 * 1024

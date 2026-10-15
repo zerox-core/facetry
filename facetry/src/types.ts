@@ -1,11 +1,13 @@
 export type Phase = 'prepare' | 'interview' | 'review'
 
-export type AuthUser = { id: string; name: string; avatar?: string; isAdmin?: boolean; isSuper?: boolean }
+export type UserRole = 'hr' | 'interviewer'
+
+export type AuthUser = { id: string; name: string; avatar?: string; role?: UserRole; isAdmin?: boolean; isSuper?: boolean }
 
 /** 飞书组织架构里的最小用户组（最深层部门） */
 export type UserGroup = { id: string; name: string; pathName: string; path: string[] }
 
-export type DirectoryUser = { id: string; name: string; avatar: string; groupName: string }
+export type DirectoryUser = { id: string; name: string; avatar: string; groupName: string; role?: UserRole }
 
 export type MeResponse = { user: AuthUser; groups: UserGroup[] }
 
@@ -97,15 +99,18 @@ export type SessionSummary = Pick<
   jobState?: 'analyze' | 'evaluate' | null
 }
 
-export type JobType = 'analyze' | 'evaluate'
+export type JobType = 'analyze' | 'evaluate' | 'screen' | 'source_sync' | 'feedback_draft' | 'rescreen'
 
 export type Job = {
   id: string
-  sessionId: string
+  /** analyze/evaluate 专用；新业务任务无此字段 */
+  sessionId?: string
   type: JobType
   state: 'running' | 'done' | 'error'
   /** analyze 任务的真实阶段：outline=识别经历 / questions=生成问题 */
   stage?: 'outline' | 'questions'
+  /** 新业务关联对象 id（matchId / offerId / interviewId） */
+  refId?: string
   error?: string
 }
 
@@ -254,4 +259,208 @@ export type DashboardData = {
     avgScore: number | null
     hasEvaluation: boolean
   }[]
+}
+
+// ══════════════ 招聘工作台 V2（api-contract-v2.md 第 1、2、4 节） ══════════════
+
+/** 候选人阶段：新入库/筛选中/待联系/约面中/面评中/待录取/已完成/搁置 */
+export type Stage = 'new' | 'screening' | 'contact' | 'interviewing' | 'evaluating' | 'offer' | 'done' | 'parked'
+
+/** AI 初筛四档判定 */
+export type Verdict = '合适' | '待定' | '不合适' | '信息不足'
+
+export type InterviewStatus = 'scheduled' | 'rescheduled' | 'canceled' | 'completed'
+export type InterviewMode = 'online' | 'offline'
+
+/** 单侧审批状态（飞书审批 / BPM 各自一套）：未发起/已发起/处理中/通过/退回/拒绝/撤销/异常 */
+export type SideState = 'pending' | 'submitted' | 'processing' | 'approved' | 'returned' | 'rejected' | 'canceled' | 'error'
+
+/** 附件：候选人原件 / 平台文件 / 缺失 */
+export type AttachmentKind = 'original' | 'platform' | 'missing'
+
+export type NotifyState = 'pending' | 'sent' | 'failed' | 'skipped'
+
+export type CandidateAttachment = { id: string; name: string; kind: AttachmentKind; url: string }
+
+export type Candidate = {
+  id: string
+  name: string
+  currentPosition: string
+  currentCompany: string
+  expectedCity: string
+  education: string
+  major: string
+  /** -1 表示未识别 */
+  yearsOfExperience: number
+  skills: string[]
+  phone: string
+  email: string
+  channel: string
+  channelName: string
+  /** 来源库唯一标识（幂等键 source+sourceId） */
+  sourceId: string
+  summary: string
+  detailUrl: string
+  stage: Stage
+  ownerId: string
+  ownerName: string
+  /** 下一步动作 */
+  nextStep: string
+  /** url 为 '' 表示缺失 */
+  attachments: CandidateAttachment[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type MatchSummary = { id: string; positionId: string; positionTitle: string; verdict: Verdict | ''; score: number | null; screenedAt: string }
+
+/** 候选人列表项（比详情瘦） */
+export type CandidateRow = Candidate & { matches: MatchSummary[] }
+
+/** 候选人 × 岗位 匹配（AI 初筛结论，独立于人） */
+export type Match = {
+  id: string
+  candidateId: string
+  positionId: string
+  positionTitle: string
+  verdict: Verdict
+  score: number
+  /** ≤30字 */
+  reason: string
+  hits: string[]
+  misses: string[]
+  /** 一句话评估 */
+  aiSummary: string
+  concerns: string[]
+  /** 评估时引用的 JD 版本号 */
+  jdVersion: number
+  jdSnapshot: { title: string; city: string; content: string; requirements: string; note: string }
+  screenedAt: string
+  jobState: 'screen' | null
+}
+
+export type PositionJd = { version: number; content: string; requirements: string; note: string; updatedAt: string }
+
+export type Position = {
+  id: string
+  title: string
+  city: string
+  department: string
+  status: 'open' | 'paused' | 'closed'
+  /** 当前 JD */
+  jd: PositionJd
+  /** 详情接口才有 */
+  versions: { version: number; updatedAt: string; updatedBy: string }[]
+  /** 列表接口才有 */
+  stats: { total: number; byStage: Partial<Record<Stage, number>> }
+  createdAt: string
+  updatedAt: string
+}
+
+export type FollowUp = {
+  id: string
+  candidateId: string
+  userId: string
+  userName: string
+  content: string
+  nextStep: string
+  createdAt: string
+}
+
+export type Feedback = {
+  interviewId: string
+  interviewerId: string
+  interviewerName: string
+  /** 1-5 分 */
+  scores: { dimension: string; score: number }[]
+  note: string
+  conclusion: '通过' | '待定' | '不通过' | ''
+  /** AI 辅助生成的评价草稿（未确认前可编辑） */
+  aiDraft: string
+  /** '' 表示未确认 */
+  confirmedAt: string
+  /** 关联的面试助手评审会话（可空） */
+  sessionId: string
+  updatedAt: string
+}
+
+export type Interview = {
+  id: string
+  candidateId: string
+  candidateName: string
+  positionId: string
+  positionTitle: string
+  /** 一面 / 二面 / HR 面 ... */
+  round: string
+  mode: InterviewMode
+  startAt: string
+  endAt: string
+  /** 线下地点或说明 */
+  location: string
+  /** 线上会议链接（飞书创建成功后有值） */
+  meetingUrl: string
+  interviewers: { id: string; name: string }[]
+  status: InterviewStatus
+  notify: {
+    email: { state: NotifyState; error: string }
+    sms: { state: NotifyState; error: string }
+    feishu: { state: NotifyState; eventId: string; error: string }
+  }
+  feedback: Feedback | null
+  history: { at: string; action: string; detail: string; by: string }[]
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type OfferSide = { state: SideState; instanceId: string; updatedAt: string; error: string }
+export type OfferBpm = { state: SideState; processId: string; updatedAt: string; error: string }
+
+export type Offer = {
+  id: string
+  candidateId: string
+  candidateName: string
+  positionId: string
+  positionTitle: string
+  note: string
+  /** 申请材料核对清单 */
+  materials: { name: string; ok: boolean }[]
+  feishu: OfferSide
+  bpm: OfferBpm
+  /** 汇总：全部通过=approved；任一中途态=processing；退回/拒绝/撤销/异常优先暴露 */
+  overall: SideState
+  history: { at: string; side: 'feishu' | 'bpm' | 'system'; action: string; detail: string }[]
+  createdBy: string
+  createdByName: string
+  createdAt: string
+  updatedAt: string
+}
+
+// —— 待办工作台 ——
+export type TodoScreenItem = { matchId: string; candidateId: string; candidateName: string; positionTitle: string; verdict: Verdict | ''; createdAt: string }
+export type TodoContactItem = { candidateId: string; candidateName: string; stage: Stage; updatedAt: string }
+export type TodoOfferUpdate = { offerId: string; candidateName: string; side: 'feishu' | 'bpm'; state: SideState; updatedAt: string }
+
+export type Todos = {
+  /** 我负责的、已关联岗位但未初筛或 JD 已更新的候选人 */
+  toScreen: TodoScreenItem[]
+  /** 阶段为「待联系」 */
+  toContact: TodoContactItem[]
+  /** 未来 7 天我参与/创建的面试 */
+  upcomingInterviews: Interview[]
+  /** 已结束未填面评的面试 */
+  toFeedback: Interview[]
+  /** 近 14 天我发起的审批状态变化 */
+  offerUpdates: TodoOfferUpdate[]
+}
+
+// —— 管理 · 集成与同步 ——
+export type Integrations = {
+  llm: { configured: boolean; model: string }
+  feishu: { configured: boolean; calendar: boolean; approval: boolean }
+  minio: { configured: boolean; mode: string }
+  smtp: { configured: boolean }
+  sms: { configured: boolean; provider: string }
+  bpm: { mode: string }
+  sourceDb: { configured: boolean; type: string; lastSyncAt: string; lastError: string; lastCount: number; totalCandidates: number }
 }

@@ -13,9 +13,9 @@ export function SectionHead({ title, sub }: { title: string; sub?: string }) {
   )
 }
 
-export function Card({ children, className = '', style }: { children: ReactNode; className?: string; style?: CSSProperties }) {
+export function Card({ children, className = '', style, onClick }: { children: ReactNode; className?: string; style?: CSSProperties; onClick?: () => void }) {
   return (
-    <div className={`ws-paper rounded-xl ${className}`} style={style}>
+    <div className={`ws-paper rounded-xl ${className}`} style={style} onClick={onClick}>
       {children}
     </div>
   )
