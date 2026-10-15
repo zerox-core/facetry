@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { resumes } from '../data'
 import { can, commit, confirmReview, currentUser, elapsedOf, findC, liveChannel, pickedOf, rooms, save, submitEvaluation, type Rec, type Review, type Room, type Talk } from '../store'
 import { canTranscribe, clock, readFile, uid, useVoice } from '../voice'
@@ -18,8 +18,8 @@ const newRoom = (): Room => ({ recs: {}, sec: 0, verdict: '', summary: '' })
 /** 候选人画面：演示环境以头像 + 说话动效代替，正式版走 WebRTC 视频 */
 function PeerView({ name, peer, talking, big = false }: { name: string; peer: boolean; talking: boolean; big?: boolean }) {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-[#141c2b] text-white">
-      <Speaker name={name} speaking={talking} size={big ? 'h-32 w-32 text-4xl' : 'h-14 w-14 text-xl'} tone={peer ? 'bg-amber-400 text-[#1d2939]' : 'bg-white/15 text-white'} />
+    <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-black text-white">
+      <Speaker name={name} speaking={talking} size={big ? 'h-32 w-32 text-4xl' : 'h-14 w-14 text-xl'} tone={peer ? 'bg-warning text-warning-content' : 'bg-white/15 text-white'} />
       <div className={`text-white/70 ${big ? 'text-base' : 'text-xs'}`}>{peer ? `候选人 ${name}${talking ? ' · 正在说话' : ''}` : '等待候选人进入'}</div>
     </div>
   )
@@ -31,7 +31,7 @@ function SelfView({ stream, label }: { stream: MediaStream | null; label: string
   useEffect(() => { if (ref.current) ref.current.srcObject = stream }, [stream])
   if (!stream) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[#141c2b] text-white">
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black text-white">
         <span className="grid h-12 w-12 place-items-center rounded-full bg-white/15 text-lg font-semibold">王</span>
         <span className="px-2 text-center text-xs text-white/50">{label} · 摄像头不可用</span>
       </div>
@@ -330,7 +330,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   // 找不到候选人时给出空态（findC 找不到返回 undefined），避免把面试间静默绑到其他候选人
   if (!c) {
     return (
-      <div className="grid h-full min-h-[320px] place-items-center bg-black text-sm text-white/70">
+      <div className="grid h-full min-h-[320px] place-items-center bg-base-200 text-sm text-base-content/70">
         未找到候选人 {cid} 的记录，可能已被来源库标记失效。
       </div>
     )
@@ -366,16 +366,16 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   // 对话面板：小窗 / 收起 / 全屏都常驻，不等候选人进入
   const talkPanel = (dark = false) => (
     <>
-      <div className={`flex h-12 shrink-0 items-center gap-2.5 border-b px-4 ${dark ? 'border-white/10' : 'border-slate-200'}`}>
-        <Speaker name="王" speaking={micOn && voice.speaking} size="h-7 w-7 text-xs" tone={dark ? 'bg-amber-400 text-[#1d2939]' : 'bg-[#1d2939] text-white'} />
-        <Speaker name={c.name} speaking={peerTalking} size="h-7 w-7 text-xs" tone={peer ? 'bg-amber-400 text-[#1d2939]' : dark ? 'bg-white/15 text-white' : 'bg-slate-200 text-slate-500'} />
-        <span className={`min-w-0 flex-1 truncate text-xs ${dark ? 'text-white/50' : 'text-slate-500'}`}>{paused ? '已暂停 · 记录挂起' : done ? '面试已结束' : !micOn ? '仅记录候选人' : shared ? (peer ? '双方发言自动转写' : '等待候选人进入') : '记录面试官语音'}</span>
-        {voice.status === 'on' && micOn && <VoiceBars level={voice.level} on className={dark ? 'bg-emerald-400' : 'bg-emerald-600'} />}
+      <div className={`flex h-12 shrink-0 items-center gap-3.5 border-b px-4 ${dark ? 'border-white/10' : 'border-base-300'}`}>
+        <Speaker name="王" speaking={micOn && voice.speaking} size="h-7 w-7 text-xs" tone={dark ? 'bg-warning text-warning-content' : 'bg-base-content text-base-100'} />
+        <Speaker name={c.name} speaking={peerTalking} size="h-7 w-7 text-xs" tone={peer ? 'bg-warning text-warning-content' : dark ? 'bg-white/15 text-white' : 'bg-base-300 text-base-content/60'} />
+        <span className={`min-w-0 flex-1 truncate text-xs ${dark ? 'text-white/50' : 'text-base-content/60'}`}>{paused ? '已暂停 · 记录挂起' : done ? '面试已结束' : !micOn ? '仅记录候选人' : shared ? (peer ? '双方发言自动转写' : '等待候选人进入') : '记录面试官语音'}</span>
+        {voice.status === 'on' && micOn && <VoiceBars level={voice.level} on className="bg-accent" />}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <TalkList items={talk} me="面试官" interim={interim} dark={dark} empty={canTranscribe ? '开口说话即可自动记录，转写会实时出现在这里' : '当前浏览器不支持语音转写，可用文字补充记录'} />
       </div>
-      <div className={`shrink-0 p-3 ${dark ? '' : 'border-t border-slate-100'}`}>
+      <div className={`shrink-0 p-3 ${dark ? '' : 'border-t border-base-300'}`}>
         {!locked && <Composer onText={(text) => addTalk({ id: uid(), who: '面试官', kind: 'text', text, t: clock() })} onFiles={files} dark={dark} placeholder={shared ? '发送给候选人…' : '补充记录，例如候选人的回答…'} />}
       </div>
     </>
@@ -384,126 +384,132 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
   return (
     <div className="ws-canvas flex h-screen flex-col">
       {/* 沉浸式专业考场顶栏 (High-Density Dark Pro HUD) */}
-      <header className="flex h-16 shrink-0 items-center justify-between gap-4 px-6 bg-[#16191f] text-white border-b border-white/10 shadow-lg z-30">
+      <header className="flex h-16 shrink-0 items-center justify-between gap-5 px-6 bg-base-100 text-base-content border-b border-base-content/10 shadow-lg z-30">
         {/* 左侧：返回与候选人/岗位基本盘 */}
-        <div className="flex items-center gap-4 min-w-[280px]">
+        <div className="flex items-center gap-5 min-w-[280px]">
           <button
             onClick={tryLeave}
-            className="cursor-pointer text-xs font-medium text-white/70 hover:text-white px-2 py-1 rounded-lg hover:bg-white/10 transition-colors"
+            className="cursor-pointer motion-pop text-xs font-medium text-base-content/70 hover:text-base-content px-2 py-1 rounded-lg hover:bg-base-content/10 transition-colors"
           >
             ← 挂起返回
           </button>
-          <span className="h-5 w-px bg-white/15" />
-          <div className="flex items-center gap-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber-400 to-amber-500 text-sm font-bold text-[#1d2939] shadow-xs">
+          <span className="h-5 w-px bg-base-content/15" />
+          <div className="flex items-center gap-4">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-warning text-sm font-bold text-warning-content">
               {c.name[0]}
             </span>
             <div className="leading-tight">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white">{c.name}</span>
-                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/90">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-base-content">{c.name}</span>
+                <span className="rounded bg-base-content/10 px-1.5 py-0.5 text-[10px] font-medium text-base-content/90">
                   {c.round}
                 </span>
-                <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] text-emerald-300">
+                <span className="rounded bg-success/20 px-1.5 py-0.5 text-[10px] text-success">
                   {c.status}
                 </span>
               </div>
-              <div className="mt-1 flex items-center gap-2 text-xs text-white/60">
+              <div className="mt-1 flex items-center gap-3 text-xs text-base-content/60">
                 <span>{c.role}</span>
                 <span>·</span>
-                <span className="text-white/45">标尺: {c.jdId}</span>
+                <span className="text-base-content/50">标尺: {c.jdId}</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* 中间：实时考场出题进度与打分 HUD */}
-        <div className="hidden lg:flex items-center gap-6 rounded-xl bg-white/[0.06] border border-white/10 px-4 py-2 text-xs">
-          <div className="flex items-center gap-2.5">
-            <span className="text-white/60">试题进度:</span>
-            <div className="flex items-center gap-1.5">
+        <div className="hidden lg:flex items-center gap-7 rounded-xl bg-base-content/5 border border-base-content/10 px-4 py-2 text-xs">
+          <div className="flex items-center gap-3.5">
+            <span className="text-base-content/60">试题进度:</span>
+            <div className="flex items-center gap-2.5">
               <button
                 disabled={idx <= 0}
                 onClick={() => move(idx - 1)}
-                className="cursor-pointer text-white/60 hover:text-white disabled:opacity-30 disabled:cursor-default"
+                aria-label="上一题"
+                className="cursor-pointer motion-pop text-base-content/60 hover:text-base-content disabled:opacity-30 disabled:cursor-default"
               >
                 ‹
               </button>
-              <span className="font-bold text-white tabular-nums">
+              <span className="font-bold text-base-content tabular-nums">
                 {idx + 1} / {qs.length}
               </span>
               <button
                 disabled={idx >= qs.length - 1}
                 onClick={() => move(idx + 1)}
-                className="cursor-pointer text-white/60 hover:text-white disabled:opacity-30 disabled:cursor-default"
+                aria-label="下一题"
+                className="cursor-pointer motion-pop text-base-content/60 hover:text-base-content disabled:opacity-30 disabled:cursor-default"
               >
                 ›
               </button>
             </div>
-            <div className="h-1.5 w-20 rounded-full bg-white/15 overflow-hidden ml-1">
+            <div className="h-1.5 w-20 rounded-full bg-base-content/10 overflow-hidden ml-1">
               <div
-                className="h-full rounded-full bg-white transition-all"
+                className="motion-meter h-full rounded-full bg-accent"
                 style={{ width: `${((idx + 1) / qs.length) * 100}%` }}
               />
             </div>
           </div>
 
-          <span className="h-3.5 w-px bg-white/15" />
+          <span className="h-3.5 w-px bg-base-content/15" />
 
-          <div className="flex items-center gap-2">
-            <span className="text-white/60">已评/均分:</span>
-            <span className="font-bold text-emerald-400 tabular-nums">
+          <div className="flex items-center gap-3">
+            <span className="text-base-content/60">已评/均分:</span>
+            <span className="font-bold text-success tabular-nums">
               {scored}/{qs.length} 题
             </span>
             {scored > 0 && (
-              <span className="rounded bg-emerald-500/20 px-1.5 py-0.2 text-[10px] text-emerald-300">
+              <span className="rounded bg-success/20 px-1.5 py-0.2 text-[10px] text-success">
                 {avg.toFixed(1)}分
               </span>
             )}
           </div>
 
-          <span className="h-3.5 w-px bg-white/15" />
+          <span className="h-3.5 w-px bg-base-content/15" />
 
-          <div className="flex items-center gap-1.5 text-white/70">
+          <div className="flex items-center gap-2.5 text-base-content/70">
             <span>当前考核:</span>
-            <span className="rounded bg-white/10 px-2 py-0.5 text-white font-medium">
+            <span className="rounded bg-base-content/10 px-2 py-0.5 text-base-content font-medium">
               {q?.topic || '综合'}
             </span>
           </div>
         </div>
 
         {/* 右侧：计时器、ASR、连线与主行动按钮 */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           {/* 计时器 */}
           <button
             onClick={togglePause}
             disabled={locked || done || !entered}
             title={paused ? '继续计时' : '暂停计时'}
-            className="flex cursor-pointer items-center gap-2 rounded-xl bg-white/10 border border-white/10 px-3 py-1.5 text-xs tabular-nums text-white hover:bg-white/15 transition-colors disabled:opacity-50"
+            aria-label={paused ? '继续计时' : '暂停计时'}
+            className="flex cursor-pointer motion-pop items-center gap-3 rounded-xl bg-base-content/10 border border-base-content/10 px-3 py-1.5 text-xs tabular-nums text-base-content hover:bg-base-content/15 transition-colors disabled:opacity-50"
           >
-            <span className={`h-2 w-2 rounded-full ${paused || done || !entered ? 'bg-white/30' : 'animate-pulse bg-red-400'}`} />
+            <span className={`h-2 w-2 rounded-full ${paused || done || !entered ? 'bg-base-content/20' : 'animate-pulse bg-accent'}`} />
             <span className="font-mono font-semibold">{mmss(elapsed)}</span>
-            <span className="text-white/50 text-[11px]">{paused ? '继续' : '暂停'}</span>
+            <span className="text-base-content/50 text-[11px]">{paused ? '继续' : '暂停'}</span>
           </button>
 
           {/* 实时语音 ASR */}
           <button
             onClick={() => setMicOn(!micOn)}
             disabled={locked || done || !entered}
-            className="hidden sm:flex cursor-pointer items-center gap-2 rounded-xl bg-white/10 border border-white/10 px-2.5 py-1.5 text-xs text-white/90 hover:bg-white/15 transition-colors disabled:opacity-50"
+            className="hidden sm:flex cursor-pointer motion-pop items-center gap-3 rounded-xl bg-base-content/10 border border-base-content/10 px-2.5 py-1.5 text-xs text-base-content/90 hover:bg-base-content/15 transition-colors disabled:opacity-50"
             title="麦克风与实时 ASR 转写"
+            aria-label={micLabel}
           >
             <VoiceBars level={micOn ? voice.level : 0} on={micOn && voice.status === 'on'} />
             <span className="hidden xl:inline">{micLabel}</span>
+            <span className="xl:hidden">{micOn && voice.status === 'on' ? '录音中' : '录音关'}</span>
           </button>
 
           {/* 摄像头开关 */}
           <button
             onClick={() => setCamOn(!camOn)}
+            aria-label={camOn ? '关闭摄像头' : '开启摄像头'}
             disabled={locked || !entered}
-            className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-white/10 border border-white/10 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/15 transition-colors disabled:opacity-50"
+            className="flex cursor-pointer motion-pop items-center gap-2.5 rounded-xl bg-base-content/10 border border-base-content/10 px-2.5 py-1.5 text-xs text-base-content/80 hover:bg-base-content/15 transition-colors disabled:opacity-50"
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${camOn ? 'bg-emerald-400' : 'bg-white/30'}`} />
+            <span className={`h-1.5 w-1.5 rounded-full ${camOn ? 'bg-accent' : 'bg-base-content/20'}`} />
             摄像头{camOn ? '开' : '关'}
           </button>
 
@@ -511,10 +517,10 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
           <div className="relative">
             <button
               onClick={() => setShareOpen(!shareOpen)}
-              className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-1.5 text-xs transition-colors ${
+              className={`flex cursor-pointer motion-pop items-center gap-3 rounded-xl border px-3 py-1.5 text-xs transition-colors ${
                 shared
-                  ? 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200'
-                  : 'border-white/15 bg-white/10 text-white hover:bg-white/15'
+                  ? 'border-success/40 bg-success/15 text-success'
+                  : 'border-base-content/15 bg-base-content/10 text-base-content hover:bg-base-content/15'
               }`}
             >
               {shared ? (
@@ -523,7 +529,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                     name={c.name}
                     speaking={peerTalking}
                     size="h-4 w-4 text-[9px]"
-                    tone={peer ? 'bg-emerald-400 text-[#1d2939]' : 'bg-white/20 text-white'}
+                    tone={peer ? 'bg-success text-success-content' : 'bg-base-content/10 text-base-content/50'}
                   />
                   <span>{peer ? '候选人在线' : '等待连线'}</span>
                 </>
@@ -533,17 +539,17 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
             </button>
 
             {shareOpen && (
-              <div className="login-fade absolute right-0 top-full z-40 mt-2 w-[340px] rounded-xl bg-white p-4 text-slate-800 shadow-2xl">
-                <div className="text-sm font-semibold text-slate-900">候选人协同链接</div>
-                <p className="mt-1 text-xs text-slate-500">
+              <div className="login-fade absolute right-0 top-full z-40 mt-2 w-[340px] rounded-xl border border-base-300 bg-base-100 p-4 text-base-content shadow-[var(--shadow-lift)]">
+                <div className="text-sm font-semibold text-base-content">候选人协同链接</div>
+                <p className="mt-1 text-xs text-base-content/60">
                   候选人打开此链接后，双方语音自动转写，仅能看到题干与对话，隐藏所有打分。
                 </p>
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex gap-3">
                   <input
                     readOnly
                     value={link}
                     onFocus={(e) => e.target.select()}
-                    className="h-8 min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs text-slate-600 outline-none"
+                    className="h-8 min-w-0 flex-1 rounded-lg border border-base-300 bg-base-200 px-2.5 text-xs text-base-content/70 outline-none"
                   />
                   <Btn className="!h-8 !px-3" onClick={copy}>
                     {copied ? '已复制' : '复制'}
@@ -555,7 +561,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                       share()
                       window.open(link, 'facetry-join')
                     }}
-                    className="cursor-pointer font-medium text-[#1d1d1f] hover:underline"
+                    className="cursor-pointer motion-pop font-medium text-base-content hover:underline"
                   >
                     候选人视角打开 ↗
                   </button>
@@ -565,7 +571,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                         setShared(false)
                         setPeer(false)
                       }}
-                      className="cursor-pointer text-slate-400 hover:text-slate-700"
+                      className="cursor-pointer motion-pop text-base-content/50 hover:text-base-content/80"
                     >
                       停止分享
                     </button>
@@ -587,13 +593,13 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
           )}
 
           {/* 模式切换 (小窗 / 全屏 / 隐藏) */}
-          <div className="flex rounded-xl bg-white/10 p-0.5 border border-white/10">
+          <div className="flex rounded-xl bg-base-content/10 p-0.5 border border-base-content/10">
             {([['win', '小窗'], ['full', '全屏'], ['min', '收起']] as const).map(([k, label]) => (
               <button
                 key={k}
                 onClick={() => setMode(k)}
-                className={`px-2 py-1 cursor-pointer rounded-lg text-xs transition-colors ${
-                  mode === k ? 'bg-white/20 text-white font-semibold' : 'text-white/60 hover:text-white'
+                className={`px-2 py-1 cursor-pointer motion-pop rounded-lg text-xs transition-colors ${
+                  mode === k ? 'bg-base-content text-base-100 font-semibold' : 'text-base-content/60 hover:text-base-content'
                 }`}
               >
                 {label}
@@ -605,7 +611,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
 
       {mode === 'full' ? (
         /* 全屏面对面：候选人画面为主，右侧常驻对话面板；开着摄像头时右下角有自己的画面，可互换主画面 */
-        <div className="flex min-h-0 flex-1 bg-[#0f1622]">
+        <div className="flex min-h-0 flex-1 bg-base-200">
           <div className="relative min-w-0 flex-1">
             {fullView === 'self' && camOn ? <SelfView stream={camStream} label="我（面试官）" /> : <PeerView name={c.name} peer={peer} talking={peerTalking} big />}
             {camOn && (
@@ -613,39 +619,39 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                 {fullView === 'self' ? <PeerView name={c.name} peer={peer} talking={peerTalking} /> : <SelfView stream={camStream} label="我（面试官）" />}
               </div>
             )}
-            <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-3">
+            <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-4">
               <span className="text-sm text-white/50">全屏面对面 · 简历与题目已隐藏</span>
-              {camOn && <button onClick={() => setFullView(fullView === 'peer' ? 'self' : 'peer')} className="ws-press cursor-pointer rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/15">{fullView === 'peer' ? '看我的画面' : '看候选人'}</button>}
-              <button onClick={() => setMode('win')} className="ws-press cursor-pointer rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/15">返回小窗</button>
+              {camOn && <button onClick={() => setFullView(fullView === 'peer' ? 'self' : 'peer')} className="cursor-pointer motion-pop rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/15">{fullView === 'peer' ? '看我的画面' : '看候选人'}</button>}
+              <button onClick={() => setMode('win')} className="cursor-pointer motion-pop rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/15">返回小窗</button>
             </div>
           </div>
-          <aside className="flex w-96 shrink-0 flex-col bg-[#141c2b] text-white">
+          <aside className="flex w-96 shrink-0 flex-col bg-base-content text-base-100">
             {talkPanel(true)}
           </aside>
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           {/* 左：可交互简历 */}
-          <section className={`flex min-h-0 flex-col border-slate-200 transition-[flex-basis] duration-300 lg:border-r ${wide ? 'lg:basis-[52%]' : 'lg:basis-[34%]'} h-1/2 shrink-0 lg:h-auto`}>
-            <div className="flex h-12 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5">
-              <span className="text-sm font-semibold text-slate-900">简历</span>
-              <div className="flex rounded-md bg-slate-100 p-0.5 text-[13px]">
+          <section className={`flex min-h-0 flex-col border-base-300 transition-[flex-basis] duration-300 lg:border-r ${wide ? 'lg:basis-[52%]' : 'lg:basis-[34%]'} h-1/2 shrink-0 lg:h-auto`}>
+            <div className="flex h-12 shrink-0 items-center gap-4 border-b border-base-300 bg-base-100 px-5">
+              <span className="text-sm font-semibold text-base-content">简历</span>
+              <div className="flex rounded-md bg-base-200 p-0.5 text-[13px]">
                 {([['all', '全部标注'], ['hi', '亮点'], ['risk', '疑点']] as const).map(([k, t]) => (
-                  <button key={k} onClick={() => setFilter(k)} className={`cursor-pointer rounded px-2.5 py-1 transition ${filter === k ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-                    {t}<span className="ml-1 tabular-nums text-slate-400">{count[k]}</span>
+                  <button key={k} onClick={() => setFilter(k)} className={`cursor-pointer motion-pop rounded px-2.5 py-1 transition ${filter === k ? 'border border-base-300 bg-base-100 font-medium text-base-content' : 'text-base-content/60 hover:text-base-content'}`}>
+                    {t}<span className="ml-1 tabular-nums text-base-content/50">{count[k]}</span>
                   </button>
                 ))}
               </div>
-              <button onClick={() => setWide(!wide)} className="ml-auto hidden cursor-pointer text-sm text-slate-500 hover:text-slate-900 lg:block">{wide ? '还原' : '放大简历'}</button>
+              <button onClick={() => setWide(!wide)} className="ml-auto hidden cursor-pointer motion-pop text-sm text-base-content/60 hover:text-base-content lg:block">{wide ? '还原' : '放大简历'}</button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
               {!cover && <div className="mx-auto max-w-[640px] ws-paper rounded-xl px-5 py-4">
                 <div className="flex items-baseline justify-between">
-                  <span className="text-sm font-semibold text-slate-900">自动分析</span>
-                  <span className="text-sm text-slate-500">岗位匹配 <b className="font-semibold tabular-nums text-slate-900">{c.match}%</b></span>
+                  <span className="text-sm font-semibold text-base-content">自动分析</span>
+                  <span className="text-sm text-base-content/60">岗位匹配 <b className="font-semibold tabular-nums text-base-content">{c.match}%</b></span>
                 </div>
-                <p className="mt-1.5 text-sm leading-6 text-slate-600">{c.summary}</p>
-                <p className="mt-2 text-xs text-slate-400">点击带标注的段落，右侧跳到对应题目</p>
+                <p className="mt-1.5 text-sm leading-6 text-base-content/70">{c.summary}</p>
+                <p className="mt-2 text-xs text-base-content/50">点击带标注的段落，右侧跳到对应题目</p>
               </div>}
               <div className="mx-auto mt-4 max-w-[640px] overflow-hidden ws-paper rounded-xl">
                 <ResumeDoc c={c} active={done ? undefined : q?.id} onPick={pick} filter={cover ? 'none' : filter} />
@@ -654,20 +660,20 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
           </section>
 
           {/* 中：提问与记录 */}
-          <section className="flex min-h-0 flex-1 flex-col bg-[#fffdf9]">
-            <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 px-4">
+          <section className="flex min-h-0 flex-1 flex-col bg-base-100">
+            <nav className="stagger flex shrink-0 gap-2 overflow-x-auto border-b border-base-300 px-4">
               {qs.map((x, i) => {
                 const cur = !done && i === idx
                 const s = recs[x.id]?.score
                 const missing = miss === 'questions' && !s
                 return (
-                  <button key={x.id} onClick={() => move(i)} className={`relative flex shrink-0 cursor-pointer items-center gap-2 px-3 py-3.5 text-sm transition-colors duration-150 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-amber-400 after:transition-transform after:duration-300 ${cur ? 'text-slate-900 after:scale-x-100' : 'text-slate-500 after:scale-x-0 hover:text-slate-800'}`}>
-                    <span className={`grid h-5 w-5 place-items-center rounded-full text-[11px] tabular-nums ${s ? 'bg-[#1d1d1f] text-white shadow-2xs' : missing ? 'bg-amber-400 text-[#1d2939]' : cur ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>{s ?? i + 1}</span>
+                  <button key={x.id} onClick={() => move(i)} style={{ '--i': Math.min(i, 7) } as CSSProperties} className={`relative flex shrink-0 cursor-pointer motion-pop items-center gap-3 px-3 py-3.5 text-sm transition-colors duration-150 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent after:transition-transform after:duration-300 ${cur ? 'text-base-content after:scale-x-100' : 'text-base-content/60 after:scale-x-0 hover:text-base-content'}`}>
+                    <span className={`grid h-5 w-5 place-items-center rounded-full text-[11px] tabular-nums ${s ? 'bg-base-content text-base-100' : missing ? 'bg-warning text-warning-content' : cur ? 'bg-accent text-accent-content' : 'bg-base-200 text-base-content/60'}`}>{s ?? i + 1}</span>
                     <span className={cur ? 'font-medium' : ''}>{x.topic}</span>
                   </button>
                 )
               })}
-              <button onClick={askEnd} className={`relative ml-auto shrink-0 cursor-pointer px-3 py-3.5 text-sm ${done ? 'font-medium text-slate-900 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-amber-400' : 'text-slate-500 hover:text-slate-800'}`}>评价</button>
+              <button onClick={askEnd} className={`relative ml-auto shrink-0 cursor-pointer motion-pop px-3 py-3.5 text-sm ${done ? 'font-medium text-base-content after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-accent' : 'text-base-content/60 hover:text-base-content'}`}>评价</button>
             </nav>
 
             <div ref={right} className="min-h-0 flex-1 overflow-y-auto">
@@ -680,26 +686,26 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                   />
                 ) : (
                 <div key={idx} className="ws-rise mx-auto max-w-[760px] px-8 py-8">
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <div className="flex items-center gap-3 text-sm text-base-content/60">
                     <span className="tabular-nums">第 {idx + 1} / {qs.length} 题</span><span>·</span><span>{q.diff}</span><span>·</span><span className="tabular-nums">本题 {mmss(rec.secs)}</span>
                   </div>
-                  <h1 className="mt-3 text-[22px] font-semibold leading-[1.5] text-slate-900">{q.q}</h1>
-                  <p className="mt-3 inline-flex items-center gap-2 rounded-md bg-black/[0.04] px-2.5 py-1 text-sm text-[#1d1d1f] border border-black/10 font-medium">出题依据 · {q.basis}</p>
+                  <h1 className="mt-3 text-[22px] font-semibold leading-[1.5] text-base-content">{q.q}</h1>
+                  <p className="mt-3 inline-flex items-center gap-3 rounded-md bg-base-content/5 px-2.5 py-1 text-sm text-base-content border border-base-content/10 font-medium">出题依据 · {q.basis}</p>
 
-                  <div className="mt-8 grid gap-6 md:grid-cols-2">
+                  <div className="mt-8 grid gap-7 md:grid-cols-2">
                     <div>
                       <div className="flex items-baseline justify-between">
-                        <h2 className="text-[15px] font-semibold text-slate-900">考察要点</h2>
-                        <span className="text-xs tabular-nums text-slate-400">命中 {rec.hit.length}/{q.points.length}</span>
+                        <h2 className="text-[15px] font-semibold text-base-content">考察要点</h2>
+                        <span className="text-xs tabular-nums text-base-content/50">命中 {rec.hit.length}/{q.points.length}</span>
                       </div>
-                      {!q.points.length && <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-3 py-2.5 text-sm text-slate-400">手动添加的题目，未设置考察要点</p>}
-                      <ul className="mt-3 space-y-2">
-                        {q.points.map((p) => {
+                      {!q.points.length && <p className="mt-3 rounded-lg border border-dashed border-base-300 px-3 py-2.5 text-sm text-base-content/50">手动添加的题目，未设置考察要点</p>}
+                      <ul className="stagger mt-3 space-y-3">
+                        {q.points.map((p, i) => {
                           const on = rec.hit.includes(p)
                           return (
-                            <li key={p}>
-                              <button onClick={() => flip('hit', p)} className={`flex w-full cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-left text-sm leading-6 transition ${on ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 text-slate-700 hover:border-slate-300'}`}>
-                                <span className={`mt-1 grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] ${on ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300'}`}>{on ? '✓' : ''}</span>{p}
+                            <li key={p} style={{ '--i': Math.min(i, 7) } as CSSProperties}>
+                              <button onClick={() => flip('hit', p)} className={`flex w-full cursor-pointer motion-pop items-start gap-4 rounded-lg border px-3 py-2.5 text-left text-sm leading-6 transition ${on ? 'border-success/50 bg-success/15 text-success' : 'border-base-300 text-base-content/80 hover:border-base-content/25'}`}>
+                                <span className={`mt-1 grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] ${on ? 'border-success bg-success text-success-content' : 'border-base-content/30'}`}>{on ? '✓' : ''}</span>{p}
                               </button>
                             </li>
                           )
@@ -707,95 +713,95 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                       </ul>
                     </div>
                     <div>
-                      <h2 className="text-[15px] font-semibold text-slate-900">追问</h2>
-                      {!q.follow?.length && <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-400">暂无预设追问</p>}
-                      <ul className="mt-3 space-y-2">
-                        {(q.follow ?? []).map((f) => {
+                      <h2 className="text-[15px] font-semibold text-base-content">追问</h2>
+                      {!q.follow?.length && <p className="mt-3 rounded-lg bg-base-200 px-3 py-2.5 text-sm text-base-content/50">暂无预设追问</p>}
+                      <ul className="stagger mt-3 space-y-3">
+                        {(q.follow ?? []).map((f, i) => {
                           const on = rec.asked.includes(f)
                           return (
-                            <li key={f}>
-                              <button onClick={() => flip('asked', f)} className={`flex w-full cursor-pointer items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5 text-left text-sm leading-6 transition hover:bg-slate-100 ${on ? 'text-slate-400' : 'text-slate-800'}`}>
-                                <span>{f}</span><span className="shrink-0 text-xs text-slate-400">{on ? '已问' : '标记已问'}</span>
+                            <li key={f} style={{ '--i': Math.min(i, 7) } as CSSProperties}>
+                              <button onClick={() => flip('asked', f)} className={`flex w-full cursor-pointer motion-pop items-start justify-between gap-4 rounded-lg bg-base-200 px-3 py-2.5 text-left text-sm leading-6 transition hover:bg-base-content/10 ${on ? 'text-base-content/50' : 'text-base-content'}`}>
+                                <span>{f}</span><span className="shrink-0 text-xs text-base-content/50">{on ? '已问' : '标记已问'}</span>
                               </button>
                             </li>
                           )
                         })}
                       </ul>
-                      {!cover && q.flag && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5 text-sm leading-6 text-amber-900"><b className="font-medium">减分信号</b>　{q.flag}</p>}
+                      {!cover && q.flag && <p className="mt-3 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2.5 text-sm leading-6 text-warning"><b className="font-medium">减分信号</b>　{q.flag}</p>}
                     </div>
                   </div>
 
-                  {!cover && q.answer && <div className="mt-6 rounded-lg border border-slate-200">
-                    <button onClick={() => setShowAns(!showAns)} className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-sm font-medium text-slate-700">参考答案<span className="text-slate-400">{showAns ? '收起' : '展开'}</span></button>
-                    {showAns && <p className="border-t border-slate-100 px-4 py-3 text-sm leading-7 text-slate-600">{q.answer}</p>}
+                  {!cover && q.answer && <div className="mt-6 rounded-lg border border-base-300">
+                    <button onClick={() => setShowAns(!showAns)} className="flex w-full cursor-pointer motion-pop items-center justify-between px-4 py-3 text-sm font-medium text-base-content/80">参考答案<span className="text-base-content/50">{showAns ? '收起' : '展开'}</span></button>
+                    {showAns && <p className="border-t border-base-300 px-4 py-3 text-sm leading-7 text-base-content/70">{q.answer}</p>}
                   </div>}
 
-                  <div className="mt-10 border-t border-slate-200 pt-8">
-                    <div className="flex items-baseline justify-between"><h2 className="text-[15px] font-semibold text-slate-900">本题记录</h2><span className="text-xs text-slate-400">快捷键：1–5 评分 · ← → 切题</span></div>
-                    <div className="mt-4 grid grid-cols-5 gap-2">
+                  <div className="mt-10 border-t border-base-300 pt-8">
+                    <div className="flex items-baseline justify-between"><h2 className="text-[15px] font-semibold text-base-content">本题记录</h2><span className="text-xs text-base-content/50">快捷键：1–5 评分 · ← → 切题</span></div>
+                    <div className="mt-4 grid grid-cols-5 gap-3">
                       {LEVELS.map((t, i) => {
                         const on = rec.score === i + 1
                         return (
-                          <button key={t} onClick={() => set({ score: i + 1 })} className={`cursor-pointer rounded-lg border px-2 py-2.5 text-center transition ${on ? 'border-[#1d1d1f] bg-[#1d1d1f] text-white shadow-xs' : 'border-slate-200 hover:border-slate-400'}`}>
-                            <div className={`text-lg font-semibold tabular-nums ${on ? '' : 'text-slate-900'}`}>{i + 1}</div>
-                            <div className={`text-xs ${on ? 'text-white/80' : 'text-slate-500'}`}>{t}</div>
+                          <button key={t} onClick={() => set({ score: i + 1 })} className={`cursor-pointer motion-pop rounded-lg border px-2 py-2.5 text-center transition ${on ? 'border-base-content bg-base-content text-base-100' : 'border-base-300 hover:border-base-content/35'}`}>
+                            <div className={`text-lg font-semibold tabular-nums ${on ? '' : 'text-base-content'}`}>{i + 1}</div>
+                            <div className={`text-xs ${on ? 'text-base-100/80' : 'text-base-content/60'}`}>{t}</div>
                           </button>
                         )
                       })}
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-wrap gap-3">
                       {TAGS.map((t) => {
                         const on = rec.tags.includes(t)
-                        return <button key={t} onClick={() => flip('tags', t)} className={`cursor-pointer rounded-full border px-3 py-1 text-sm transition ${on ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600 hover:border-slate-400'}`}>{t}</button>
+                        return <button key={t} onClick={() => flip('tags', t)} className={`cursor-pointer motion-pop rounded-full border px-3 py-1 text-sm transition ${on ? 'border-base-content bg-base-content text-base-100' : 'border-base-300 text-base-content/70 hover:border-base-content/35'}`}>{t}</button>
                       })}
                     </div>
-                    <textarea value={rec.note} onChange={(e) => set({ note: e.target.value })} rows={4} placeholder="记录候选人的回答要点…" readOnly={locked} className="mt-4 w-full resize-none rounded-lg border border-slate-200 px-4 py-3 text-[15px] leading-7 outline-none placeholder:text-slate-400 focus:border-black/50 focus:ring-2 focus:ring-black/10" />
+                    <textarea value={rec.note} onChange={(e) => set({ note: e.target.value })} rows={4} placeholder="记录候选人的回答要点…" readOnly={locked} className="mt-4 w-full resize-none rounded-lg border border-base-300 px-4 py-3 text-[15px] leading-7 outline-none placeholder:text-base-content/50 focus:border-primary/60 focus:ring-2 focus:ring-primary/15" />
                   </div>
                 </div>
                 )
               ) : (
                 <div key={idx} className="ws-rise mx-auto max-w-[760px] px-8 py-8">
-                  <div className="flex items-baseline justify-between"><h1 className="text-[22px] font-semibold text-slate-900">面试评价</h1>{locked && <span className="rounded bg-slate-100 px-2 py-0.5 text-sm text-slate-500">已提交 · 结果不可修改</span>}</div>
-                  <div className="mt-6 grid grid-cols-3 divide-x divide-slate-200 rounded-xl border border-slate-200">
+                  <div className="flex items-baseline justify-between"><h1 className="text-[22px] font-semibold text-base-content">面试评价</h1>{locked && <span className="rounded bg-base-200 px-2 py-0.5 text-sm text-base-content/60">已提交 · 结果不可修改</span>}</div>
+                  <div className="mt-6 grid grid-cols-3 divide-x divide-base-300 rounded-xl border border-base-300">
                     {[['用时', mmss(elapsed)], ['已评题目', `${scored} / ${qs.length}`], ['平均分', scored ? avg.toFixed(1) : '–']].map(([k, v]) => (
-                      <div key={k} className="px-5 py-4"><div className="text-sm text-slate-500">{k}</div><div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{v}</div></div>
+                      <div key={k} className="px-5 py-4"><div className="text-sm text-base-content/60">{k}</div><div className="mt-1 text-2xl font-semibold tabular-nums text-base-content">{v}</div></div>
                     ))}
                   </div>
-                  <ol ref={listRef} className="mt-8 divide-y divide-slate-100 border-y border-slate-100">
+                  <ol ref={listRef} className="stagger mt-8 divide-y divide-base-300 border-y border-base-300">
                     {qs.map((x, i) => {
                       const r = recs[x.id] ?? empty
                       const missing = miss === 'questions' && !r.score
                       return (
-                        <li key={x.id} className={missing ? 'login-fade bg-amber-50/70' : ''}>
-                          <button onClick={() => move(i)} disabled={locked} className={`flex w-full gap-4 px-2 py-4 text-left ${locked ? 'cursor-default' : 'cursor-pointer hover:bg-slate-50'}`}>
-                            <span className="w-6 pt-0.5 text-sm tabular-nums text-slate-400">{i + 1}</span>
+                        <li key={x.id} style={{ '--i': Math.min(i, 7) } as CSSProperties} className={missing ? 'login-fade bg-warning/10' : ''}>
+                          <button onClick={() => move(i)} disabled={locked} className={`flex w-full gap-5 px-2 py-4 text-left ${locked ? 'cursor-default' : 'cursor-pointer motion-pop hover:bg-base-content/5'}`}>
+                            <span className="w-6 pt-0.5 text-sm tabular-nums text-base-content/50">{i + 1}</span>
                             <div className="min-w-0 flex-1">
-                              <p className="text-[15px] leading-6 text-slate-900">{x.q}</p>
-                              <p className="mt-1 text-sm text-slate-500">{[`用时 ${mmss(r.secs)}`, `要点 ${r.hit.length}/${x.points.length}`, ...r.tags, r.note].filter(Boolean).join(' · ')}</p>
+                              <p className="text-[15px] leading-6 text-base-content">{x.q}</p>
+                              <p className="mt-1 text-sm text-base-content/60">{[`用时 ${mmss(r.secs)}`, `要点 ${r.hit.length}/${x.points.length}`, ...r.tags, r.note].filter(Boolean).join(' · ')}</p>
                             </div>
-                            {missing && <span className="shrink-0 self-center rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">未评分</span>}
-                            <span className="w-8 text-right text-xl font-semibold tabular-nums text-slate-900">{r.score ?? <span className="text-slate-300">–</span>}</span>
+                            {missing && <span className="shrink-0 self-center rounded bg-warning/15 px-1.5 py-0.5 text-xs text-warning">未评分</span>}
+                            <span className="w-8 text-right text-xl font-semibold tabular-nums text-base-content">{r.score ?? <span className="text-base-content/40">–</span>}</span>
                           </button>
                         </li>
                       )
                     })}
                   </ol>
-                  <h2 className="mt-8 text-[15px] font-semibold text-slate-900">整体观察</h2>
-                  <textarea value={obs} readOnly={locked} onChange={(e) => { setObs(e.target.value); touch() }} rows={3} placeholder="补充题目之外的观察，例如沟通方式、学习意愿…（会作为综合评价的依据）" className="mt-3 w-full resize-none rounded-lg border border-slate-200 px-4 py-3 text-[15px] leading-7 outline-none placeholder:text-slate-400 focus:border-black/50 focus:ring-2 focus:ring-black/10" />
+                  <h2 className="mt-8 text-[15px] font-semibold text-base-content">整体观察</h2>
+                  <textarea value={obs} readOnly={locked} onChange={(e) => { setObs(e.target.value); touch() }} rows={3} placeholder="补充题目之外的观察，例如沟通方式、学习意愿…（会作为综合评价的依据）" className="mt-3 w-full resize-none rounded-lg border border-base-300 px-4 py-3 text-[15px] leading-7 outline-none placeholder:text-base-content/50 focus:border-primary/60 focus:ring-2 focus:ring-primary/15" />
 
-                  <div className="mt-8 flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-[15px] font-semibold text-slate-900">综合评价</h2>
-                    <button onClick={askGenReview} disabled={reviewing} className="cursor-pointer text-sm font-medium text-[#1d1d1f] hover:underline disabled:cursor-default disabled:text-slate-400">{reviewing ? '生成中…' : review ? '重新生成报告' : '生成综合评价'}</button>
+                  <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-[15px] font-semibold text-base-content">综合评价</h2>
+                    <button onClick={askGenReview} disabled={reviewing} className="cursor-pointer motion-pop text-sm font-medium text-base-content hover:underline disabled:cursor-default disabled:text-base-content/50">{reviewing ? '生成中…' : review ? '重新生成报告' : '生成综合评价'}</button>
                   </div>
                   {reviewErr && <p className="mt-3 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-sm leading-6 text-base-content/80">{reviewErr}</p>}
                   {reviewing ? (
-                    <div className="mt-3 space-y-2 rounded-xl border border-slate-200 p-5">{[92, 78, 60].map((w) => <div key={w} className="h-3 animate-pulse rounded bg-slate-100" style={{ width: `${w}%` }} />)}</div>
+                    <div className="mt-3 space-y-3 rounded-xl border border-base-300 p-5">{[92, 78, 60].map((w) => <div key={w} className="h-3 animate-pulse rounded bg-base-200" style={{ width: `${w}%` }} />)}</div>
                   ) : review ? (
                     /* 已确认（success 边框）与未确认草稿（warning 边框 + 徽标）视觉区分，草稿不得当作最终结论 */
                     <div className={`login-fade mt-3 rounded-xl border p-5 ${review.draft ? 'border-warning/60 bg-warning/5' : 'border-success/40 bg-success/5'}`}>
-                      <div className="flex flex-wrap items-center gap-2 border-b border-black/[0.06] pb-3">
+                      <div className="flex flex-wrap items-center gap-3 border-b border-base-content/10 pb-3">
                         <Chip tone={review.draft ? 'warning' : 'success'}>{review.draft ? 'AI 草稿 · 待人工确认' : '已人工确认'}</Chip>
-                        <span className="text-xs leading-5 text-slate-500">
+                        <span className="text-xs leading-5 text-base-content/60">
                           {review.draft
                             ? `${review.at} 由 AI 依据本场评分与备注辅助生成，未经人工确认前不作为面评结论`
                             : `${review.confirmedBy ?? '—'} 于 ${review.confirmedAt ?? '—'} 人工确认，已作为正式面评结论保存`}
@@ -812,36 +818,36 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
                           </Btn>
                         )}
                       </div>
-                      <p className="mt-3 text-[15px] leading-7 text-slate-800">{review.overall}</p>
-                      <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                        {([['优势', review.strengths, 'bg-emerald-500'], ['待验证或不足', review.weaknesses, 'bg-amber-500'], ['下一轮建议', review.nextSteps, 'bg-slate-700']] as const).map(([t, list, dot]) => (
+                      <p className="mt-3 text-[15px] leading-7 text-base-content">{review.overall}</p>
+                      <div className="mt-4 grid gap-5 sm:grid-cols-3">
+                        {([['优势', review.strengths, 'bg-success'], ['待验证或不足', review.weaknesses, 'bg-warning'], ['下一轮建议', review.nextSteps, 'bg-info']] as const).map(([t, list, dot]) => (
                           <div key={t}>
-                            <h3 className="flex items-center gap-1.5 text-sm font-medium text-slate-900"><span className={`h-1.5 w-1.5 rounded-full ${dot}`} />{t}</h3>
-                            <ul className="mt-1.5 space-y-1 text-sm leading-6 text-slate-600">{list.length ? list.map((x) => <li key={x}>{x}</li>) : <li className="text-slate-400">暂无</li>}</ul>
+                            <h3 className="flex items-center gap-2.5 text-sm font-medium text-base-content"><span className={`h-1.5 w-1.5 rounded-full ${dot}`} />{t}</h3>
+                            <ul className="mt-1.5 space-y-2 text-sm leading-6 text-base-content/70">{list.length ? list.map((x) => <li key={x}>{x}</li>) : <li className="text-base-content/50">暂无</li>}</ul>
                           </div>
                         ))}
                       </div>
-                      <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700"><b className="font-medium">复核建议</b>　{review.suggestion}</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                      <p className="mt-4 rounded-lg bg-base-200 px-3 py-2 text-sm leading-6 text-base-content/80"><b className="font-medium">复核建议</b>　{review.suggestion}</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2.5 text-xs text-base-content/50">
                         依据
-                        {review.evidence.map((id) => { const i = qs.findIndex((x) => x.id === id); return i < 0 ? null : <button key={id} onClick={() => move(i)} disabled={locked} className="cursor-pointer rounded bg-black/[0.05] border border-black/10 px-1.5 py-0.5 text-xs font-medium text-[#1d1d1f] hover:bg-black/10 disabled:cursor-default">第 {i + 1} 题</button> })}
+                        {review.evidence.map((id) => { const i = qs.findIndex((x) => x.id === id); return i < 0 ? null : <button key={id} onClick={() => move(i)} disabled={locked} className="cursor-pointer motion-pop rounded bg-base-content/5 border border-base-content/10 px-1.5 py-0.5 text-xs font-medium text-base-content hover:bg-base-content/10 disabled:cursor-default">第 {i + 1} 题</button> })}
                         <span className="ml-auto">{review.at} 生成 · AI 辅助意见，不自动作录用决定{review.draft ? '' : ` · ${review.confirmedBy ?? ''} ${review.confirmedAt ?? ''} 已确认`}</span>
                       </div>
                     </div>
                   ) : (
-                    <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-400">根据已评分题目、备注与整体观察生成，产出为「AI 草稿 · 待人工确认」；未评分和已排除的题不计入。{locked && '提交后仍可随时重新生成。'}</p>
+                    <p className="mt-3 rounded-lg border border-dashed border-base-300 px-4 py-3 text-sm text-base-content/50">根据已评分题目、备注与整体观察生成，产出为「AI 草稿 · 待人工确认」；未评分和已排除的题不计入。{locked && '提交后仍可随时重新生成。'}</p>
                   )}
 
                   <div className="mt-8 flex items-baseline justify-between">
-                    <h2 className="text-[15px] font-semibold text-slate-900">综合评语</h2>
-                    {!locked && <button onClick={() => setSummaryAsk(true)} className="cursor-pointer text-sm text-slate-500 hover:text-slate-900">根据记录重新生成</button>}
+                    <h2 className="text-[15px] font-semibold text-base-content">综合评语</h2>
+                    {!locked && <button onClick={() => setSummaryAsk(true)} className="cursor-pointer motion-pop text-sm text-base-content/60 hover:text-base-content">根据记录重新生成</button>}
                   </div>
-                  <textarea value={summary} readOnly={locked} onChange={(e) => { setSummary(e.target.value); touch() }} rows={5} className="mt-3 w-full resize-none rounded-lg border border-slate-200 px-4 py-3 text-[15px] leading-7 outline-none focus:border-black/50 focus:ring-2 focus:ring-black/10" />
-                  <div ref={verdictRef} className={`mt-8 rounded-xl transition ${miss === 'verdict' ? 'login-fade p-3 ring-2 ring-amber-400' : ''}`}>
-                    <h2 className="text-[15px] font-semibold text-slate-900">综合结论{miss === 'verdict' && <span className="ml-2 text-sm font-normal text-amber-700">必填：请选择一个结论再提交</span>}</h2>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
+                  <textarea value={summary} readOnly={locked} onChange={(e) => { setSummary(e.target.value); touch() }} rows={5} className="mt-3 w-full resize-none rounded-lg border border-base-300 px-4 py-3 text-[15px] leading-7 outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/15" />
+                  <div ref={verdictRef} className={`mt-8 rounded-xl transition ${miss === 'verdict' ? 'login-fade p-3 ring-2 ring-warning' : ''}`}>
+                    <h2 className="text-[15px] font-semibold text-base-content">综合结论{miss === 'verdict' && <span className="ml-2 text-sm font-normal text-warning">必填：请选择一个结论再提交</span>}</h2>
+                    <div className="mt-3 grid grid-cols-3 gap-3">
                       {['推荐录用', '待定', '不推荐'].map((v) => (
-                        <button key={v} disabled={locked} onClick={() => { setVerdict(v); setWarn(''); setMiss(''); touch() }} className={`h-11 cursor-pointer rounded-lg border text-sm ${verdict === v ? 'border-[#1d1d1f] bg-black/[0.05] font-semibold text-[#1d1d1f] ring-1 ring-black/10 shadow-2xs' : 'border-slate-200 text-slate-600 hover:border-slate-400'}`}>{v}</button>
+                        <button key={v} disabled={locked} onClick={() => { setVerdict(v); setWarn(''); setMiss(''); touch() }} className={`h-11 cursor-pointer motion-pop rounded-lg border text-sm ${verdict === v ? 'border-base-content/50 bg-base-content/10 font-semibold text-base-content ring-1 ring-base-content/15' : 'border-base-300 text-base-content/70 hover:border-base-content/35'}`}>{v}</button>
                       ))}
                     </div>
                   </div>
@@ -849,31 +855,31 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
               )}
             </div>
 
-            <div className="flex shrink-0 items-center gap-2 border-t border-slate-200 bg-[#fffdf9] px-6 py-3">
+            <div className="flex shrink-0 items-center gap-3 border-t border-base-300 bg-base-100 px-6 py-3">
               {!done ? (
                 qs.length === 0 ? (
                   <>
-                    <span className="ml-auto text-sm text-slate-400">本场还没有题目，先回去勾选题目再进面试间</span>
+                    <span className="ml-auto text-sm text-base-content/50">本场还没有题目，先回去勾选题目再进面试间</span>
                     <Btn variant="ghost" onClick={() => go('back')}>返回{go.from}</Btn>
                   </>
                 ) : (
                 <>
                   <Btn variant="ghost" onClick={() => move(Math.max(0, idx - 1))}>上一题</Btn>
-                  <span className="ml-auto text-sm text-slate-400">{savedAt ? `已自动保存 ${savedAt}` : '记录会自动保存'}</span>
+                  <span className="ml-auto text-sm text-base-content/50">{savedAt ? `已自动保存 ${savedAt}` : '记录会自动保存'}</span>
                   {idx < qs.length - 1 ? <Btn variant="accent" onClick={() => move(idx + 1)}>下一题 →</Btn> : <Btn variant="accent" onClick={askEnd}>去评价 →</Btn>}
                 </>
                 )
               ) : locked ? (
                 <>
                   <Btn variant="ghost" onClick={exportMd}>导出记录</Btn>
-                  <span className="ml-auto text-sm text-slate-400">结果已提交，不可再返回面试间修改 · 报告可随时重新生成</span>
+                  <span className="ml-auto text-sm text-base-content/50">结果已提交，不可再返回面试间修改 · 报告可随时重新生成</span>
                   <Btn onClick={() => go('back')}>返回{go.from}</Btn>
                 </>
               ) : (
                 <>
                   <Btn variant="ghost" onClick={() => move(0)}>返回题目</Btn>
                   <Btn variant="ghost" onClick={exportMd}>导出记录</Btn>
-                  <span className={`ml-auto text-sm ${warn ? 'text-amber-700' : 'text-slate-400'}`}>{warn || (unscored ? `还有 ${unscored} 题未评分，提交前可先补填` : savedAt ? `已自动保存 ${savedAt}` : '记录会自动保存')}</span>
+                  <span className={`ml-auto text-sm ${warn ? 'text-warning' : 'text-base-content/50'}`}>{warn || (unscored ? `还有 ${unscored} 题未评分，提交前可先补填` : savedAt ? `已自动保存 ${savedAt}` : '记录会自动保存')}</span>
                   <Btn variant="accent" onClick={submit} loading={submitting} disabled={submitting}>{verdict ? `提交评价：${verdict}` : '提交评价'}</Btn>
                 </>
               )}
@@ -881,7 +887,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
           </section>
 
           {/* 右：常驻对话面板（不等候选人进入，转写流式实时出现） */}
-          <aside className="flex max-h-[38vh] flex-col border-t border-slate-200 bg-white lg:max-h-none lg:w-80 lg:shrink-0 lg:border-l lg:border-t-0">
+          <aside className="flex max-h-[38vh] flex-col border-t border-base-300 bg-base-100 lg:max-h-none lg:w-80 lg:shrink-0 lg:border-l lg:border-t-0">
             {talkPanel(false)}
           </aside>
         </div>
@@ -889,17 +895,17 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
 
       {/* 候选人画面小窗：开着摄像头可切换看自己；底部气泡滚动显示最新一句 */}
       {mode === 'win' && (
-        <div className="login-fade fixed bottom-6 right-6 z-30 h-44 w-72 overflow-hidden rounded-xl shadow-[var(--shadow-lift)] ring-1 ring-black/20">
+        <div className="login-fade fixed bottom-6 right-6 z-30 h-44 w-72 overflow-hidden rounded-xl shadow-[var(--shadow-lift)] ring-1 ring-base-300">
           {winView === 'self' && camOn ? <SelfView stream={camStream} label="我（面试官）" /> : <PeerView name={c.name} peer={peer} talking={peerTalking} />}
           {lastBubble && (
             <p className="absolute bottom-1.5 left-1.5 right-12 truncate rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] leading-4 text-white/90">
               <span className="text-white/55">{lastBubble.who}：</span>{lastBubble.text}
             </p>
           )}
-          <div className="absolute right-1.5 top-1.5 flex gap-1">
-            {camOn && <button onClick={() => setWinView(winView === 'peer' ? 'self' : 'peer')} title={winView === 'peer' ? '切换看我的画面' : '切换看候选人'} className="grid h-6 w-6 cursor-pointer place-items-center rounded bg-black/40 text-xs text-white/80 hover:text-white">⇄</button>}
-            <button onClick={() => setMode('full')} title="全屏面对面" className="grid h-6 w-6 cursor-pointer place-items-center rounded bg-black/40 text-xs text-white/80 hover:text-white">⤢</button>
-            <button onClick={() => setMode('min')} title="收起" className="grid h-6 w-6 cursor-pointer place-items-center rounded bg-black/40 text-xs text-white/80 hover:text-white">—</button>
+          <div className="absolute right-1.5 top-1.5 flex gap-2">
+            {camOn && <button onClick={() => setWinView(winView === 'peer' ? 'self' : 'peer')} title={winView === 'peer' ? '切换看我的画面' : '切换看候选人'} aria-label={winView === 'peer' ? '切换看我的画面' : '切换看候选人'} className="grid h-6 w-6 cursor-pointer motion-pop place-items-center rounded bg-black/40 text-xs text-white/80 hover:text-white">⇄</button>}
+            <button onClick={() => setMode('full')} title="全屏面对面" aria-label="全屏面对面" className="grid h-6 w-6 cursor-pointer motion-pop place-items-center rounded bg-black/40 text-xs text-white/80 hover:text-white">⤢</button>
+            <button onClick={() => setMode('min')} title="收起" aria-label="收起" className="grid h-6 w-6 cursor-pointer motion-pop place-items-center rounded bg-black/40 text-xs text-white/80 hover:text-white">—</button>
           </div>
         </div>
       )}
@@ -908,18 +914,18 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
       {!entered && !locked && (
         <div className="ws-scrim fixed inset-0 z-50 grid place-items-center px-4">
           <div className="login-fade w-full max-w-md ws-paper rounded-xl p-6">
-            <h1 className="text-lg font-semibold text-slate-900">进入面试间</h1>
-            <p className="mt-1.5 text-sm text-slate-500">{c.name} · {c.role} · {c.round}</p>
-            <p className="mt-4 rounded-lg bg-slate-50 px-3.5 py-3 text-sm leading-6 text-slate-600">进入即开始计时，在线状态会同步给候选人。面试未结束时离开会转为后台进行、计时继续，工作台会出现悬浮入口可随时回来；先暂停再离开则完全挂起。</p>
-            <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-slate-700">
-              <input type="checkbox" checked={micDraft} onChange={(e) => setMicDraft(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#1d1d1f]" />
-              <span>开启麦克风<span className="block text-xs leading-5 text-slate-400">你的发言自动转写进会话记录；面试中可随时关闭，关闭后仅记录候选人</span></span>
+            <h1 className="text-lg font-semibold text-base-content">进入面试间</h1>
+            <p className="mt-1.5 text-sm text-base-content/60">{c.name} · {c.role} · {c.round}</p>
+            <p className="mt-4 rounded-lg bg-base-200 px-3.5 py-3 text-sm leading-6 text-base-content/70">进入即开始计时，在线状态会同步给候选人。面试未结束时离开会转为后台进行、计时继续，工作台会出现悬浮入口可随时回来；先暂停再离开则完全挂起。</p>
+            <label className="mt-4 flex cursor-pointer items-start gap-4 text-sm text-base-content/80">
+              <input type="checkbox" checked={micDraft} onChange={(e) => setMicDraft(e.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
+              <span>开启麦克风<span className="block text-xs leading-5 text-base-content/50">你的发言自动转写进会话记录；面试中可随时关闭，关闭后仅记录候选人</span></span>
             </label>
-            <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm text-slate-700">
-              <input type="checkbox" checked={camDraft} onChange={(e) => setCamDraft(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#1d1d1f]" />
-              <span>开启我的摄像头<span className="block text-xs leading-5 text-slate-400">候选人可以看到你；要看简历与题目时可保持关闭</span></span>
+            <label className="mt-3 flex cursor-pointer items-start gap-4 text-sm text-base-content/80">
+              <input type="checkbox" checked={camDraft} onChange={(e) => setCamDraft(e.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
+              <span>开启我的摄像头<span className="block text-xs leading-5 text-base-content/50">候选人可以看到你；要看简历与题目时可保持关闭</span></span>
             </label>
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-3">
               <Btn variant="ghost" onClick={() => go('back')}>暂不进入</Btn>
               <Btn variant="accent" onClick={enterRoom}>进入面试间</Btn>
             </div>
@@ -931,10 +937,10 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
       {leaveAsk && (
         <div className="ws-scrim fixed inset-0 z-50 grid place-items-center px-4">
           <div className="login-fade w-full max-w-md ws-paper rounded-xl p-6">
-            <h1 className="text-lg font-semibold text-slate-900">当前面试未结束，是否返回工作台？</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-600">返回后面试会在后台继续计时，记录与出题进度都会保留；工作台右下角会出现悬浮入口，点一下即可回到面试间（不再询问）。</p>
-            <p className="mt-2 text-sm leading-6 text-slate-500">如需完全挂起，请先点顶栏的「暂停」再离开；结束面试后离开则正常收尾，不会出现悬浮入口。</p>
-            <div className="mt-6 flex justify-end gap-2">
+            <h1 className="text-lg font-semibold text-base-content">当前面试未结束，是否返回工作台？</h1>
+            <p className="mt-3 text-sm leading-6 text-base-content/70">返回后面试会在后台继续计时，记录与出题进度都会保留；工作台右下角会出现悬浮入口，点一下即可回到面试间（不再询问）。</p>
+            <p className="mt-2 text-sm leading-6 text-base-content/60">如需完全挂起，请先点顶栏的「暂停」再离开；结束面试后离开则正常收尾，不会出现悬浮入口。</p>
+            <div className="mt-6 flex justify-end gap-3">
               <Btn variant="ghost" onClick={() => go('back')}>返回工作台</Btn>
               <Btn variant="accent" onClick={() => setLeaveAsk(false)}>继续面试</Btn>
             </div>
@@ -955,7 +961,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
           </>
         }
       >
-        <ul className="space-y-1.5 text-sm leading-6 text-base-content/70">
+        <ul className="space-y-2.5 text-sm leading-6 text-base-content/70">
           <li>· 计时立即停止，已记录的评分、备注与会话记录全部保留</li>
           <li>· 未评分的题目保留为「未评分」，可在评价页补填后再提交</li>
           <li>· 提交评价后评分与结论不可修改，候选人流转到「待录取」</li>
@@ -975,7 +981,7 @@ export default function Offline({ cid, go }: { cid: string; go: Go }) {
           </>
         }
       >
-        <ul className="space-y-1.5 text-sm leading-6 text-base-content/70">
+        <ul className="space-y-2.5 text-sm leading-6 text-base-content/70">
           <li>· 提交后评分与结论不可修改，面试间转为只读记录</li>
           <li>· 综合得分 {scored ? avg.toFixed(1) : '–'} 分，已评 {scored}/{qs.length} 题</li>
           <li>· 候选人流转到「待录取」；AI 综合评价仍需人工确认后才作为面评结论</li>

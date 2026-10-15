@@ -60,22 +60,22 @@ function BgRoomWidget({ go }: { go: Go }) {
   if (!c) return null
   return (
     <div
-      className="ws-rise fixed bottom-6 right-6 z-40 flex items-center gap-3 rounded-full bg-[#1d1d1f]/90 p-1.5 pl-4 text-white shadow-2xl backdrop-blur-xl border border-white/10"
+      className="ws-rise fixed bottom-6 right-6 z-40 flex items-center gap-3 rounded-full bg-neutral/95 p-1.5 pl-4 text-neutral-content shadow-2xl backdrop-blur-xl"
       style={{ '--i': 0 } as React.CSSProperties}
     >
       <span className="relative flex h-2 w-2 shrink-0">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
       </span>
       <div className="min-w-0 pr-1 text-left">
-        <div className="text-[11px] tabular-nums text-white/60">现场考场记录中 · {mmss(elapsedOf(rooms[cid]))}</div>
-        <div className="max-w-40 truncate text-xs font-medium text-white/90">
+        <div className="text-[11px] tabular-nums text-neutral-content/60">现场考场记录中 · {mmss(elapsedOf(rooms[cid]))}</div>
+        <div className="max-w-40 truncate text-xs font-medium text-neutral-content/90">
           {c.name} · {c.role}
         </div>
       </div>
       <button
         onClick={() => go('room', cid)}
-        className="h-8 shrink-0 cursor-pointer rounded-full bg-gradient-to-b from-[#2c2c2e] to-[#121214] px-3.5 text-xs font-medium text-white shadow-[0_2px_6px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.22)] border border-black/80 transition-all hover:brightness-110 active:scale-95"
+        className="h-8 shrink-0 cursor-pointer rounded-full bg-base-100 px-3.5 text-xs font-medium text-base-content shadow-sm transition-colors hover:bg-base-300 active:scale-95"
       >
         继续考场
       </button>
@@ -124,46 +124,46 @@ export default function App() {
 
   const tab = stack[0].view
 
-  const isDarkTheme = view === 'bento'
+  // 全站统一「象牙白 + 墨黑 + 荧光青柠」主题；这里只区分布局：首页指挥舱单屏锁定，其余页面自然滚动
+  const isBento = view === 'bento'
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${
-      isDarkTheme ? 'bg-[#0c0d12] text-white h-screen overflow-hidden flex flex-col' : 'ws-canvas text-[#1d1d1f]'
-    }`}>
-      {/* 顶栏：自适应深色科技质感 / 满屏铺展 */}
-      <header className={`sticky top-0 z-30 transition-colors duration-300 shrink-0 ${
-        isDarkTheme
-          ? 'bg-[#121318]/90 backdrop-blur-xl border-b border-white/10 shadow-lg'
-          : 'ws-bar'
-      }`}>
+    <div
+      className={`bg-base-200 text-base-content ${
+        isBento ? 'flex h-screen flex-col overflow-hidden' : 'min-h-screen'
+      }`}
+    >
+      {/* 顶栏：全站统一磨砂玻璃 */}
+      <header className="sticky top-0 z-30 shrink-0 border-b border-base-300 bg-base-100/85 backdrop-blur-xl">
         <div className="mx-auto flex h-13 max-w-[1780px] items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-5">
-            <button onClick={() => enter('bento')} className="group flex cursor-pointer items-center gap-2.5">
-              <span className="grid h-7 w-7 place-items-center rounded-xl bg-gradient-to-tr from-[#FF5A36] to-[#6366F1] text-xs font-black text-white shadow-md group-hover:scale-105 transition-transform">
+            <button
+              onClick={() => enter('bento')}
+              className="group flex cursor-pointer items-center gap-2.5 rounded-xl"
+              aria-label="返回首页指挥舱"
+            >
+              <span className="grid h-7 w-7 place-items-center rounded-xl bg-neutral text-xs font-black text-neutral-content shadow-md transition-transform group-hover:scale-105">
                 F
               </span>
               <div className="text-left">
-                <div className={`text-sm font-bold tracking-tight ${isDarkTheme ? 'text-white' : 'text-[#1d1d1f]'}`}>FaceTry</div>
-                <div className={`text-[10px] ${isDarkTheme ? 'text-white/50' : 'text-[#86868b]'}`}>AI 智能招聘控制中枢</div>
+                <div className="text-sm font-bold tracking-tight text-base-content">FaceTry</div>
+                <div className="text-[10px] text-base-content/50">AI 智能招聘控制中枢</div>
               </div>
             </button>
 
             {/* 顶栏分段导航胶囊 */}
-            <nav className="hidden lg:flex items-center gap-1 overflow-x-auto">
+            <nav className="hidden items-center gap-1 overflow-x-auto lg:flex" aria-label="主导航">
               {nav.map(([k, label]) => {
                 const on = tab === k
                 return (
                   <button
                     key={k}
                     onClick={() => enter(k)}
-                    className={`cursor-pointer rounded-full px-3 py-0.5 text-xs font-medium transition-all ${
+                    aria-current={on ? 'page' : undefined}
+                    className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-all duration-200 ${
                       on
-                        ? isDarkTheme
-                          ? 'bg-gradient-to-r from-[#FF5A36] to-[#6366F1] text-white shadow font-bold'
-                          : 'bg-[#1d1d1f] text-white shadow-2xs'
-                        : isDarkTheme
-                          ? 'text-white/60 hover:text-white hover:bg-white/10'
-                          : 'text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.04]'
+                        ? 'bg-accent font-bold text-accent-content shadow-sm'
+                        : 'text-base-content/60 hover:bg-base-content/10 hover:text-base-content'
                     }`}
                   >
                     {label}
@@ -176,17 +176,18 @@ export default function App() {
           <div className="flex items-center gap-3">
             <button
               onClick={resetDemo}
-              className={`hidden sm:inline cursor-pointer text-[11px] transition-colors ${isDarkTheme ? 'text-white/50 hover:text-white' : 'text-[#86868b] hover:text-[#1d1d1f]'}`}
+              className="hidden cursor-pointer text-[11px] text-base-content/50 transition-colors hover:text-base-content sm:inline"
               title="一键恢复系统出厂纯净数据"
             >
               重置数据
             </button>
-            <div className={`flex items-center gap-2 rounded-full py-0.5 pl-2.5 pr-1.5 text-xs ${isDarkTheme ? 'bg-white/10 border border-white/10' : 'bg-black/[0.04]'}`}>
-              <span className={`font-medium ${isDarkTheme ? 'text-white' : 'text-[#1d1d1f]'}`}>{user}</span>
+            <div className="flex items-center gap-2 rounded-full border border-base-content/10 bg-base-content/10 py-0.5 pl-2.5 pr-1.5 text-xs">
+              <span className="font-medium text-base-content">{user}</span>
               <button
                 onClick={logout}
-                className={`grid h-5 w-5 cursor-pointer place-items-center rounded-full transition-colors ${isDarkTheme ? 'text-white/50 hover:bg-white/20 hover:text-white' : 'text-[#86868b] hover:bg-black/10 hover:text-[#1d1d1f]'}`}
+                className="grid h-5 w-5 cursor-pointer place-items-center rounded-full text-base-content/50 transition-colors hover:bg-base-content/20 hover:text-base-content"
                 title="退出登录"
+                aria-label="退出登录"
               >
                 ✕
               </button>
@@ -195,17 +196,16 @@ export default function App() {
         </div>
 
         {/* 移动端/小屏顶栏导航条 */}
-        <div className={`lg:hidden flex items-center gap-1 px-4 pb-1.5 overflow-x-auto border-t pt-1 ${isDarkTheme ? 'border-white/10' : 'border-black/[0.04]'}`}>
+        <div className="flex items-center gap-1 overflow-x-auto border-t border-base-300 px-4 pb-1.5 pt-1 lg:hidden">
           {nav.map(([k, label]) => {
             const on = tab === k
             return (
               <button
                 key={k}
                 onClick={() => enter(k)}
-                className={`whitespace-nowrap cursor-pointer rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
-                  on
-                    ? isDarkTheme ? 'bg-[#FF5A36] text-white font-bold' : 'bg-[#1d1d1f] text-white'
-                    : isDarkTheme ? 'text-white/60' : 'text-[#86868b]'
+                aria-current={on ? 'page' : undefined}
+                className={`cursor-pointer whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
+                  on ? 'bg-accent font-bold text-accent-content' : 'text-base-content/60'
                 }`}
               >
                 {label}
@@ -216,11 +216,13 @@ export default function App() {
       </header>
 
       {/* 主工作区：首页指挥舱 100vh 单屏锁定，其他页面自然滚动 */}
-      <main className={`w-full ${
-        isDarkTheme
-          ? 'flex-1 min-h-0 overflow-hidden px-4 py-2 max-w-[1780px] mx-auto flex flex-col'
-          : 'mx-auto max-w-[1720px] px-4 sm:px-6 lg:px-8 py-6'
-      }`}>
+      <main
+        className={`w-full ${
+          isBento
+            ? 'mx-auto flex min-h-0 max-w-[1780px] flex-1 flex-col overflow-hidden px-4 py-3'
+            : 'mx-auto max-w-[1720px] px-4 py-8 sm:px-6 lg:px-8'
+        }`}
+      >
         {view === 'bento' && <ColorBentoDashboard go={go} onSwitchView={() => go('workbench')} />}
         {view === 'workbench' && <Workbench go={go} />}
         {view === 'candidates' && <Candidates go={go} />}

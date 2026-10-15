@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import {
   can,
   currentUser,
@@ -239,11 +239,11 @@ export default function Admin({ go }: { go: Go }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* 顶部标题栏 */}
-      <div className="ws-rise flex flex-col justify-between gap-4 border-b border-base-300 pb-5 md:flex-row md:items-end">
+      <div className="ws-rise flex flex-col justify-between gap-5 border-b border-base-300 pb-5 md:flex-row md:items-end">
         <div>
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-base-content">系统管理与集成后台</h1>
             <Chip tone={SYNC_TONE[status]}>
               <span className={`h-1.5 w-1.5 rounded-full ${SYNC_DOT[status]}`} aria-hidden="true" />
@@ -255,7 +255,7 @@ export default function Admin({ go }: { go: Go }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Btn
             variant="solid"
             disabled={!allowed || busy !== ''}
@@ -282,7 +282,7 @@ export default function Admin({ go }: { go: Go }) {
               当前登录：{currentUser.name} · {currentUser.role === 'hr' ? 'HR 业务伙伴' : currentUser.role} · {currentUser.dept}
               。同步触发、失败批次重跑、配置重试与角色授权均需超级管理员权限；只读身份仍可查看同步健康度与配置状态。
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-3">
               <Btn variant="outline" disabled={demoAdmin} onClick={() => setDemoAdmin(true)}>
                 {demoAdmin ? '已开启管理员演示' : '[演示] 以超级管理员身份操作'}
               </Btn>
@@ -313,9 +313,9 @@ export default function Admin({ go }: { go: Go }) {
 
       {/* 模块 1：来源数据库同步状态与监控（影刀 RPA 落库 · 只读接入） */}
       <section className="ws-rise [--i:1] card card-border bg-base-100 shadow-[var(--shadow-paper)]">
-        <div className="card-body gap-4 p-6">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-base-300 pb-3">
-            <div className="flex items-center gap-2.5">
+        <div className="card-body gap-5 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 pb-3">
+            <div className="flex items-center gap-3">
               <span className={`h-2.5 w-2.5 rounded-full ${SYNC_DOT[status]}`} aria-hidden="true" />
               <h2 className="text-base font-semibold text-base-content">来源数据库同步状态（影刀落库 · 只读接入）</h2>
             </div>
@@ -326,7 +326,7 @@ export default function Admin({ go }: { go: Go }) {
           {hasError ? (
             <div className="alert alert-soft alert-error items-start">
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                <div className="flex flex-wrap items-center gap-3 text-sm font-semibold">
                   来源库读取失败
                   <Chip tone="error">影响 {failed?.count ?? 0} 条待同步</Chip>
                 </div>
@@ -338,7 +338,7 @@ export default function Admin({ go }: { go: Go }) {
                 <p className="mt-1 text-xs">
                   影响范围：本批记录尚未建档，工作台已存在的候选人与已确认的阶段 / 面评 / 审批结果不受影响。
                 </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-3">
                   <Btn
                     variant="outline"
                     disabled={!allowed || busy !== '' || !sourceDbSync.canRetry}
@@ -367,7 +367,7 @@ export default function Admin({ go }: { go: Go }) {
           <div className="stats stats-vertical w-full border border-base-300 bg-base-200/60 sm:stats-horizontal">
             <div className="stat">
               <div className="stat-title text-xs">连接状态</div>
-              <div className="stat-value flex items-center gap-2 text-base">
+              <div className="stat-value flex items-center gap-3 text-base">
                 <span className={`h-2 w-2 rounded-full ${SYNC_DOT[status]}`} aria-hidden="true" />
                 {status === 'error' ? '异常（可重跑）' : sourceDbSync.connected ? SYNC_LABEL[status] : '未连接'}
               </div>
@@ -392,18 +392,19 @@ export default function Admin({ go }: { go: Go }) {
 
           <div>
             <div className="mb-2 text-xs font-semibold text-base-content/60">同步事件日志</div>
-            <div className="space-y-1.5">
+            <div className="stagger space-y-2">
               {sourceDbSync.logs.length ? (
                 sourceDbSync.logs.map((log, i) => {
                   const bad = /失败|异常|超时|缺失/.test(log.msg)
                   return (
                     <div
                       key={`${log.time}-${i}`}
-                      className={`flex items-start justify-between gap-3 rounded-lg px-3 py-2 text-xs ${
-                        bad ? 'bg-error/5 text-error' : 'bg-base-200 text-base-content/70'
+                      style={{ '--i': Math.min(i, 7) } as CSSProperties}
+                      className={`flex items-start justify-between gap-4 rounded-lg px-3 py-2 text-xs transition-colors ${
+                        bad ? 'bg-error/5 text-error' : 'bg-base-200 text-base-content/70 hover:bg-base-300/60'
                       }`}
                     >
-                      <span className="flex min-w-0 items-start gap-2 font-mono">
+                      <span className="flex min-w-0 items-start gap-3 font-mono">
                         {bad && <Chip tone="error">失败</Chip>}
                         <span className="min-w-0">{log.msg}</span>
                       </span>
@@ -418,7 +419,7 @@ export default function Admin({ go }: { go: Go }) {
           </div>
 
           <div className="border-t border-base-300 pt-3">
-            <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-wrap items-end gap-4">
               <Field
                 label="[演示] 异常原因"
                 htmlFor="demo-fail-reason"
@@ -457,7 +458,7 @@ export default function Admin({ go }: { go: Go }) {
 
       {/* 模块 2：通知与审批对接配置状态（只显示 .env 变量名，不含任何密钥取值） */}
       <section className="ws-rise [--i:2] card card-border bg-base-100 shadow-[var(--shadow-paper)]">
-        <div className="card-body gap-4 p-6">
+        <div className="card-body gap-5 p-6">
           <div className="border-b border-base-300 pb-3">
             <h2 className="text-base font-semibold text-base-content">通知与审批对接配置状态</h2>
             <p className="mt-1 text-xs text-base-content/60">
@@ -468,78 +469,81 @@ export default function Admin({ go }: { go: Go }) {
             </p>
           </div>
 
-          <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-            {INTEGRATIONS.map((it) => {
+          <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {INTEGRATIONS.map((it, i) => {
               const state = conf[it.key]
               const note = confNote[it.key] ?? it.note
               return (
-                <div key={it.key} className="card card-border bg-base-100">
-                  <div className="card-body gap-2 p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-base-content">{it.name}</h3>
-                      <Chip tone={CONF_TONE[state]}>{CONF_LABEL[state]}</Chip>
-                    </div>
-                    <p className="text-xs text-base-content/60">{it.ability}</p>
-                    <div className="space-y-1 text-[11px] text-base-content/50">
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span>配置来源：</span>
-                        {it.env.map((v) => (
-                          <code key={v} className="kbd kbd-xs">
-                            {v}
-                          </code>
-                        ))}
+                <div key={it.key} style={{ '--i': Math.min(i, 7) } as CSSProperties}>
+                  {/* 外层错位入场、内层 motion-pop，避免入场动画的 fill 值压掉 hover 位移 */}
+                  <div className="motion-pop card card-border bg-base-100 hover:shadow-[var(--shadow-lift)]">
+                    <div className="card-body gap-3 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="text-sm font-semibold text-base-content">{it.name}</h3>
+                        <Chip tone={CONF_TONE[state]}>{CONF_LABEL[state]}</Chip>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span>密钥类变量（仅变量名）：</span>
-                        {it.secretEnv.map((v) => (
-                          <code key={v} className="kbd kbd-xs">
-                            {v}
-                          </code>
-                        ))}
+                      <p className="text-xs text-base-content/60">{it.ability}</p>
+                      <div className="space-y-1.5 text-[11px] text-base-content/50">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span>配置来源：</span>
+                          {it.env.map((v) => (
+                            <code key={v} className="kbd kbd-xs">
+                              {v}
+                            </code>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span>密钥类变量（仅变量名）：</span>
+                          {it.secretEnv.map((v) => (
+                            <code key={v} className="kbd kbd-xs">
+                              {v}
+                            </code>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    <p
-                      className={`text-[11px] ${
-                        state === 'error' ? 'text-error' : state === 'missing' ? 'text-warning' : 'text-base-content/60'
-                      }`}
-                    >
-                      {note}
-                    </p>
-                    <div className="card-actions mt-1 items-center justify-between gap-2">
-                      <span className="text-[11px] text-base-content/50">
-                        {state === 'ok' ? '最近探测通过' : state === 'missing' ? '等待 .env 补全' : '最近探测失败'}
-                      </span>
-                      {state === 'ok' ? (
-                        <Btn
-                          variant="ghost"
-                          disabled={!allowed || probing !== ''}
-                          loading={probing === it.key}
-                          title={needPerm ?? '演示：实际接入后由后端健康检查完成'}
-                          onClick={() => probe(it)}
+                      <p
+                        className={`text-[11px] ${
+                          state === 'error' ? 'text-error' : state === 'missing' ? 'text-warning' : 'text-base-content/60'
+                        }`}
+                      >
+                        {note}
+                      </p>
+                      <div className="card-actions mt-1 items-center justify-between gap-3">
+                        <span className="text-[11px] text-base-content/50">
+                          {state === 'ok' ? '最近探测通过' : state === 'missing' ? '等待 .env 补全' : '最近探测失败'}
+                        </span>
+                        {state === 'ok' ? (
+                          <Btn
+                            variant="ghost"
+                            disabled={!allowed || probing !== ''}
+                            loading={probing === it.key}
+                            title={needPerm ?? '演示：实际接入后由后端健康检查完成'}
+                            onClick={() => probe(it)}
+                          >
+                            重新检测
+                          </Btn>
+                        ) : (
+                          <Btn
+                            variant="outline"
+                            disabled={!allowed || probing !== ''}
+                            loading={probing === it.key}
+                            title={needPerm ?? '演示：实际接入后由后端健康检查完成'}
+                            onClick={() => probe(it)}
+                          >
+                            {state === 'error' ? '重试探测' : '我已补全，重新检测'}
+                          </Btn>
+                        )}
+                      </div>
+                      {it.key === 'bpm' && state === 'error' && (
+                        <button
+                          type="button"
+                          onClick={() => go('approvals')}
+                          className="motion-pop link link-hover self-start text-[11px] text-base-content/70"
                         >
-                          重新检测
-                        </Btn>
-                      ) : (
-                        <Btn
-                          variant="outline"
-                          disabled={!allowed || probing !== ''}
-                          loading={probing === it.key}
-                          title={needPerm ?? '演示：实际接入后由后端健康检查完成'}
-                          onClick={() => probe(it)}
-                        >
-                          {state === 'error' ? '重试探测' : '我已补全，重新检测'}
-                        </Btn>
+                          查看受影响的录取申请 →
+                        </button>
                       )}
                     </div>
-                    {it.key === 'bpm' && state === 'error' && (
-                      <button
-                        type="button"
-                        onClick={() => go('approvals')}
-                        className="link link-hover self-start text-[11px] text-base-content/70"
-                      >
-                        查看受影响的录取申请 →
-                      </button>
-                    )}
                   </div>
                 </div>
               )
@@ -557,8 +561,8 @@ export default function Admin({ go }: { go: Go }) {
 
       {/* 模块 3：组织架构 · 成员与角色授权 */}
       <section className="ws-rise [--i:3] card card-border bg-base-100 shadow-[var(--shadow-paper)]">
-        <div className="card-body gap-5 p-6">
-          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-base-300 pb-3">
+        <div className="card-body gap-6 p-6">
+          <div className="flex flex-wrap items-end justify-between gap-4 border-b border-base-300 pb-3">
             <div>
               <h2 className="text-base font-semibold text-base-content">组织架构 · 成员与角色授权</h2>
               <p className="mt-1 text-xs text-base-content/60">
@@ -586,7 +590,7 @@ export default function Admin({ go }: { go: Go }) {
                 </thead>
                 <tbody>
                   {DEPTS.map((d) => (
-                    <tr key={d.name} className="hover:bg-base-200/60">
+                    <tr key={d.name} className="transition-colors hover:bg-base-200/60">
                       <td className="font-semibold text-base-content">{d.name}</td>
                       <td className="text-base-content/70">{d.lead}</td>
                       <td className="tabular-nums text-base-content/70">
@@ -617,11 +621,12 @@ export default function Admin({ go }: { go: Go }) {
                 </thead>
                 <tbody>
                   {USERS.map((u) => (
-                    <tr key={u.name} className="hover:bg-base-200/60">
+                    <tr key={u.name} className="transition-colors hover:bg-base-200/60">
                       <td className="font-semibold text-base-content">
                         {u.name}
                         {u.name === currentUser.name && (
-                          <Chip tone="info" className="ml-2">
+                          // 荧光青柠落点：当前身份（当前登录环境）→ 实底荧光小块
+                          <Chip tone="accent" className="ml-2">
                             当前身份
                           </Chip>
                         )}
@@ -639,7 +644,7 @@ export default function Admin({ go }: { go: Go }) {
 
           {/* 角色授权列表 */}
           <div>
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs font-semibold text-base-content/60">角色授权（{grants.length} 条生效中）</div>
               <Btn variant="outline" disabled={!allowed} title={needPerm} onClick={() => setAddOpen(true)}>
                 新增角色授权
@@ -660,7 +665,7 @@ export default function Admin({ go }: { go: Go }) {
                   </thead>
                   <tbody>
                     {grants.map((g) => (
-                      <tr key={g.id} className="hover:bg-base-200/60">
+                      <tr key={g.id} className="transition-colors hover:bg-base-200/60">
                         <td className="font-semibold text-base-content">{g.member}</td>
                         <td className="text-base-content/70">{g.role}</td>
                         <td className="text-base-content/70">{g.scope}</td>
@@ -714,7 +719,7 @@ export default function Admin({ go }: { go: Go }) {
           </>
         }
       >
-        <div className="space-y-4">
+        <div className="space-y-5">
           <Field label="成员" htmlFor="grant-member" required hint="授权对象来自团队成员列表">
             <select
               id="grant-member"

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   candidates,
   type ApprovalApplication,
@@ -22,6 +22,10 @@ import {
 } from '../store'
 import type { Go } from '../App'
 import { Btn, Card, Chip, Empty, Field, Label, Modal, SectionHead, type Tone } from './ui'
+
+/* 中性徽标统一为墨黑药丸（bg-neutral text-neutral-content），与 ui.tsx 的 Chip neutral 渲染一致；
+   浅色时代不再沿用深色补丁 bg-base-content/10 提亮层（近白字落在浅底上不可读）。 */
+const NEUTRAL_CHIP_FIX = 'bg-neutral text-neutral-content'
 
 /* ───────────── 录取申请与飞书 / BPM 双审批中心（PRD 模块 C · FR-C1 / C2 / C4）─────────────
    聚合铁律：两条审批轨的状态分别展示、分别追溯；只有飞书审批与 BPM OA 流程都通过，整体才算通过。
@@ -82,7 +86,7 @@ const FINAL_STATE: Record<FinalStatus, FinalState> = {
   },
   partial: {
     label: '单边通过 · 未完成',
-    tone: 'accent',
+    tone: 'warning',
     alert: 'alert alert-soft alert-warning',
     note: '单边通过 · 未完成：按聚合铁律（两条轨均通过才算整体通过）不得视为录用，不得发放 Offer。',
   },
@@ -431,24 +435,31 @@ export default function Approvals({ go }: { go: Go }) {
     const st = trackStateOf(t)
     const idValue = trackIdOf(t, key)
     return (
-      <div key={key} className="space-y-3 rounded-xl border border-base-300 bg-base-200/40 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+      <div key={key} className="motion-pop space-y-4 rounded-xl border border-base-300 bg-base-200/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
             <span className="text-sm font-semibold text-base-content">{TRACK_NAME[key]}</span>
-            <Chip tone={st.tone}>
+            <Chip tone={st.tone} className={st.tone === 'neutral' ? NEUTRAL_CHIP_FIX : undefined}>
               <span className={`status status-xs ${st.dot}`} aria-hidden="true" />
               {st.label}
             </Chip>
           </div>
-          <span className="font-mono text-[11px] text-base-content/55">
+          <span className="font-mono text-[11px] text-base-content/60">
             {TRACK_ID_LABEL[key]} {idValue ?? '待回填'}
           </span>
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[11px]">
           <div className="min-w-0">
             <dt className="text-base-content/50">当前节点</dt>
-            <dd className="text-base-content">{t.currentNode}</dd>
+            {/* 荧光青柠落点：仅「流转中」的当前节点用实底荧光小块，终态保持墨字 */}
+            <dd
+              className={`w-fit rounded px-1.5 py-0.5 ${
+                t.status === 'pending' ? 'bg-accent font-semibold text-accent-content' : 'text-base-content'
+              }`}
+            >
+              {t.currentNode}
+            </dd>
           </div>
           <div className="min-w-0">
             <dt className="text-base-content/50">{key === 'feishu' ? '审批人' : '经办人'}</dt>
@@ -465,21 +476,21 @@ export default function Approvals({ go }: { go: Go }) {
         </dl>
 
         {t.lastError && (
-          <div role="alert" className="alert alert-soft alert-warning items-start gap-3 text-[11px]">
+          <div role="alert" className="alert alert-soft alert-warning items-start gap-4 text-[11px]">
             <div className="min-w-0 flex-1">
               <div className="text-xs font-semibold">同步失败 / 状态滞后</div>
               <div className="mt-0.5 text-base-content/75">{t.lastError}</div>
-              <div className="mt-1 text-base-content/55">
+              <div className="mt-1 text-base-content/60">
                 重试沿用原{key === 'feishu' ? '实例' : '流程'} {idValue ?? ''}（已重试 {t.retryCount} 次），只重新拉取 / 提交状态，不会新建第二条审批。
               </div>
             </div>
-            <Btn variant="accent" className="!h-8 !px-3" onClick={() => handleRetry(app.id, key)}>
+            <Btn variant="primary" className="!h-8 !px-3" onClick={() => handleRetry(app.id, key)}>
               重试（沿用原实例，不重复发起）
             </Btn>
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
           <Btn variant="ghost" className="!h-8 !px-3" onClick={() => openDemo(app, key, 'approved')}>
             [演示] 模拟该轨流转
           </Btn>
@@ -492,16 +503,21 @@ export default function Approvals({ go }: { go: Go }) {
 
         <div>
           <Label>状态流转历史（追加不覆盖）</Label>
-          <ul className="timeline timeline-vertical timeline-compact mt-2">
+          <ul className="stagger timeline timeline-vertical timeline-compact mt-2">
             {t.history.map((h, i) => (
-              <li key={`${h.at}-${i}`}>
+              <li key={`${h.at}-${i}`} style={{ '--i': Math.min(i, 7) } as CSSProperties}>
                 <div className="timeline-middle">
                   <span className={`status status-xs ${TRACK_STATE[h.status].dot}`} aria-hidden="true" />
                 </div>
                 <div className="timeline-end w-full px-3 pb-3">
-                  <div className="flex flex-wrap items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-medium text-base-content">{h.node}</span>
-                    <Chip tone={TRACK_STATE[h.status].tone}>{TRACK_STATE[h.status].label}</Chip>
+                    <Chip
+                      tone={TRACK_STATE[h.status].tone}
+                      className={TRACK_STATE[h.status].tone === 'neutral' ? NEUTRAL_CHIP_FIX : undefined}
+                    >
+                      {TRACK_STATE[h.status].label}
+                    </Chip>
                     <span className="font-mono text-[10px] text-base-content/50">{h.at}</span>
                   </div>
                   <div className="mt-0.5 text-[11px] text-base-content/60">审批人：{h.by}</div>
@@ -517,11 +533,11 @@ export default function Approvals({ go }: { go: Go }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* 页头：当前用户 + 发起权限 + 中性化的双轨说明 */}
-      <div className="ws-rise flex flex-col gap-4 border-b border-base-300 pb-5 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2.5">
+      <div className="ws-rise flex flex-col gap-5 border-b border-base-300 pb-5 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-base-content">录取申请与双审批中心</h1>
             <Chip tone="ghost">在途 {inflightCount} 单</Chip>
           </div>
@@ -529,8 +545,8 @@ export default function Approvals({ go }: { go: Go }) {
             飞书审批与 BPM 内部 OA 两条审批轨的状态分别展示、分别追溯；按公司制度配置：飞书审批 + BPM OA 双轨并行或串行，以公司现有审批定义为准（代码不写死）。
             任一必需审批未完成，不标记为整体通过。
           </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Chip tone="neutral">
+          <div className="flex flex-wrap items-center gap-3">
+            <Chip tone="neutral" className={NEUTRAL_CHIP_FIX}>
               {currentUser.name} · {ROLE_LABEL[currentUser.role]} · {currentUser.dept}
             </Chip>
             <Chip tone={canCreate ? 'success' : 'error'}>
@@ -540,7 +556,7 @@ export default function Approvals({ go }: { go: Go }) {
           </div>
         </div>
 
-        <div className="flex flex-col items-start gap-2 md:items-end">
+        <div className="flex flex-col items-start gap-3 md:items-end">
           <Btn variant="solid" onClick={openWizard} disabled={!canCreate || !eligibleCandidates.length} title={startHint}>
             + 发起录取申请
           </Btn>
@@ -578,7 +594,7 @@ export default function Approvals({ go }: { go: Go }) {
         </div>
         <div className="stat">
           <div className="stat-title text-xs">单边通过 · 未完成</div>
-          <div className="stat-value text-2xl tabular-nums text-accent">{countOf('partial')}</div>
+          <div className="stat-value text-2xl tabular-nums text-warning">{countOf('partial')}</div>
           <div className="stat-desc text-[11px]">仅一侧通过，不得视为录用</div>
         </div>
         <div className="stat">
@@ -596,10 +612,10 @@ export default function Approvals({ go }: { go: Go }) {
       </div>
 
       {/* 列表 + 筛选 */}
-      <div className="ws-rise [--i:2] space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="ws-rise [--i:2] space-y-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <SectionHead title="申请单列表" sub="每条轨独立展示发起 / 处理中 / 通过 / 退回 / 驳回 / 撤销" />
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
@@ -616,111 +632,118 @@ export default function Approvals({ go }: { go: Go }) {
           </div>
         </div>
 
-        {listed.map((app) => (
-          <div
-            key={app.id}
-            id={`approval-${app.id}`}
-            className={`scroll-mt-24 rounded-2xl transition-shadow ${
-              highlight === app.id ? 'ring-2 ring-accent ring-offset-2 ring-offset-base-200' : ''
-            }`}
-          >
-            <Card className="space-y-4 p-5">
-              {/* 单头：单号 / 候选人 / 聚合结论 */}
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 pb-3">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <span className="rounded-md bg-base-200 px-2 py-1 font-mono text-xs font-semibold text-base-content">{app.id}</span>
-                  <span className="text-base font-semibold text-base-content">{app.candidateName}</span>
-                  <span className="text-xs text-base-content/60">应聘：{app.positionName}</span>
-                  <Chip tone="ghost">{app.dept}</Chip>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Chip tone={FINAL_STATE[app.finalStatus].tone}>{FINAL_STATE[app.finalStatus].label}</Chip>
-                  <Btn variant="ghost" className="!h-8 !px-3" onClick={() => go('detail', app.candidateId)}>
-                    查看候选人贯通详情 ↗
-                  </Btn>
-                </div>
-              </div>
-
-              {/* 聚合结论说明（partial 明确写清不得视为录用） */}
-              <div role="alert" className={`${FINAL_STATE[app.finalStatus].alert} items-start text-xs`}>
-                <div className="space-y-0.5">
-                  <div className="font-semibold">
-                    {FINAL_STATE[app.finalStatus].label} · 飞书审批：{TRACK_STATE[app.feishu.status].label} · BPM OA：
-                    {TRACK_STATE[app.bpm.status].label}
+        <div className="stagger space-y-5">
+          {listed.map((app, i) => (
+            <div
+              key={app.id}
+              id={`approval-${app.id}`}
+              style={{ '--i': Math.min(i, 7) } as CSSProperties}
+              className={`scroll-mt-24 rounded-2xl ${
+                highlight === app.id ? 'ring-2 ring-primary ring-offset-2 ring-offset-base-200' : ''
+              }`}
+            >
+              {/* 内层承担 .motion-pop（与入场动画错开，避免 fill 值压掉 hover 位移） */}
+              <Card className="motion-pop space-y-5 p-5 hover:shadow-[var(--shadow-lift)]">
+                {/* 单头：单号 / 候选人 / 聚合结论 */}
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-base-300 pb-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="rounded-md bg-base-200 px-2 py-1 font-mono text-xs font-semibold text-base-content">{app.id}</span>
+                    <span className="text-base font-semibold text-base-content">{app.candidateName}</span>
+                    <span className="text-xs text-base-content/60">应聘：{app.positionName}</span>
+                    <Chip tone="ghost">{app.dept}</Chip>
                   </div>
-                  <div className="text-base-content/75">{finalNoteOf(app)}</div>
-                </div>
-              </div>
-
-              {/* 拟定待遇与幂等键 */}
-              <dl className="grid grid-cols-2 gap-3 rounded-xl bg-base-200/60 p-3.5 text-xs sm:grid-cols-3 lg:grid-cols-6">
-                {[
-                  ['拟定薪酬', app.salary],
-                  ['拟定职级', app.level],
-                  ['发起人', app.applicant],
-                  ['发起日期', app.applyDate],
-                  ['预计入职', app.onboardDate],
-                  ['幂等键', app.idempotencyKey],
-                ].map(([k, v]) => (
-                  <div key={k} className="min-w-0">
-                    <dt className="text-base-content/50">{k}</dt>
-                    <dd className={`text-base-content ${k === '幂等键' ? 'truncate font-mono text-[10px]' : 'font-semibold'}`} title={v}>
-                      {v}
-                    </dd>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Chip tone={FINAL_STATE[app.finalStatus].tone} className={FINAL_STATE[app.finalStatus].tone === 'neutral' ? NEUTRAL_CHIP_FIX : undefined}>
+                      {FINAL_STATE[app.finalStatus].label}
+                    </Chip>
+                    <Btn variant="ghost" className="!h-8 !px-3" onClick={() => go('detail', app.candidateId)}>
+                      查看候选人贯通详情 ↗
+                    </Btn>
                   </div>
-                ))}
-              </dl>
+                </div>
 
-              {/* 两条审批轨分别展示 */}
-              <div className="grid gap-4 lg:grid-cols-2">{TRACKS.map((key) => renderTrack(app, key))}</div>
+                {/* 聚合结论说明（partial 明确写清不得视为录用） */}
+                <div role="alert" className={`${FINAL_STATE[app.finalStatus].alert} items-start text-xs`}>
+                  <div className="space-y-0.5">
+                    <div className="font-semibold">
+                      {FINAL_STATE[app.finalStatus].label} · 飞书审批：{TRACK_STATE[app.feishu.status].label} · BPM OA：
+                      {TRACK_STATE[app.bpm.status].label}
+                    </div>
+                    <div className="text-base-content/75">{finalNoteOf(app)}</div>
+                  </div>
+                </div>
 
-              {/* 申请材料核对结果（创建时提交的勾选结果） */}
-              <div className="space-y-2">
-                <Label>申请材料核对结果</Label>
-                <ul className="grid gap-2 sm:grid-cols-2">
-                  {app.materials.map((m) => (
-                    <li
-                      key={m.key}
-                      className={`flex items-start gap-2.5 rounded-xl border p-2.5 ${
-                        m.required && m.status === 'missing' ? 'border-error/40 bg-error/5' : 'border-base-300 bg-base-100'
-                      }`}
-                    >
-                      <span className={`status status-xs mt-1 ${MATERIAL_STATE[m.status].dot}`} aria-hidden="true" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs text-base-content">{m.name}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <Chip tone={m.required ? 'accent' : 'ghost'}>{m.required ? '必需' : '选填'}</Chip>
-                          <Chip tone={MATERIAL_STATE[m.status].tone}>{MATERIAL_STATE[m.status].label}</Chip>
-                          {m.fileRef && <span className="truncate font-mono text-[10px] text-base-content/45">{m.fileRef}</span>}
-                        </div>
-                      </div>
-                    </li>
+                {/* 拟定待遇与幂等键 */}
+                <dl className="grid grid-cols-2 gap-4 rounded-xl bg-base-200/60 p-3.5 text-xs sm:grid-cols-3 lg:grid-cols-6">
+                  {[
+                    ['拟定薪酬', app.salary],
+                    ['拟定职级', app.level],
+                    ['发起人', app.applicant],
+                    ['发起日期', app.applyDate],
+                    ['预计入职', app.onboardDate],
+                    ['幂等键', app.idempotencyKey],
+                  ].map(([k, v]) => (
+                    <div key={k} className="min-w-0">
+                      <dt className="text-base-content/50">{k}</dt>
+                      <dd className={`text-base-content ${k === '幂等键' ? 'truncate font-mono text-[10px]' : 'font-semibold'}`} title={v}>
+                        {v}
+                      </dd>
+                    </div>
                   ))}
-                </ul>
-              </div>
-            </Card>
-          </div>
-        ))}
+                </dl>
 
-        {!listed.length && (
-          <Card className="p-4">
-            <Empty
-              title={approvals.length ? '当前筛选下没有申请单' : '暂无录取申请记录'}
-              hint={
-                approvals.length
-                  ? '可切换到「全部申请单」查看其它聚合结论的申请单。'
-                  : '业务确认录用意向后，由有权限的 HR 在右上角发起录取申请，飞书审批与 BPM 流程会分别创建并跟踪。'
-              }
-              action={
-                !approvals.length && canCreate && eligibleCandidates.length ? (
-                  <Btn variant="solid" className="mt-2" onClick={openWizard}>
-                    发起录取申请
-                  </Btn>
-                ) : undefined
-              }
-            />
-          </Card>
-        )}
+                {/* 两条审批轨分别展示 */}
+                <div className="grid gap-5 lg:grid-cols-2">{TRACKS.map((key) => renderTrack(app, key))}</div>
+
+                {/* 申请材料核对结果（创建时提交的勾选结果） */}
+                <div className="space-y-3">
+                  <Label>申请材料核对结果</Label>
+                  <ul className="stagger grid gap-3 sm:grid-cols-2">
+                    {app.materials.map((m, i) => (
+                      <li
+                        key={m.key}
+                        style={{ '--i': Math.min(i, 7) } as CSSProperties}
+                        className={`flex items-start gap-3 rounded-xl border p-2.5 ${
+                          m.required && m.status === 'missing' ? 'border-error/40 bg-error/5' : 'border-base-300 bg-base-100'
+                        }`}
+                      >
+                        <span className={`status status-xs mt-1 ${MATERIAL_STATE[m.status].dot}`} aria-hidden="true" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs text-base-content">{m.name}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <Chip tone={m.required ? 'neutral' : 'ghost'}>{m.required ? '必需' : '选填'}</Chip>
+                            <Chip tone={MATERIAL_STATE[m.status].tone}>{MATERIAL_STATE[m.status].label}</Chip>
+                            {m.fileRef && <span className="truncate font-mono text-[10px] text-base-content/50">{m.fileRef}</span>}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Card>
+            </div>
+          ))}
+
+          {!listed.length && (
+            <Card className="p-4">
+              <Empty
+                title={approvals.length ? '当前筛选下没有申请单' : '暂无录取申请记录'}
+                hint={
+                  approvals.length
+                    ? '可切换到「全部申请单」查看其它聚合结论的申请单。'
+                    : '业务确认录用意向后，由有权限的 HR 在右上角发起录取申请，飞书审批与 BPM 流程会分别创建并跟踪。'
+                }
+                action={
+                  !approvals.length && canCreate && eligibleCandidates.length ? (
+                    <Btn variant="solid" className="mt-2" onClick={openWizard}>
+                      发起录取申请
+                    </Btn>
+                  ) : undefined
+                }
+              />
+            </Card>
+          )}
+        </div>
       </div>
 
       {/* 发起向导：选择候选人 + 材料逐项核对 */}
@@ -749,7 +772,7 @@ export default function Approvals({ go }: { go: Go }) {
           </>
         }
       >
-        <div className="space-y-4 text-xs">
+        <div className="space-y-5 text-xs">
           {submitError && (
             <div role="alert" className="alert alert-soft alert-error items-start text-xs">
               <div className="min-w-0 flex-1">
@@ -794,7 +817,7 @@ export default function Approvals({ go }: { go: Go }) {
             </select>
           </Field>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="拟定薪资待遇" htmlFor="approval-salary" required hint="如：32k · 14薪 + 绩效">
               <input
                 id="approval-salary"
@@ -830,14 +853,14 @@ export default function Approvals({ go }: { go: Go }) {
             />
           </Field>
 
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <Label>申请材料逐项核对（提交内容 = 勾选结果）</Label>
               <span className="text-[11px] text-base-content/50">
                 必交 {requiredMaterials.length} 项 · 已勾选 {checkedRequired}/{requiredMaterials.length}
               </span>
             </div>
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {materials.map((m) => {
                 const unavailable = m.required && m.status === 'missing'
                 const checked = !!checks[m.key]
@@ -848,7 +871,7 @@ export default function Approvals({ go }: { go: Go }) {
                       unavailable ? 'border-error/50 bg-error/5' : checked ? 'border-base-300 bg-base-100' : 'border-warning/40 bg-warning/5'
                     }`}
                   >
-                    <label className="flex cursor-pointer items-start gap-2.5">
+                    <label className="flex cursor-pointer items-start gap-3">
                       <input
                         type="checkbox"
                         className="checkbox checkbox-sm mt-0.5"
@@ -857,9 +880,9 @@ export default function Approvals({ go }: { go: Go }) {
                         onChange={(e) => setChecks((prev) => ({ ...prev, [m.key]: e.target.checked }))}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-1.5">
+                        <span className="flex flex-wrap items-center gap-2">
                           <span className="text-xs font-medium text-base-content">{m.name}</span>
-                          <Chip tone={m.required ? 'accent' : 'ghost'}>{m.required ? '必需' : '选填'}</Chip>
+                          <Chip tone={m.required ? 'neutral' : 'ghost'}>{m.required ? '必需' : '选填'}</Chip>
                           <Chip tone={MATERIAL_STATE[m.status].tone}>{MATERIAL_STATE[m.status].label}</Chip>
                         </span>
                         <span className="mt-1 block text-[11px] text-base-content/60">
@@ -887,9 +910,9 @@ export default function Approvals({ go }: { go: Go }) {
 
           <div className="rounded-xl bg-base-200/70 p-3">
             <Label>提交前检查</Label>
-            <ul className="mt-2 space-y-1.5">
-              {checklist.map((it) => (
-                <li key={it.text} className="flex items-start gap-2">
+            <ul className="stagger mt-2 space-y-2">
+              {checklist.map((it, i) => (
+                <li key={it.text} style={{ '--i': Math.min(i, 7) } as CSSProperties} className="flex items-start gap-3">
                   <span className={`status status-xs mt-1 ${it.ok ? 'status-success' : 'status-error'}`} aria-hidden="true" />
                   <span className={it.ok ? 'text-base-content/75' : 'text-error'}>{it.text}</span>
                 </li>
@@ -913,14 +936,14 @@ export default function Approvals({ go }: { go: Go }) {
             <Btn variant="ghost" onClick={() => setDemo(null)}>
               取消
             </Btn>
-            <Btn variant="accent" onClick={applyDemo}>
+            <Btn variant="primary" onClick={applyDemo}>
               确认模拟
             </Btn>
           </>
         }
       >
         {demo && (
-          <div className="space-y-4 text-xs">
+          <div className="space-y-5 text-xs">
             <div role="alert" className="alert alert-soft alert-warning items-start text-[11px]">
               <span>
                 这是演示入口：确认后会真实写入本页演示数据（追加 {TRACK_NAME[demo.track]} 的一条状态历史、更新时间与失败重试标记），请确认后再执行。

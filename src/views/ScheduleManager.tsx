@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { candidates, positions, STAGES } from '../data'
 import type { Candidate, ScheduleDetail, ScheduleEvent } from '../data'
 import {
@@ -95,6 +95,37 @@ function slotError(slot: string): string {
   if (+m[2] < 1 || +m[2] > 12 || +m[3] < 1 || +m[3] > 31) return '日期不合法，请检查月份与日期'
   if (+m[4] > 23 || +m[5] > 59) return '时间不合法，请检查小时与分钟'
   return ''
+}
+
+/** 统计数字进场：从 0 过渡到目标值（--dur-slow 600ms 档）。
+    只用一次 requestAnimationFrame 补间，不新增无限循环动画；reduced-motion 下直接落位。 */
+function useCountUp(target: number, duration = 600): number {
+  const [value, setValue] = useState(0)
+  const fromRef = useRef(0)
+  useEffect(() => {
+    const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const from = reduced ? target : fromRef.current
+    if (from === target) {
+      fromRef.current = target
+      setValue(target)
+      return
+    }
+    let raf = 0
+    const start = performance.now()
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setValue(from + (target - from) * eased)
+      if (p < 1) raf = requestAnimationFrame(tick)
+      else fromRef.current = target
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      fromRef.current = target
+    }
+  }, [target, duration])
+  return value
 }
 
 const NOTICE_CHIP: Record<ScheduleDetail['noticeStatus'], { tone: Tone; text: string }> = {
@@ -214,6 +245,10 @@ export default function ScheduleManager({ go }: { go: Go }) {
   const noticeFailed = live.filter((s) => s.d.noticeStatus === 'failed').length
   const confirmRate = live.length ? Math.round((noticeConfirmed / live.length) * 100) : 0
   const queue = noticeQueue()
+  // 统计卡数值进场（0 → 目标值）；逻辑判断仍用真实值，动画只影响展示
+  const calSyncedAnim = Math.round(useCountUp(calSynced))
+  const confirmRateAnim = Math.round(useCountUp(confirmRate))
+  const queueAnim = Math.round(useCountUp(queue.length))
 
   const dayStats: Record<string, { live: number; canceled: number }> = {}
   sessions.forEach(({ d }) => {
@@ -439,164 +474,174 @@ export default function ScheduleManager({ go }: { go: Go }) {
 
   /* ───────────── 单条场次 ───────────── */
 
-  const renderSession = ({ c, d }: { c: Candidate; d: ScheduleDetail }) => {
+  const renderSession = ({ c, d }: { c: Candidate; d: ScheduleDetail }, i: number) => {
     const events = scheduleHistory(c.id)
     const calBusy = busy?.cid === c.id && busy.kind === 'calendar'
     const noticeBusy = busy?.cid === c.id && busy.kind === 'notice'
     return (
-      <div key={c.id} className="rounded-xl border border-base-300 bg-base-100 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-base-content">{c.name}</span>
-              <span className="text-xs text-base-content/60">{c.role}</span>
-              <Chip tone="ghost">{d.round}</Chip>
-              <Chip tone={d.type === 'offline' ? 'neutral' : 'info'}>{d.type === 'offline' ? '线下现场' : '线上飞书会议'}</Chip>
-              {d.status === 'canceled' && <Chip tone="warning">已取消 · 保留历史</Chip>}
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-base-content">
-              <span className="font-mono tabular-nums">{d.slot}</span>
-              <span className="text-base-content/50">（{slotLabel(d.slot)}）</span>
-              <span className="text-base-content/50">· 时长 {d.durationMin} 分钟</span>
-              <span className="text-base-content/50">· 面试官 {d.interviewer}</span>
-            </div>
-            <div className="text-[11px] text-base-content/50">
-              场次号 {d.interviewId} · 负责 HR {c.assignee} · 来源 {c.source} · 通知通道 {CHANNEL_LABEL[d.noticeChannel]}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            {d.status === 'scheduled' ? (
-              <>
-                <Btn
-                  variant="ghost"
-                  className="!h-8 !px-3"
-                  disabled={anyBusy}
-                  onClick={() => openResched(c, d)}
-                  ariaLabel={`改期 ${c.name} 的场次 ${d.interviewId}`}
+      // 外层承担 .stagger 错位入场，内层承担 .motion-pop 的 hover/active 反馈
+      // （两者放同一个元素时，入场动画的 fill 值会盖住 hover 位移）
+      <div key={c.id} style={{ '--i': Math.min(i, 7) } as CSSProperties}>
+        <div className="motion-pop rounded-xl border border-base-300 bg-base-100 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm font-semibold text-base-content">{c.name}</span>
+                <span className="text-xs text-base-content/60">{c.role}</span>
+                <Chip tone="ghost">{d.round}</Chip>
+                {/* 深色补丁翻转为墨黑药丸：仅线下场次；线上保持 info 语义色 */}
+                <Chip
+                  tone={d.type === 'offline' ? 'neutral' : 'info'}
+                  className={d.type === 'offline' ? 'bg-neutral text-neutral-content' : undefined}
                 >
-                  改期
-                </Btn>
+                  {d.type === 'offline' ? '线下现场' : '线上飞书会议'}
+                </Chip>
+                {d.status === 'canceled' && <Chip tone="warning">已取消 · 保留历史</Chip>}
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-base-content">
+                <span className="font-mono tabular-nums">{d.slot}</span>
+                <span className="text-base-content/50">（{slotLabel(d.slot)}）</span>
+                <span className="text-base-content/50">· 时长 {d.durationMin} 分钟</span>
+                <span className="text-base-content/50">· 面试官 {d.interviewer}</span>
+              </div>
+              <div className="text-[11px] text-base-content/50">
+                场次号 {d.interviewId} · 负责 HR {c.assignee} · 来源 {c.source} · 通知通道 {CHANNEL_LABEL[d.noticeChannel]}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {d.status === 'scheduled' ? (
+                <>
+                  <Btn
+                    variant="ghost"
+                    className="!h-8 !px-3"
+                    disabled={anyBusy}
+                    onClick={() => openResched(c, d)}
+                    ariaLabel={`改期 ${c.name} 的场次 ${d.interviewId}`}
+                  >
+                    改期
+                  </Btn>
+                  <Btn
+                    variant="ghost"
+                    className="!h-8 !px-3 text-error"
+                    disabled={anyBusy}
+                    onClick={() => openCancel(c, d)}
+                    ariaLabel={`取消 ${c.name} 的场次 ${d.interviewId}`}
+                  >
+                    取消
+                  </Btn>
+                  <Btn variant="outline" className="!h-8 !px-3" disabled={anyBusy} onClick={() => go('room', c.id)}>
+                    进入考场
+                  </Btn>
+                </>
+              ) : (
+                <Chip tone="ghost">已取消场次不可改期，如需重新约面请发起新场次</Chip>
+              )}
+            </div>
+          </div>
+
+          {/* 飞书日历 + 候选人通知双轨状态 */}
+          <div className="mt-3 grid gap-3 border-t border-base-300 pt-3 text-xs sm:grid-cols-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-medium text-base-content/70">飞书日历</span>
+              <Chip tone={CAL_CHIP[d.feishuCalendarStatus].tone}>{CAL_CHIP[d.feishuCalendarStatus].text}</Chip>
+              {calBusy && <span className="loading loading-spinner loading-xs" role="status" aria-label="日历同步处理中" />}
+              {d.status === 'scheduled' && d.feishuCalendarStatus !== 'synced' && (
                 <Btn
-                  variant="ghost"
-                  className="!h-8 !px-3 text-error"
+                  variant="link"
+                  className="!h-6 !px-1"
+                  loading={calBusy}
                   disabled={anyBusy}
-                  onClick={() => openCancel(c, d)}
-                  ariaLabel={`取消 ${c.name} 的场次 ${d.interviewId}`}
+                  onClick={() => syncCalendar(c.id, false)}
+                  ariaLabel={`重试同步场次 ${d.interviewId} 到飞书日历`}
                 >
-                  取消
+                  {d.feishuCalendarStatus === 'failed' ? '重试同步' : '立即同步'}
                 </Btn>
-                <Btn variant="outline" className="!h-8 !px-3" disabled={anyBusy} onClick={() => go('room', c.id)}>
-                  进入考场
+              )}
+              {d.status === 'scheduled' && d.feishuCalendarStatus !== 'failed' && (
+                <Btn
+                  variant="link"
+                  className="!h-6 !px-1 text-base-content/50"
+                  disabled={anyBusy}
+                  onClick={() => syncCalendar(c.id, true)}
+                  ariaLabel={`演示同步失败：场次 ${d.interviewId}`}
+                >
+                  模拟同步失败
                 </Btn>
-              </>
-            ) : (
-              <Chip tone="ghost">已取消场次不可改期，如需重新约面请发起新场次</Chip>
-            )}
+              )}
+              {d.status === 'scheduled' && d.feishuMeetingUrl && (
+                <a
+                  className="link link-hover font-medium text-base-content"
+                  href={d.feishuMeetingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  进入飞书会议
+                </a>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-medium text-base-content/70">候选人通知</span>
+              <Chip tone={NOTICE_CHIP[d.noticeStatus].tone}>{NOTICE_CHIP[d.noticeStatus].text}</Chip>
+              <span className="text-[11px] text-base-content/50">已尝试 {d.noticeAttempts} 次</span>
+              {noticeBusy && <span className="loading loading-spinner loading-xs" role="status" aria-label="通知发送处理中" />}
+              {d.status === 'scheduled' && (
+                <Btn
+                  variant="link"
+                  className="!h-6 !px-1"
+                  loading={noticeBusy}
+                  disabled={anyBusy}
+                  onClick={() => retryNotice(c.id, false)}
+                  ariaLabel={`重发 ${c.name} 的场次 ${d.interviewId} 通知`}
+                >
+                  {d.noticeStatus === 'failed' ? '重试发送' : '重发通知'}
+                </Btn>
+              )}
+            </div>
           </div>
+
+          {d.failureReason && (
+            <div className="mt-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-[11px] text-error">
+              异常原因：{d.failureReason}
+            </div>
+          )}
+
+          {/* 变更历史：折叠时间线，改期 / 取消 / 重发全链路追加不覆盖 */}
+          <details className="collapse collapse-arrow mt-3 border border-base-300 bg-base-200">
+            <summary className="collapse-title min-h-0 list-none py-2 text-xs font-medium text-base-content/70">
+              变更历史（{events.length} 条）
+            </summary>
+            <div className="collapse-content">
+              {events.length ? (
+                <ul className="timeline timeline-vertical timeline-compact">
+                  {events.map((e, i) => (
+                    <li key={`${e.at}-${e.action}-${i}`}>
+                      {i > 0 && <hr className="bg-base-300" />}
+                      <div className="timeline-start text-[11px] tabular-nums text-base-content/50">{e.at}</div>
+                      <div className="timeline-middle">
+                        <span className={ACTION_DOT[e.action]} aria-hidden="true" />
+                      </div>
+                      <div className="timeline-end timeline-box border-base-300 bg-base-100 text-[11px]">
+                        <div className="font-medium text-base-content">{ACTION_LABEL[e.action]}</div>
+                        {e.from && e.to && (
+                          <div className="text-base-content/60">
+                            {e.from} → {e.to}
+                          </div>
+                        )}
+                        {!e.from && e.to && <div className="text-base-content/60">时段 {e.to}</div>}
+                        {e.reason && <div className="text-base-content/60">原因：{e.reason}</div>}
+                        <div className="text-base-content/50">操作人 {e.by}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="pb-2 text-[11px] text-base-content/50">该场次暂无变更记录</p>
+              )}
+            </div>
+          </details>
         </div>
-
-        {/* 飞书日历 + 候选人通知双轨状态 */}
-        <div className="mt-3 grid gap-2 border-t border-base-300 pt-3 text-xs sm:grid-cols-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-base-content/70">飞书日历</span>
-            <Chip tone={CAL_CHIP[d.feishuCalendarStatus].tone}>{CAL_CHIP[d.feishuCalendarStatus].text}</Chip>
-            {calBusy && <span className="loading loading-spinner loading-xs" role="status" aria-label="日历同步处理中" />}
-            {d.status === 'scheduled' && d.feishuCalendarStatus !== 'synced' && (
-              <Btn
-                variant="link"
-                className="!h-6 !px-1"
-                loading={calBusy}
-                disabled={anyBusy}
-                onClick={() => syncCalendar(c.id, false)}
-                ariaLabel={`重试同步场次 ${d.interviewId} 到飞书日历`}
-              >
-                {d.feishuCalendarStatus === 'failed' ? '重试同步' : '立即同步'}
-              </Btn>
-            )}
-            {d.status === 'scheduled' && d.feishuCalendarStatus !== 'failed' && (
-              <Btn
-                variant="link"
-                className="!h-6 !px-1 text-base-content/50"
-                disabled={anyBusy}
-                onClick={() => syncCalendar(c.id, true)}
-                ariaLabel={`演示同步失败：场次 ${d.interviewId}`}
-              >
-                模拟同步失败
-              </Btn>
-            )}
-            {d.status === 'scheduled' && d.feishuMeetingUrl && (
-              <a
-                className="link link-hover font-medium text-base-content"
-                href={d.feishuMeetingUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                进入飞书会议
-              </a>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-base-content/70">候选人通知</span>
-            <Chip tone={NOTICE_CHIP[d.noticeStatus].tone}>{NOTICE_CHIP[d.noticeStatus].text}</Chip>
-            <span className="text-[11px] text-base-content/50">已尝试 {d.noticeAttempts} 次</span>
-            {noticeBusy && <span className="loading loading-spinner loading-xs" role="status" aria-label="通知发送处理中" />}
-            {d.status === 'scheduled' && (
-              <Btn
-                variant="link"
-                className="!h-6 !px-1"
-                loading={noticeBusy}
-                disabled={anyBusy}
-                onClick={() => retryNotice(c.id, false)}
-                ariaLabel={`重发 ${c.name} 的场次 ${d.interviewId} 通知`}
-              >
-                {d.noticeStatus === 'failed' ? '重试发送' : '重发通知'}
-              </Btn>
-            )}
-          </div>
-        </div>
-
-        {d.failureReason && (
-          <div className="mt-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-[11px] text-error">
-            异常原因：{d.failureReason}
-          </div>
-        )}
-
-        {/* 变更历史：折叠时间线，改期 / 取消 / 重发全链路追加不覆盖 */}
-        <details className="collapse collapse-arrow mt-3 border border-base-300 bg-base-200">
-          <summary className="collapse-title min-h-0 list-none py-2 text-xs font-medium text-base-content/70">
-            变更历史（{events.length} 条）
-          </summary>
-          <div className="collapse-content">
-            {events.length ? (
-              <ul className="timeline timeline-vertical timeline-compact">
-                {events.map((e, i) => (
-                  <li key={`${e.at}-${e.action}-${i}`}>
-                    {i > 0 && <hr className="bg-base-300" />}
-                    <div className="timeline-start text-[11px] tabular-nums text-base-content/50">{e.at}</div>
-                    <div className="timeline-middle">
-                      <span className={ACTION_DOT[e.action]} aria-hidden="true" />
-                    </div>
-                    <div className="timeline-end timeline-box border-base-300 bg-base-100 text-[11px]">
-                      <div className="font-medium text-base-content">{ACTION_LABEL[e.action]}</div>
-                      {e.from && e.to && (
-                        <div className="text-base-content/60">
-                          {e.from} → {e.to}
-                        </div>
-                      )}
-                      {!e.from && e.to && <div className="text-base-content/60">时段 {e.to}</div>}
-                      {e.reason && <div className="text-base-content/60">原因：{e.reason}</div>}
-                      <div className="text-base-content/50">操作人 {e.by}</div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="pb-2 text-[11px] text-base-content/50">该场次暂无变更记录</p>
-            )}
-          </div>
-        </details>
       </div>
     )
   }
@@ -604,11 +649,11 @@ export default function ScheduleManager({ go }: { go: Go }) {
   const cellList = monthCells(cursor.y, cursor.m0)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* 页头：一屏唯一主色按钮留给「发起约面」 */}
-      <div className="ws-rise flex flex-col gap-4 border-b border-base-300 pb-5 md:flex-row md:items-end md:justify-between">
+      <div className="ws-rise flex flex-col gap-5 border-b border-base-300 pb-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-base-content">约面管理与通知中心</h1>
             <Chip tone="ghost">
               在排 {live.length} 场 · 已取消 {canceled.length} 场
@@ -618,7 +663,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
             面试安排日历视图 · 飞书日历同步状态可见可重试 · 短信/邮件通知三态与失败队列 · 改期与取消只追加历史、不物理删除场次
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Btn variant="ghost" onClick={() => go('candidates')}>
             前往候选人大池
           </Btn>
@@ -638,14 +683,14 @@ export default function ScheduleManager({ go }: { go: Go }) {
       <div className="ws-rise stats stats-vertical w-full border border-base-300 bg-base-100 shadow-[var(--shadow-paper)] sm:stats-horizontal [--i:1]">
         <div className="stat">
           <div className="stat-title text-xs text-base-content/60">飞书日历同步</div>
-          <div className="stat-value text-2xl tabular-nums">{calSynced} 场已同步</div>
+          <div className="stat-value text-2xl tabular-nums">{calSyncedAnim} 场已同步</div>
           <div className="stat-desc whitespace-normal text-[11px] text-base-content/60">
             待同步 {calPending} 场 · 同步失败 {calFailed} 场{calFailed ? '（可重试，沿用原场次不重复建场）' : ''}
           </div>
         </div>
         <div className="stat">
           <div className="stat-title text-xs text-base-content/60">候选人通知确认率</div>
-          <div className="stat-value text-2xl tabular-nums">{confirmRate}%</div>
+          <div className="stat-value text-2xl tabular-nums">{confirmRateAnim}%</div>
           <div className="stat-desc whitespace-normal text-[11px] text-base-content/60">
             已确认 {noticeConfirmed} / 在排 {live.length} 场 · 已发送待确认 {noticeSent} · 待发送 {noticeWaiting} · 失败{' '}
             {noticeFailed}
@@ -654,7 +699,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
         <div className="stat">
           <div className="stat-title text-xs text-base-content/60">通知失败队列</div>
           <div className={`stat-value text-2xl tabular-nums ${queue.length ? 'text-error' : 'text-success'}`}>
-            {queue.length} 条待处理
+            {queueAnim} 条待处理
           </div>
           <div className="stat-desc whitespace-normal text-[11px] text-base-content/60">
             {queue.length
@@ -665,15 +710,15 @@ export default function ScheduleManager({ go }: { go: Go }) {
       </div>
 
       {/* 日历 + 当日场次 */}
-      <div className="ws-rise grid gap-4 lg:grid-cols-12 [--i:2]">
+      <div className="ws-rise grid gap-5 lg:grid-cols-12 [--i:2]">
         <div className="lg:col-span-5">
           <Card>
-            <div className="card-body gap-3 p-5">
+            <div className="card-body gap-4 p-5">
               <div className="flex items-center justify-between">
                 <h2 className="card-title text-base">
                   {cursor.y} 年 {cursor.m0 + 1} 月
                 </h2>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <Btn variant="ghost" className="!h-8 !px-2.5" onClick={() => shiftMonth(-1)} ariaLabel="切换到上一月">
                     上一月
                   </Btn>
@@ -683,14 +728,14 @@ export default function ScheduleManager({ go }: { go: Go }) {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center justify-between gap-3 text-xs">
                 <Btn variant="ghost" className="!h-7 !px-2.5" onClick={() => shiftWeek(-1)} ariaLabel="查看上一周">
                   上一周
                 </Btn>
                 <button
                   type="button"
                   onClick={goToday}
-                  className="cursor-pointer rounded-full bg-base-200 px-3 py-1 font-medium text-base-content hover:bg-base-300"
+                  className="motion-pop cursor-pointer rounded-full bg-base-200 px-3 py-1 font-medium text-base-content hover:bg-base-300"
                 >
                   回到今天
                 </button>
@@ -704,22 +749,35 @@ export default function ScheduleManager({ go }: { go: Go }) {
                 {selectedStat.live} 场、已取消 {selectedStat.canceled} 场
               </p>
 
+              {/* 日历格子尺寸不动（gap-1 保持原密度，改 gap 会破格） */}
               <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-base-content/50">
                 {WEEKDAYS.map((w) => (
                   <div key={w}>{w}</div>
                 ))}
               </div>
 
-              <div className="grid grid-cols-7 gap-1">
+              <div className="stagger grid grid-cols-7 gap-1">
                 {cellList.map((key, i) => {
                   if (!key) {
-                    return <div key={`blank-${i}`} className="aspect-square rounded-lg bg-base-200/60" aria-hidden="true" />
+                    return (
+                      <div
+                        key={`blank-${i}`}
+                        className="aspect-square rounded-lg bg-base-200/60"
+                        style={{ '--i': Math.min(i, 7) } as CSSProperties}
+                        aria-hidden="true"
+                      />
+                    )
                   }
                   const stat = dayStats[key] ?? { live: 0, canceled: 0 }
                   const total = stat.live + stat.canceled
                   const isToday = key === demoToday()
                   const isSelected = key === selectedDate
+                  const cells: string[] = []
+                  if (stat.live) cells.push(`在排 ${stat.live} 场`)
+                  if (stat.canceled) cells.push(`已取消 ${stat.canceled} 场`)
+                  const countText = cells.length ? cells.join(' · ') : '无面试安排'
                   return (
+                    // 荧光青柠落点：选中=实底荧光小块；今天=墨黑格+荧光点/荧光字（只在墨底上用 text-accent）
                     <button
                       key={key}
                       type="button"
@@ -728,21 +786,36 @@ export default function ScheduleManager({ go }: { go: Go }) {
                       aria-label={`${key} ${weekdayCn(key)}，${
                         total ? `${total} 场面试${stat.canceled ? `（含 ${stat.canceled} 场已取消）` : ''}` : '无面试安排'
                       }`}
-                      className={`relative flex aspect-square cursor-pointer flex-col items-center justify-center rounded-lg border pb-2 text-xs transition-colors ${
+                      title={`${key} ${weekdayCn(key)}${isToday ? ' · 今天' : ''} · ${countText}${isSelected ? ' · 当前已选中' : ''}`}
+                      style={{ '--i': Math.min(i, 7) } as CSSProperties}
+                      className={`motion-pop relative flex aspect-square cursor-pointer flex-col items-center justify-center rounded-lg border pb-2 text-xs active:bg-primary/15 ${
                         isSelected
-                          ? 'border-primary bg-primary/10 font-semibold text-base-content'
+                          ? 'border-accent bg-accent font-semibold text-accent-content'
                           : isToday
-                            ? 'border-accent bg-base-100 text-base-content hover:bg-base-200'
-                            : 'border-base-300 bg-base-100 text-base-content/70 hover:bg-base-200'
+                            ? 'border-primary bg-primary text-primary-content'
+                            : 'border-base-300 bg-base-100 text-base-content/70 hover:border-base-content/25 hover:bg-base-200'
                       }`}
                     >
-                      <span className={`tabular-nums ${isToday ? 'font-bold text-accent' : ''}`}>{Number(key.slice(8, 10))}</span>
+                      <span className={`tabular-nums ${isToday ? (isSelected ? 'font-bold' : 'font-bold text-accent') : ''}`}>
+                        {Number(key.slice(8, 10))}
+                      </span>
                       {isToday && (
-                        <span className="absolute right-1 top-1 status status-accent status-xs" aria-hidden="true" />
+                        <span
+                          className={`absolute right-1 top-1 text-[9px] font-bold leading-none ${
+                            isSelected ? 'text-accent-content' : 'text-accent'
+                          }`}
+                        >
+                          今
+                        </span>
+                      )}
+                      {isSelected && (
+                        <span className="absolute left-1 top-1 text-[9px] font-semibold text-primary" aria-hidden="true">
+                          选中
+                        </span>
                       )}
                       {total > 0 && (
                         <span className="absolute bottom-0.5 flex items-center gap-0.5" aria-hidden="true">
-                          <span className="badge badge-xs badge-soft badge-info">{total}</span>
+                          <span className="badge badge-xs badge-soft badge-info tabular-nums">{total}</span>
                           {stat.canceled > 0 && <span className="status status-warning status-xs" />}
                         </span>
                       )}
@@ -751,22 +824,24 @@ export default function ScheduleManager({ go }: { go: Go }) {
                 })}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 border-t border-base-300 pt-3 text-[11px] text-base-content/50">
-                <span className="flex items-center gap-1">
-                  <span className="status status-accent status-xs" aria-hidden="true" />
-                  今天
+              <div className="flex flex-wrap items-center gap-4 border-t border-base-300 pt-3 text-[11px] text-base-content/50">
+                <span className="flex items-center gap-1.5">
+                  <span className="rounded-sm bg-neutral px-1 text-[9px] font-bold leading-none text-accent" aria-hidden="true">
+                    今
+                  </span>
+                  今天（格内标「今」）
                 </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded border border-primary bg-primary/10" aria-hidden="true" />
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded bg-accent" aria-hidden="true" />
                   已选中日期
                 </span>
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1.5">
                   <span className="badge badge-xs badge-soft badge-info" aria-hidden="true">
                     2
                   </span>
                   当日场次数
                 </span>
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1.5">
                   <span className="status status-warning status-xs" aria-hidden="true" />
                   含已取消场次
                 </span>
@@ -777,13 +852,13 @@ export default function ScheduleManager({ go }: { go: Go }) {
 
         <div className="lg:col-span-7">
           <Card>
-            <div className="card-body gap-3 p-5">
-              <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="card-body gap-4 p-5">
+              <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
                   <h2 className="card-title text-base">{scopeMeta[scope].title}</h2>
                   <p className="text-xs text-base-content/60">{scopeMeta[scope].sub}</p>
                 </div>
-                <div className="flex items-center gap-1" role="group" aria-label="场次视角">
+                <div className="flex items-center gap-1.5" role="group" aria-label="场次视角">
                   {(
                     [
                       ['day', `当日 (${selectedStat.live + selectedStat.canceled})`],
@@ -804,7 +879,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label="通知通道筛选">
+              <div className="flex flex-wrap items-center gap-2 text-xs" role="group" aria-label="通知通道筛选">
                 <span className="text-base-content/50">通知通道：</span>
                 {(
                   [
@@ -827,9 +902,9 @@ export default function ScheduleManager({ go }: { go: Go }) {
                 ))}
               </div>
 
-              <div className="space-y-3">
+              <div className="stagger space-y-4">
                 {ordered.length ? (
-                  ordered.map((item) => renderSession(item))
+                  ordered.map((item, i) => renderSession(item, i))
                 ) : (
                   <Empty
                     title={scope === 'canceled' ? '暂无已取消场次' : '该视角暂无场次'}
@@ -853,8 +928,8 @@ export default function ScheduleManager({ go }: { go: Go }) {
 
       {/* 通知失败队列 */}
       <Card className="ws-rise [--i:3]">
-        <div className="card-body gap-3 p-5">
-          <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="card-body gap-4 p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="card-title text-base">通知失败待处理队列</h2>
               <p className="text-xs text-base-content/60">
@@ -867,50 +942,49 @@ export default function ScheduleManager({ go }: { go: Go }) {
           </div>
 
           {queue.length ? (
-            <ul className="space-y-2">
-              {queue.map((c) => {
+            <ul className="stagger space-y-3">
+              {queue.map((c, i) => {
                 const d = c.scheduleDetail
                 if (!d) return null
                 const rowBusy = busy?.cid === c.id && busy.kind === 'notice'
                 return (
-                  <li
-                    key={c.id}
-                    className="flex flex-col gap-2 rounded-xl border border-base-300 bg-base-100 p-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="min-w-0 space-y-1 text-xs">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-base-content">{c.name}</span>
-                        <span className="text-base-content/60">{c.role}</span>
-                        <Chip tone="ghost">{d.interviewId}</Chip>
-                        <Chip tone="info">{CHANNEL_LABEL[d.noticeChannel]}</Chip>
-                        <span className="text-base-content/50">已尝试 {d.noticeAttempts} 次</span>
-                        <span className="text-base-content/50">负责 HR {c.assignee}</span>
+                  <li key={c.id} style={{ '--i': Math.min(i, 7) } as CSSProperties}>
+                    <div className="motion-pop flex flex-col gap-3 rounded-xl border border-base-300 bg-base-100 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 space-y-1.5 text-xs">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="font-semibold text-base-content">{c.name}</span>
+                          <span className="text-base-content/60">{c.role}</span>
+                          <Chip tone="ghost">{d.interviewId}</Chip>
+                          <Chip tone="info">{CHANNEL_LABEL[d.noticeChannel]}</Chip>
+                          <span className="text-base-content/50">已尝试 {d.noticeAttempts} 次</span>
+                          <span className="text-base-content/50">负责 HR {c.assignee}</span>
+                        </div>
+                        <div className="text-base-content/60">
+                          {d.slot}（{slotLabel(d.slot)}）· 场次状态 {d.status === 'canceled' ? '已取消' : '在排'}
+                        </div>
+                        {d.failureReason && <div className="text-error">失败原因：{d.failureReason}</div>}
                       </div>
-                      <div className="text-base-content/60">
-                        {d.slot}（{slotLabel(d.slot)}）· 场次状态 {d.status === 'canceled' ? '已取消' : '在排'}
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Btn
+                          variant="soft"
+                          className="!h-8 !px-3"
+                          loading={rowBusy}
+                          disabled={anyBusy}
+                          onClick={() => retryNotice(c.id, false)}
+                          ariaLabel={`重试发送 ${c.name} 的约面通知`}
+                        >
+                          重试
+                        </Btn>
+                        <Btn
+                          variant="ghost"
+                          className="!h-8 !px-3"
+                          disabled={anyBusy}
+                          onClick={() => retryNotice(c.id, true)}
+                          ariaLabel={`演示失败分支：强制重试 ${c.name} 的约面通知`}
+                        >
+                          演示失败
+                        </Btn>
                       </div>
-                      {d.failureReason && <div className="text-error">失败原因：{d.failureReason}</div>}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <Btn
-                        variant="soft"
-                        className="!h-8 !px-3"
-                        loading={rowBusy}
-                        disabled={anyBusy}
-                        onClick={() => retryNotice(c.id, false)}
-                        ariaLabel={`重试发送 ${c.name} 的约面通知`}
-                      >
-                        重试
-                      </Btn>
-                      <Btn
-                        variant="ghost"
-                        className="!h-8 !px-3"
-                        disabled={anyBusy}
-                        onClick={() => retryNotice(c.id, true)}
-                        ariaLabel={`演示失败分支：强制重试 ${c.name} 的约面通知`}
-                      >
-                        演示失败
-                      </Btn>
                     </div>
                   </li>
                 )
@@ -937,13 +1011,13 @@ export default function ScheduleManager({ go }: { go: Go }) {
             <Btn variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
               取消
             </Btn>
-            <Btn variant="accent" onClick={submitSchedule} loading={creating} disabled={creating}>
+            <Btn variant="primary" onClick={submitSchedule} loading={creating} disabled={creating}>
               确认发起约面
             </Btn>
           </>
         }
       >
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-5 sm:grid-cols-2">
           <Field label="候选人" htmlFor="sched-cid" required className="sm:col-span-2" hint="展示姓名 · 岗位 · 当前阶段">
             <select
               id="sched-cid"
@@ -1043,8 +1117,8 @@ export default function ScheduleManager({ go }: { go: Go }) {
           </Field>
 
           <Field label="面试方式" htmlFor="sched-online" required>
-            <div className="flex items-center gap-4 pt-1.5">
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-base-content" htmlFor="sched-online">
+            <div className="flex items-center gap-5 pt-1.5">
+              <label className="flex cursor-pointer items-center gap-3 text-xs text-base-content" htmlFor="sched-online">
                 <input
                   id="sched-online"
                   type="radio"
@@ -1055,7 +1129,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
                 />
                 线上飞书会议
               </label>
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-base-content" htmlFor="sched-offline">
+              <label className="flex cursor-pointer items-center gap-3 text-xs text-base-content" htmlFor="sched-offline">
                 <input
                   id="sched-offline"
                   type="radio"
@@ -1070,8 +1144,8 @@ export default function ScheduleManager({ go }: { go: Go }) {
           </Field>
 
           <Field label="通知通道" htmlFor="sched-sms" required hint="飞书 API 不承担候选人侧短信与邮件发送">
-            <div className="flex items-center gap-4 pt-1.5">
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-base-content" htmlFor="sched-sms">
+            <div className="flex items-center gap-5 pt-1.5">
+              <label className="flex cursor-pointer items-center gap-3 text-xs text-base-content" htmlFor="sched-sms">
                 <input
                   id="sched-sms"
                   type="radio"
@@ -1082,7 +1156,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
                 />
                 第三方短信
               </label>
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-base-content" htmlFor="sched-email">
+              <label className="flex cursor-pointer items-center gap-3 text-xs text-base-content" htmlFor="sched-email">
                 <input
                   id="sched-email"
                   type="radio"
@@ -1121,7 +1195,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
               取消
             </Btn>
             <Btn
-              variant="accent"
+              variant="primary"
               onClick={confirmResched}
               loading={busy?.kind === 'reschedule'}
               disabled={busy?.kind === 'reschedule'}
@@ -1132,7 +1206,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
         }
       >
         {resched && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="rounded-xl border border-base-300 bg-base-200 px-3 py-2 text-xs text-base-content/70">
               现有时段：<span className="font-mono text-base-content">{resched.from}</span>（{slotLabel(resched.from)}）
             </div>
@@ -1187,7 +1261,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
         }
       >
         {canceling && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="alert alert-soft alert-warning text-xs" role="alert">
               <div>
                 <div className="font-semibold">请确认取消后果</div>
@@ -1221,7 +1295,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
               />
             </Field>
 
-            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-200 px-3 py-2">
+            <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-base-300 bg-base-200 px-3 py-2">
               <span className="text-xs font-semibold text-base-content/70">是否同步通知候选人</span>
               <input
                 type="checkbox"
@@ -1239,7 +1313,7 @@ export default function ScheduleManager({ go }: { go: Go }) {
 
       {toast && (
         <div className="toast toast-end z-50">
-          <div className={`alert alert-soft ${TOAST_ALERT[toast.tone]} max-w-md text-xs`} role="status">
+          <div className={`ws-rise alert alert-soft ${TOAST_ALERT[toast.tone]} max-w-md text-xs`} role="status">
             <span>{toast.text}</span>
           </div>
         </div>

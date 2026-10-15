@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   STAGES,
   candidates,
@@ -194,6 +194,48 @@ function buildMaterialReview(c: Candidate, app: ApprovalApplication, name: strin
   }
 }
 
+/** 数值进场：0 → 目标值（--dur-slow 600ms）；reduced-motion 下直接落位，配合 .motion-meter 使用 */
+function useEnterValue(target: number): number {
+  const [v, setV] = useState(0)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setV(target)
+      return
+    }
+    let raf = 0
+    const start = performance.now()
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / 600)
+      setV(target * (1 - Math.pow(1 - p, 3)))
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target])
+  return v
+}
+
+/** 数值（契合度等）：进场从 0 过渡到目标值，容器走 .motion-meter，不硬跳 */
+function MeterNumber({ value, suffix = '' }: { value: number; suffix?: string }) {
+  const shown = useEnterValue(value)
+  return (
+    <span className="motion-meter tabular-nums">
+      {Math.round(shown)}
+      {suffix}
+    </span>
+  )
+}
+
+/** 进度条：进场从 0 到目标宽度（.motion-meter 600ms）；数值以文字为准，条仅作视觉 */
+function MeterBar({ value }: { value: number }) {
+  const shown = useEnterValue(value)
+  return (
+    <span aria-hidden="true" className="inline-block h-1 w-16 overflow-hidden rounded-full bg-base-content/10 align-middle">
+      <span className="motion-meter block h-full rounded-full bg-accent" style={{ width: `${Math.max(0, Math.min(100, shown))}%` }} />
+    </span>
+  )
+}
+
 function Info({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="rounded-xl border border-base-300 bg-base-200/60 p-3">
@@ -210,7 +252,7 @@ function HeroBtn({ children, onClick, title, disabled }: { children: ReactNode; 
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="btn btn-sm h-8 min-h-8 rounded-full border-none bg-base-100 px-3.5 text-xs font-semibold text-base-content hover:bg-base-200 disabled:bg-base-100/40 disabled:text-base-content/40"
+      className="btn motion-pop btn-sm h-8 min-h-8 rounded-full border-none bg-base-content/10 px-3.5 text-xs font-semibold text-base-content hover:bg-base-content/20 disabled:bg-base-content/5 disabled:text-base-content/40"
     >
       {children}
     </button>
@@ -260,12 +302,12 @@ function TrackCard({
     sub: `${h.by}${h.comment ? ` · ${h.comment}` : ''}`,
   }))
   return (
-    <Card className="p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <Card className="motion-pop p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-xs font-semibold text-base-content">{name}</span>
         <Chip tone={TRACK_TONE[track.status]}>{TRACK_TEXT[track.status]}</Chip>
       </div>
-      <dl className="mt-3 grid gap-2 text-[11px] text-base-content/60 sm:grid-cols-2">
+      <dl className="mt-3 grid gap-3 text-[11px] text-base-content/60 sm:grid-cols-2">
         <div>
           {idLabel}：<span className="text-base-content">{instanceId ?? '—'}</span>
         </div>
@@ -281,7 +323,7 @@ function TrackCard({
       </dl>
       {track.retryCount > 0 && <p className="mt-2 text-[11px] text-warning">同步重试 {track.retryCount} 次（沿用原实例，未重复发起）</p>}
       {track.lastError && (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-error/10 px-2.5 py-2">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-error/10 px-2.5 py-2">
           <span className="text-[11px] text-error">最近异常：{track.lastError}</span>
           <Btn variant="ghost" onClick={onRetry}>
             重试同步
@@ -540,40 +582,39 @@ export default function CandidateDetail({ cid, go }: Props) {
   const aiText = !ai ? 'AI 未跑（无初筛结果）' : ai.recommended ? 'AI 推荐' : 'AI 未推荐'
 
   return (
-    <div className="space-y-6">
-      {/* 顶部黑曜石全景档案看板 (Obsidian Pro Candidate Hero) */}
-      <div className="ws-rise obsidian-panel relative overflow-hidden rounded-3xl p-6 text-white shadow-2xl sm:p-7">
-        <div className="animate-pulse-glow pointer-events-none absolute -top-20 -right-20 h-72 w-72 rounded-full bg-gradient-to-br from-violet-600/25 via-teal-500/15 to-transparent blur-3xl" />
+    <div className="space-y-7">
+      {/* 顶部全景档案看板（obsidian-panel 已浅色化：白渐变卡面 + 墨线；装饰光斑移除，荧光只留给契合度进度条） */}
+      <div className="ws-rise obsidian-panel relative overflow-hidden rounded-3xl p-6 text-base-content sm:p-7">
 
-        <div className="relative z-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+        <div className="relative z-10 flex flex-col justify-between gap-6 md:flex-row md:items-end">
           <div>
-            <div className="flex items-center gap-2 text-xs text-white/50">
-              <button type="button" onClick={() => go('back')} className="cursor-pointer transition-colors hover:text-white">
+            <div className="flex items-center gap-3 text-xs text-base-content/50">
+              <button type="button" onClick={() => go('back')} className="cursor-pointer transition-colors duration-200 hover:text-base-content active:text-base-content/70">
                 返回{go.from}
               </button>
               <span>/</span>
-              <span className="text-white/80">一页贯通全景档案</span>
+              <span className="text-base-content/80">一页贯通全景档案</span>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight text-white">{c.name}</h1>
-              <span className="text-lg font-medium text-white/70">{c.role}</span>
-              <span className="rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs font-semibold text-white backdrop-blur-md">
+            <div className="mt-3 flex flex-wrap items-center gap-4">
+              <h1 className="text-3xl font-bold tracking-tight text-base-content">{c.name}</h1>
+              <span className="text-lg font-medium text-base-content/70">{c.role}</span>
+              <span className="rounded-full border border-base-content/10 bg-base-content/10 px-3 py-1 text-xs font-semibold text-base-content backdrop-blur-md">
                 在招编制: {pos.name}
               </span>
-              <span className="rounded-full bg-white/[0.04] px-2.5 py-1 text-xs text-white/60">
+              <span className="rounded-full bg-base-content/5 px-2.5 py-1 text-xs text-base-content/60">
                 来源: {c.source} ({c.sourceId})
               </span>
               <span className={`badge badge-sm badge-soft border-none ${ATTACH_BADGE[c.attachmentType]}`}>{ATTACH_TEXT[c.attachmentType]}</span>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-white/60">
+            <div className="mt-3 flex flex-wrap items-center gap-5 text-xs text-base-content/60">
               <span>{c.exp}</span>
               <span>·</span>
               <span>{c.edu}</span>
               <span>·</span>
               <span>
-                负责 HR: <strong className="text-white">{c.assignee}</strong>
+                负责 HR: <strong className="text-base-content">{c.assignee}</strong>
               </span>
               {can('candidate:assign') ? (
                 <button
@@ -582,33 +623,37 @@ export default function CandidateDetail({ cid, go }: Props) {
                     setAssignee(c.assignee)
                     setShowAssign(true)
                   }}
-                  className="cursor-pointer rounded-full border border-white/15 px-2.5 py-0.5 text-[11px] text-white/80 hover:bg-white/10"
+                  className="motion-pop cursor-pointer rounded-full border border-base-content/15 px-2.5 py-0.5 text-[11px] text-base-content/80 hover:bg-base-content/10"
                 >
                   指派 / 变更
                 </button>
               ) : (
-                <span className="text-[11px] text-white/40" title="当前角色无分配候选人的权限">
+                <span className="text-[11px] text-base-content/50" title="当前角色无分配候选人的权限">
                   指派 / 变更（无权限）
                 </span>
               )}
               <span>·</span>
-              <span className="flex items-center gap-1.5">
-                <span className="status status-success status-sm" />
-                标尺契合度: <strong className="text-sm font-bold tabular-nums text-success">{c.match}%</strong>
+              <span className="flex items-center gap-2">
+                <span className="status status-neutral status-sm" />
+                标尺契合度:{' '}
+                <strong className="text-sm font-bold text-base-content">
+                  <MeterNumber value={c.match} suffix="%" />
+                </strong>
+                <MeterBar value={c.match} />
               </span>
               <span>·</span>
               <span>
-                阶段: <strong className="text-white">{c.status}</strong>
+                阶段: <strong className="text-base-content">{c.status}</strong>
               </span>
               {c.nextAction && (
-                <span className="text-white/50">
+                <span className="text-base-content/50">
                   下一步: {c.nextAction.text}（{c.nextAction.owner} · {c.nextAction.dueAt}）
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2.5">
+          <div className="flex shrink-0 flex-wrap items-center gap-3">
             <HeroBtn onClick={() => setShowSwitchPos(true)} title="调换在招岗位并重新装配标尺">
               调岗换标尺
             </HeroBtn>
@@ -629,7 +674,7 @@ export default function CandidateDetail({ cid, go }: Props) {
       </div>
 
       {actionMsg && (
-        <div role="status" className="alert alert-soft alert-info flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div role="status" className="alert alert-soft alert-info flex flex-wrap items-center justify-between gap-4 text-xs">
           <span>{actionMsg}</span>
           <Btn variant="ghost" onClick={() => setActionMsg('')} ariaLabel="关闭提示">
             知道了
@@ -638,16 +683,16 @@ export default function CandidateDetail({ cid, go }: Props) {
       )}
 
       {/* 生命周期流转轴：受控流转，禁止绕过双审批一键置已完成 */}
-      <div className="ws-rise ws-paper rounded-2xl border border-black/[0.07] p-4 [--i:1]">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-base-content/70">
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="ws-rise ws-paper rounded-2xl border border-base-300 p-4 [--i:1]">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 text-xs font-semibold text-base-content/70">
+          <div className="flex flex-wrap items-center gap-3">
             <span>招聘生命周期流转</span>
             <span className="text-[11px] font-normal text-base-content/50">（每次流转需二次确认并填写原因，写入阶段历史）</span>
           </div>
           <span className="badge badge-sm badge-soft badge-ghost">当前处于：{c.status}</span>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center text-xs sm:grid-cols-9">
+        <div className="stagger grid grid-cols-3 gap-3 text-center text-xs sm:grid-cols-9">
           {STAGES.map((s, idx) => {
             const isCurrent = c.status === s
             const isPast = STAGES.indexOf(c.status) > idx
@@ -660,7 +705,8 @@ export default function CandidateDetail({ cid, go }: Props) {
                 disabled={locked}
                 aria-label={locked ? `流转到${s}（已锁定，需先完成录取双轨审批）` : `流转到${s}`}
                 title={locked ? '需先完成录取双轨审批（飞书 + BPM 均通过）' : `流转到 ${s}`}
-                className={`cursor-pointer rounded-xl p-2 transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                style={{ '--i': Math.min(idx, 7) } as CSSProperties}
+                className={`motion-pop cursor-pointer rounded-xl p-2 disabled:cursor-not-allowed disabled:opacity-40 ${
                   isCurrent
                     ? 'bg-neutral font-semibold text-neutral-content'
                     : isPast
@@ -669,13 +715,22 @@ export default function CandidateDetail({ cid, go }: Props) {
                 }`}
               >
                 <div className="font-mono text-[11px] opacity-75">阶段 {idx + 1}</div>
-                <div className="mt-0.5 font-medium">{s}</div>
+                <div className="mt-0.5 font-medium">
+                  {isCurrent ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
+                      {s}
+                    </span>
+                  ) : (
+                    s
+                  )}
+                </div>
               </button>
             )
           })}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-base-300 pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-base-300 pt-3">
           <label className="text-[11px] text-base-content/60" htmlFor="stage-pick">
             手动流转到
           </label>
@@ -711,14 +766,15 @@ export default function CandidateDetail({ cid, go }: Props) {
 
       {/* 贯通模块粘性分段导航 */}
       <div className="sticky top-12 z-20 rounded-2xl border border-base-300 bg-base-100/95 p-1.5 shadow-[var(--shadow-paper)] backdrop-blur-xl">
-        <div className="ws-segmented-track no-scrollbar flex items-center gap-1 overflow-x-auto rounded-xl p-1">
-          {tabs.map((tab) => (
+        <div className="stagger ws-segmented-track no-scrollbar flex items-center gap-2 overflow-x-auto rounded-xl p-1">
+          {tabs.map((tab, i) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setActiveSection(tab.key)}
               aria-pressed={activeSection === tab.key}
-              className={`flex-1 shrink-0 cursor-pointer rounded-lg px-3.5 py-1.5 text-xs whitespace-nowrap transition-all select-none active:scale-95 ${
+              style={{ '--i': Math.min(i, 7) } as CSSProperties}
+              className={`motion-pop flex-1 shrink-0 cursor-pointer rounded-lg px-3.5 py-1.5 text-xs whitespace-nowrap select-none ${
                 activeSection === tab.key ? 'bg-neutral font-semibold text-neutral-content' : 'text-base-content/60 hover:bg-base-200 hover:text-base-content'
               }`}
             >
@@ -729,11 +785,11 @@ export default function CandidateDetail({ cid, go }: Props) {
       </div>
 
       {/* ================= 一页贯通主区域 ================= */}
-      <div className="space-y-8">
+      <div className="space-y-9">
         {/* 区块 1：简历原文与附件（FR-A2） */}
         {activeSection === 'resume' && (
-          <section className="ws-paper space-y-5 rounded-2xl border border-black/[0.05] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 pb-4">
+          <section className="ws-rise ws-paper space-y-6 rounded-2xl border border-base-300 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-base-300 pb-4">
               <div>
                 <h2 className="text-base font-semibold text-base-content">简历原文与附件展示</h2>
                 <p className="mt-0.5 text-xs text-base-content/50">
@@ -742,7 +798,7 @@ export default function CandidateDetail({ cid, go }: Props) {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
                 <Chip tone={c.attachmentType === 'missing' ? 'warning' : c.attachmentType === 'platform' ? 'ghost' : 'success'}>{ATTACH_TEXT[c.attachmentType]}</Chip>
                 {fileAvailable ? (
                   <Btn variant="ghost" onClick={() => setShowFileInfo(true)}>
@@ -767,13 +823,13 @@ export default function CandidateDetail({ cid, go }: Props) {
 
         {/* 区块 2：AI 宽松初筛与岗位 JD 对标（FR-A3） */}
         {activeSection === 'screening' && (
-          <section className="ws-paper space-y-5 rounded-2xl border border-black/[0.05] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 pb-3">
+          <section className="ws-rise ws-paper space-y-6 rounded-2xl border border-base-300 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-base-300 pb-3">
               <div>
                 <h2 className="text-base font-semibold text-base-content">AI 辅助初筛结论与标尺对标</h2>
                 <p className="mt-0.5 text-xs text-base-content/50">基于岗位《{jd.title}》标准要求进行的宽松匹配，AI 仅供参考，不自动淘汰候选人</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
                 <Chip tone={aiTone}>{aiText}</Chip>
                 <Chip tone="ghost">初筛契合度 {c.match}%</Chip>
               </div>
@@ -787,13 +843,13 @@ export default function CandidateDetail({ cid, go }: Props) {
               <p className="mt-2 text-[11px] text-base-content/50">AI 结果仅作参考，是否联系、是否约面由 HR 决定。</p>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="collapse collapse-arrow border border-success/30 bg-success/5">
                 <input type="checkbox" defaultChecked aria-label="展开 AI 推荐理由" />
                 <div className="collapse-title text-xs font-semibold text-success">AI 推荐理由（{aiReasons.length}）</div>
                 <div className="collapse-content text-xs text-base-content/80">
                   {aiReasons.length ? (
-                    <ul className="space-y-1.5">
+                    <ul className="space-y-2">
                       {aiReasons.map((r) => (
                         <li key={r}>· {r}</li>
                       ))}
@@ -808,7 +864,7 @@ export default function CandidateDetail({ cid, go }: Props) {
                 <input type="checkbox" aria-label="展开 AI 疑点与风险" />
                 <div className="collapse-title text-xs font-semibold text-warning">AI 疑点与风险（{aiRisks.length + risks.length}）</div>
                 <div className="collapse-content text-xs text-base-content/80">
-                  <ul className="space-y-1.5">
+                  <ul className="space-y-2">
                     {aiRisks.map((r) => (
                       <li key={`ai-${r}`}>· [AI] {r}</li>
                     ))}
@@ -829,7 +885,7 @@ export default function CandidateDetail({ cid, go }: Props) {
             <div className="text-xs">
               <div className="font-semibold text-base-content/70">简历亮点（{highlights.length}）</div>
               {highlights.length ? (
-                <ul className="mt-1 space-y-1 text-base-content/70">
+                <ul className="mt-1 space-y-2 text-base-content/70">
                   {highlights.map((h) => (
                     <li key={h}>· {h}</li>
                   ))}
@@ -841,7 +897,7 @@ export default function CandidateDetail({ cid, go }: Props) {
 
             <div className="text-xs">
               <div className="font-semibold text-base-content/70">JD 核心技能点阵核验</div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-wrap gap-2">
                 {jd.skills.length ? (
                   jd.skills.map((s) => {
                     const hit = (c.skills ?? []).find((x) => s.includes(x.k) || x.k.includes(s.split('/')[0].trim()))
@@ -861,10 +917,10 @@ export default function CandidateDetail({ cid, go }: Props) {
 
         {/* 区块 3：沟通跟进记录（FR-A4） */}
         {activeSection === 'notes' && (
-          <section className="ws-paper space-y-4 rounded-2xl border border-black/[0.05] p-6">
+          <section className="ws-rise ws-paper space-y-5 rounded-2xl border border-base-300 p-6">
             <h2 className="text-base font-semibold text-base-content">团队沟通跟进记录</h2>
 
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <input
                 value={newNote}
                 onChange={(e) => setNewNote(e.target.value)}
@@ -879,9 +935,9 @@ export default function CandidateDetail({ cid, go }: Props) {
             </div>
 
             {notes.length ? (
-              <div className="mt-4 space-y-2.5">
-                {notes.map((n) => (
-                  <div key={n.id} className="flex items-start justify-between gap-4 rounded-xl bg-base-200 p-3 text-xs">
+              <div className="stagger mt-4 space-y-3">
+                {notes.map((n, i) => (
+                  <div key={n.id} style={{ '--i': Math.min(i, 7) } as CSSProperties} className="flex items-start justify-between gap-5 rounded-xl bg-base-200 p-3 text-xs">
                     <div>
                       <div className="font-semibold text-base-content">{n.author}</div>
                       <div className="mt-1 leading-relaxed text-base-content/70">{n.content}</div>
@@ -894,8 +950,8 @@ export default function CandidateDetail({ cid, go }: Props) {
               <Empty title="暂无沟通记录" hint="联系候选人后把意向、薪资预期与下一步动作记录在此，团队共享可查。" />
             )}
 
-            <div className="grid gap-3 border-t border-base-300 pt-3 text-xs sm:grid-cols-2">
-              <div className="space-y-1 rounded-xl border border-base-300 p-3">
+            <div className="grid gap-4 border-t border-base-300 pt-3 text-xs sm:grid-cols-2">
+              <div className="space-y-2 rounded-xl border border-base-300 p-3">
                 <div className="font-semibold text-base-content">下一步动作</div>
                 {c.nextAction ? (
                   <>
@@ -909,7 +965,7 @@ export default function CandidateDetail({ cid, go }: Props) {
                 )}
                 <div className="text-[11px] text-base-content/50">当前负责人：{c.assignee}</div>
               </div>
-              <div className="space-y-1 rounded-xl border border-base-300 p-3">
+              <div className="space-y-2 rounded-xl border border-base-300 p-3">
                 <div className="font-semibold text-base-content">来源数据与业务记录分离</div>
                 <div className="text-[11px] text-base-content/60">来源库最后更新：{c.sourceUpdatedAt ?? '未知（来源侧未提供更新时间）'}</div>
                 <div className="text-[11px] text-base-content/60">来源：{c.source} · 唯一标识：{c.sourceId}</div>
@@ -921,16 +977,16 @@ export default function CandidateDetail({ cid, go }: Props) {
 
         {/* 区块 4：约面安排与本场出题（FR-B1 / B2） */}
         {activeSection === 'interview' && (
-          <section className="ws-paper space-y-5 rounded-2xl border border-black/[0.05] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 pb-3">
+          <section className="ws-rise ws-paper space-y-6 rounded-2xl border border-base-300 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-base-300 pb-3">
               <div>
                 <h2 className="text-base font-semibold text-base-content">约面安排与定制试题</h2>
                 <p className="mt-0.5 text-xs text-base-content/50">当前安排：{c.slot === '待安排' ? '未排期' : `${slotLabel(c.slot)} · ${c.round}`}</p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
                 {(!sd || sd.status === 'canceled') && (
-                  <Btn variant="accent" onClick={openSchedule}>
+                  <Btn variant="solid" onClick={openSchedule}>
                     {sd ? '重新排期' : '安排面试'}
                   </Btn>
                 )}
@@ -974,8 +1030,8 @@ export default function CandidateDetail({ cid, go }: Props) {
             </div>
 
             {sd ? (
-              <div className="space-y-4">
-                <div className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-5">
+                <div className="grid gap-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
                   <Info label="场次编号">{sd.interviewId}</Info>
                   <Info label="轮次 / 时段">
                     {sd.round} · {slotLabel(sd.slot)}
@@ -986,9 +1042,9 @@ export default function CandidateDetail({ cid, go }: Props) {
                   </Info>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-base-300 p-3.5 text-xs">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                       <span className="font-semibold text-base-content">飞书日历与会议</span>
                       <Chip tone={CAL_TONE[sd.feishuCalendarStatus]}>{CAL_TEXT[sd.feishuCalendarStatus]}</Chip>
                     </div>
@@ -1008,7 +1064,7 @@ export default function CandidateDetail({ cid, go }: Props) {
                   </div>
 
                   <div className="rounded-xl border border-base-300 p-3.5 text-xs">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                       <span className="font-semibold text-base-content">候选人通知（{sd.noticeChannel === 'sms' ? '短信通道' : '邮件通道'}）</span>
                       <Chip tone={NOTICE_TONE[sd.noticeStatus]}>{NOTICE_TEXT[sd.noticeStatus]}</Chip>
                     </div>
@@ -1042,22 +1098,22 @@ export default function CandidateDetail({ cid, go }: Props) {
                 title="尚未安排面试"
                 hint="安排面试后会生成场次编号与飞书日程，并保留改期 / 取消的全链路记录；重复提交同一时段不会产生重复预约。"
                 action={
-                  <Btn variant="accent" onClick={openSchedule}>
+                  <Btn variant="solid" onClick={openSchedule}>
                     安排面试
                   </Btn>
                 }
               />
             )}
 
-            <div className="space-y-3">
+            <div className="stagger space-y-4">
               <div className="text-xs font-semibold text-base-content">本场针对性命题清单（{qs.length} 道）</div>
               {qs.length ? (
                 qs.map((q, idx) => (
-                  <div key={q.id} className="space-y-1.5 rounded-xl border border-base-300 bg-base-100 p-3.5 text-xs">
+                  <div key={q.id} style={{ '--i': Math.min(idx + 1, 7) } as CSSProperties} className="space-y-2 rounded-xl border border-base-300 bg-base-100 p-3.5 text-xs">
                     <div className="font-medium text-base-content">
                       {idx + 1}. {q.q}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-base-content/50">
+                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-base-content/50">
                       <span className="rounded bg-base-200 px-1.5 py-0.5">{q.topic}</span>
                       <span>出题依据: {q.basis ?? '—'}</span>
                     </div>
@@ -1072,11 +1128,15 @@ export default function CandidateDetail({ cid, go }: Props) {
 
         {/* 区块 5：综合面评复盘报告（FR-B3） */}
         {activeSection === 'review' && (
-          <section className="ws-paper space-y-4 rounded-2xl border border-black/[0.05] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-base-300 pb-3">
+          <section className="ws-rise ws-paper space-y-5 rounded-2xl border border-base-300 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 pb-3">
               <h2 className="text-base font-semibold text-base-content">面试综合评价报告</h2>
-              <div className="flex flex-wrap items-center gap-2">
-                {typeof reviewScore === 'number' && <ScoreStamp score={reviewScore} />}
+              <div className="flex flex-wrap items-center gap-3">
+                {typeof reviewScore === 'number' && (
+                  <span className="motion-meter ws-rise inline-flex">
+                    <ScoreStamp score={reviewScore} />
+                  </span>
+                )}
                 {liveReview?.draft && <Chip tone="warning">AI 草稿·待人工确认</Chip>}
                 {liveReview && !liveReview.draft && <Chip tone="success">已人工确认</Chip>}
                 {isArchivedReview && <Chip tone="neutral">{archiveWho}</Chip>}
@@ -1084,14 +1144,14 @@ export default function CandidateDetail({ cid, go }: Props) {
             </div>
 
             {review ? (
-              <div className="space-y-4 text-xs leading-relaxed text-base-content">
+              <div className="space-y-5 text-xs leading-relaxed text-base-content">
                 <div className="rounded-xl bg-base-200 p-4">
-                  <div className="mb-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-base-content">
+                  <div className="mb-1 flex flex-wrap items-center gap-3 text-sm font-semibold text-base-content">
                     综合结论
                     {liveReview?.draft && <span className="text-[11px] font-normal text-warning">AI 生成草稿，未经人工确认不作为正式面评结论</span>}
                   </div>
                   <p className="text-base-content/70">{review.overall}</p>
-                  <dl className="mt-2 grid gap-2 text-[11px] text-base-content/50 sm:grid-cols-3">
+                  <dl className="mt-2 grid gap-3 text-[11px] text-base-content/50 sm:grid-cols-3">
                     <div>面评时间：{review.at || '—'}</div>
                     <div>确认人：{review.confirmedBy ?? archiveWho ?? '待人工确认'}</div>
                     <div>确认时间：{review.confirmedAt ?? (archiveWho ? review.at : '待人工确认')}</div>
@@ -1099,11 +1159,11 @@ export default function CandidateDetail({ cid, go }: Props) {
                   </dl>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-5 sm:grid-cols-2">
                   <div className="rounded-xl border border-success/30 bg-success/5 p-3.5">
                     <div className="font-semibold text-success">亮点与确认优势{archiveLabel}</div>
                     {review.strengths.length ? (
-                      <ul className="mt-2 space-y-1 text-base-content/80">
+                      <ul className="mt-2 space-y-2 text-base-content/80">
                         {review.strengths.map((s, i) => (
                           <li key={`s-${i}`}>· {s}</li>
                         ))}
@@ -1115,7 +1175,7 @@ export default function CandidateDetail({ cid, go }: Props) {
                   <div className="rounded-xl border border-warning/30 bg-warning/5 p-3.5">
                     <div className="font-semibold text-warning">风险与待核实{archiveLabel}</div>
                     {review.weaknesses.length ? (
-                      <ul className="mt-2 space-y-1 text-base-content/80">
+                      <ul className="mt-2 space-y-2 text-base-content/80">
                         {review.weaknesses.map((w, i) => (
                           <li key={`w-${i}`}>· {w}</li>
                         ))}
@@ -1126,11 +1186,11 @@ export default function CandidateDetail({ cid, go }: Props) {
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-5 sm:grid-cols-2">
                   <div className="rounded-xl border border-base-300 p-3.5">
                     <div className="font-semibold text-base-content/70">下一步验证建议</div>
                     {review.nextSteps.length ? (
-                      <ul className="mt-2 space-y-1 text-base-content/70">
+                      <ul className="mt-2 space-y-2 text-base-content/70">
                         {review.nextSteps.map((n, i) => (
                           <li key={`n-${i}`}>· {n}</li>
                         ))}
@@ -1146,10 +1206,10 @@ export default function CandidateDetail({ cid, go }: Props) {
                 </div>
 
                 {liveReview?.draft && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/5 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-warning/30 bg-warning/5 p-3">
                     <p className="text-[11px] text-base-content/70">AI 仅依据逐题评分与备注生成草稿；请面试官 / HR 核对后确认，确认动作会记录确认人与时间。</p>
                     <Btn
-                      variant="accent"
+                      variant="solid"
                       disabled={!can('evaluation:submit')}
                       title={can('evaluation:submit') ? '确认后作为正式面评结论保存' : '当前角色无提交面评权限'}
                       onClick={() => {
@@ -1188,8 +1248,8 @@ export default function CandidateDetail({ cid, go }: Props) {
 
         {/* 区块 6：录取与飞书 / BPM 双审批跟踪（FR-C2 / C3 / C4） */}
         {activeSection === 'approval' && (
-          <section className="ws-paper space-y-5 rounded-2xl border border-black/[0.05] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 pb-3">
+          <section className="ws-rise ws-paper space-y-6 rounded-2xl border border-base-300 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-base-300 pb-3">
               <div>
                 <h2 className="text-base font-semibold text-base-content">录取申请与双审批流（飞书 / BPM）</h2>
                 <p className="mt-0.5 text-xs text-base-content/50">
@@ -1209,15 +1269,15 @@ export default function CandidateDetail({ cid, go }: Props) {
             </div>
 
             {app ? (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div className="rounded-xl border border-base-300 bg-base-200/60 p-4 text-xs">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <span className="font-semibold text-base-content">审批单号：{app.id}</span>
                     <Chip tone={FINAL_TONE[app.finalStatus]}>
                       {app.finalStatus === 'approved' ? '整体通过（双轨均通过）' : app.finalStatus === 'partial' ? '单边通过·未完成' : '未完成'}
                     </Chip>
                   </div>
-                  <dl className="mt-3 grid gap-2 text-base-content/60 sm:grid-cols-4">
+                  <dl className="mt-3 grid gap-3 text-base-content/60 sm:grid-cols-4">
                     <div>拟定薪资：{app.salary}</div>
                     <div>拟定职级：{app.level}</div>
                     <div>
@@ -1238,12 +1298,12 @@ export default function CandidateDetail({ cid, go }: Props) {
                 </div>
 
                 {/* 申请材料逐项核对（FR-C1）：已完成 / 待补 / 缺失 */}
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="text-xs font-semibold text-base-content">申请材料逐项核对（{app.materials?.length ?? 0}）</div>
                   {app.materials?.length ? (
-                    <ul className="grid gap-2 sm:grid-cols-2">
-                      {app.materials.map((m) => (
-                        <li key={m.key} className="flex items-start justify-between gap-3 rounded-xl border border-base-300 bg-base-100 p-3">
+                    <ul className="stagger grid gap-3 sm:grid-cols-2">
+                      {app.materials.map((m, i) => (
+                        <li key={m.key} style={{ '--i': Math.min(i, 7) } as CSSProperties} className="flex items-start justify-between gap-4 rounded-xl border border-base-300 bg-base-100 p-3">
                           <div className="min-w-0">
                             <div className="text-xs font-medium text-base-content">
                               {m.name}
@@ -1262,9 +1322,13 @@ export default function CandidateDetail({ cid, go }: Props) {
                   )}
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <TrackCard name="飞书审批" idLabel="审批实例" instanceId={app.feishu.instanceId} track={app.feishu} onRetry={() => retryApprovalTrack(app.id, 'feishu')} />
-                  <TrackCard name="BPM（内部 OA）录取流程" idLabel="流程编号" instanceId={app.bpm.processId} track={app.bpm} onRetry={() => retryApprovalTrack(app.id, 'bpm')} />
+                <div className="stagger grid gap-5 lg:grid-cols-2">
+                  <div style={{ '--i': 0 } as CSSProperties}>
+                    <TrackCard name="飞书审批" idLabel="审批实例" instanceId={app.feishu.instanceId} track={app.feishu} onRetry={() => retryApprovalTrack(app.id, 'feishu')} />
+                  </div>
+                  <div style={{ '--i': 1 } as CSSProperties}>
+                    <TrackCard name="BPM（内部 OA）录取流程" idLabel="流程编号" instanceId={app.bpm.processId} track={app.bpm} onRetry={() => retryApprovalTrack(app.id, 'bpm')} />
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1291,7 +1355,7 @@ export default function CandidateDetail({ cid, go }: Props) {
         title="调换在招岗位与装配标尺"
         sub="调岗后候选人会重新装配该岗位关联的 JD 标尺，变更会写入跟进记录"
       >
-        <div className="space-y-2.5 text-xs">
+        <div className="space-y-3 text-xs">
           {positions.length ? (
             positions.map((p) => {
               const targetJd = findJd(p.jdId)
@@ -1306,11 +1370,11 @@ export default function CandidateDetail({ cid, go }: Props) {
                     setShowSwitchPos(false)
                     setActionMsg(`已调岗至「${p.name}」，并重新装配标尺。`)
                   }}
-                  className={`w-full rounded-xl border p-3.5 text-left transition-all ${
+                  className={`w-full rounded-xl border p-3.5 text-left motion-pop ${
                     isCur ? 'cursor-default border-primary bg-base-200 font-semibold' : 'cursor-pointer border-base-300 bg-base-100 hover:border-base-content/40'
                   }`}
                 >
-                  <div className="flex justify-between gap-2">
+                  <div className="flex justify-between gap-3">
                     <span>{p.name}</span>
                     {isCur && <span className="text-[11px] text-base-content/60">当前岗位</span>}
                   </div>
@@ -1365,7 +1429,7 @@ export default function CandidateDetail({ cid, go }: Props) {
 
       {/* 原件信息弹窗：附件缺失时入口已禁用，不再出现点不动的死控件 */}
       <Modal open={showFileInfo} onClose={() => setShowFileInfo(false)} title="简历原件信息" sub={`附件状态：${ATTACH_TEXT[c.attachmentType]}`}>
-        <div className="space-y-2 text-xs text-base-content/70">
+        <div className="space-y-3 text-xs text-base-content/70">
           <div>
             文件名：<span className="font-medium text-base-content">{resumeFile?.file ?? '来源库未提供文件名'}</span>
           </div>
@@ -1396,7 +1460,7 @@ export default function CandidateDetail({ cid, go }: Props) {
           </>
         }
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           {schedErr && (
             <div role="alert" className="alert alert-soft alert-warning text-xs">
               {schedErr}
@@ -1405,7 +1469,7 @@ export default function CandidateDetail({ cid, go }: Props) {
           <Field label="面试时间" htmlFor="sched-slot" required hint="格式 YYYY-MM-DD HH:mm；同一候选人 + 轮次 + 时段重复提交不会重复建场。">
             <input id="sched-slot" className="input w-full" value={schedSlot} onChange={(e) => setSchedSlot(e.target.value)} placeholder="2026-10-08 14:30" />
           </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="轮次" htmlFor="sched-round">
               <select id="sched-round" className="select w-full" value={schedRound} onChange={(e) => setSchedRound(e.target.value)}>
                 {Array.from(new Set(['一面', '二面', '终面', 'HR面', schedRound])).map((r) => (
@@ -1454,7 +1518,7 @@ export default function CandidateDetail({ cid, go }: Props) {
           </>
         }
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           {reschedErr && (
             <div role="alert" className="alert alert-soft alert-warning text-xs">
               {reschedErr}
@@ -1486,7 +1550,7 @@ export default function CandidateDetail({ cid, go }: Props) {
           </>
         }
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           {cancelErr && (
             <div role="alert" className="alert alert-soft alert-error text-xs">
               {cancelErr}
@@ -1498,7 +1562,7 @@ export default function CandidateDetail({ cid, go }: Props) {
           <Field label="取消原因" htmlFor="cancel-reason" required hint="会写入场次历史与跟进记录，便于后续追溯。">
             <input id="cancel-reason" className="input w-full" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="如：候选人时间冲突 / 面试官临时出差" />
           </Field>
-          <label className="label cursor-pointer justify-start gap-2" htmlFor="cancel-notify">
+          <label className="label cursor-pointer justify-start gap-3" htmlFor="cancel-notify">
             <input id="cancel-notify" type="checkbox" className="toggle toggle-sm" checked={cancelNotify} onChange={(e) => setCancelNotify(e.target.checked)} />
             <span className="text-xs text-base-content/70">同时通过现有通知通道告知候选人取消安排</span>
           </label>
@@ -1522,7 +1586,7 @@ export default function CandidateDetail({ cid, go }: Props) {
           </>
         }
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           {stageErr && (
             <div role="alert" className="alert alert-soft alert-error text-xs">
               {stageErr}

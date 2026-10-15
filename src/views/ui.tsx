@@ -25,9 +25,10 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
 /* ───────────── 状态徽标：浅底 + 深字（badge-soft），语义色统一出口 ───────────── */
 export type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'error' | 'info' | 'ghost'
 
+/* 深色时代补丁已废：neutral=墨黑药丸、accent=荧光青柠实底（badge-soft 的浅字在白底不可读）。 */
 const CHIP_TONE: Record<Tone, string> = {
-  neutral: 'badge-neutral',
-  accent: 'badge-accent',
+  neutral: 'bg-neutral text-neutral-content',
+  accent: 'bg-accent text-accent-content',
   success: 'badge-success',
   warning: 'badge-warning',
   error: 'badge-error',
@@ -183,8 +184,8 @@ export function Modal({
         if (e.target === ref.current) onClose()
       }}
     >
-      <div className={`modal-box w-full max-w-lg rounded-2xl border border-black/[0.08] bg-base-100 p-0 ${className}`}>
-        <div className="flex items-start justify-between gap-3 border-b border-black/[0.06] px-5 py-4">
+      <div className={`modal-box w-full max-w-lg rounded-2xl border border-base-300 bg-base-100 p-0 ${className}`}>
+        <div className="flex items-start justify-between gap-3 border-b border-base-300 px-5 py-4">
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-base-content">{title}</h3>
             {sub && <p className="mt-0.5 text-xs text-base-content/60">{sub}</p>}
@@ -195,7 +196,7 @@ export function Modal({
         </div>
         <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
-          <div className="modal-action m-0 flex items-center justify-end gap-2 border-t border-black/[0.06] px-5 py-3.5">
+          <div className="modal-action m-0 flex items-center justify-end gap-2 border-t border-base-300 px-5 py-3.5">
             {footer}
           </div>
         )}

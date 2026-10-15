@@ -1,5 +1,5 @@
 import type React from 'react'
-import { useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { candidates, JD_TEMPLATES, type JD, type Position } from '../data'
 import { addJd, addPosition, demoNow, findJd, jds, positions, updateJd, updatePosition, useStore } from '../store'
 import type { Go } from '../App'
@@ -9,9 +9,10 @@ import { Btn, Card, Chip, Empty, Field, Label, Modal, type Tone } from './ui'
    在招岗位维护 + 来源库岗位标识（FR-A1）+ BPM 岗位草稿同步占位（FR-B5，P1，仅前端）。
    颜色一律走 daisyUI 语义色；状态胶囊按真实 status 渲染，不再写死成功色。 */
 
-/** 岗位状态口径：只有「招募中」计入在招岗位与 HC 统计 */
+/** 岗位状态口径：只有「招募中」计入在招岗位与 HC 统计。
+    荧光青柠落点：「招募中」是当前态 → 实底荧光小块（accent），点用墨色保证荧光底上的对比 */
 const POS_STATUS: Record<Position['status'], { tone: Tone; dot: string; hint: string }> = {
-  招募中: { tone: 'success', dot: 'status-success', hint: '计入在招口径：候选人入口、约面与 HC 统计生效' },
+  招募中: { tone: 'accent', dot: 'status-neutral', hint: '计入在招口径：候选人入口、约面与 HC 统计生效' },
   已暂停: { tone: 'ghost', dot: 'status-warning', hint: '已下架：不计入在招与 HC 口径，候选人关联保留，可随时恢复' },
   已归档: { tone: 'ghost', dot: 'status-neutral', hint: '仅作历史留存，不再进入在招口径，可恢复为招募中' },
 }
@@ -51,6 +52,27 @@ function SubmitBtn({ form, disabled, children }: { form: string; disabled?: bool
     >
       {children}
     </button>
+  )
+}
+
+/** HC 进度条：挂载后从 0 过渡到目标百分比（--dur-slow 600ms 档），不做无限循环动画 */
+function HcBar({ pct, ariaLabel, className = 'mt-1' }: { pct: number; ariaLabel?: string; className?: string }) {
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setWidth(pct))
+    return () => cancelAnimationFrame(raf)
+  }, [pct])
+  return (
+    <div
+      className={`h-1 w-full overflow-hidden rounded-full bg-base-200 ${className}`}
+      role="progressbar"
+      aria-label={ariaLabel}
+      aria-valuenow={pct}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
+      <div className="motion-meter h-full rounded-full bg-primary" style={{ width: `${width}%` }} />
+    </div>
   )
 }
 
@@ -267,7 +289,7 @@ export default function Jobs({ go }: { go: Go }) {
   /* ── 空态：一个岗位都没有时不留白 ── */
   if (!positions.length) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-7">
         <h1 className="text-2xl font-bold tracking-tight text-base-content">岗位管理</h1>
         <Card className="p-2">
           <Empty
@@ -281,11 +303,11 @@ export default function Jobs({ go }: { go: Go }) {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-9">
       {/* 页头：标题 + 同步入口 + 岗位状态统计 */}
-      <div className="ws-rise flex flex-col gap-6 border-b border-base-300 pb-6 md:flex-row md:items-end md:justify-between">
+      <div className="ws-rise flex flex-col gap-7 border-b border-base-300 pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-base-content sm:text-3xl">在招岗位与能力标尺</h1>
             <Chip tone="ghost" title="只有招募中的岗位计入在招口径">
               在招 {openCount}
@@ -298,7 +320,7 @@ export default function Jobs({ go }: { go: Go }) {
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex shrink-0 items-center gap-4">
           <Btn variant="ghost" onClick={() => openNewJd(null)}>
             + 拟定新用人标尺 (JD)
           </Btn>
@@ -309,9 +331,9 @@ export default function Jobs({ go }: { go: Go }) {
       </div>
 
       {/* BPM 岗位草稿同步：P1 前端占位，不调用任何接口 */}
-      <Card className="ws-rise [--i:1] flex flex-col gap-3 p-5 md:flex-row md:items-start md:justify-between">
+      <Card className="ws-rise [--i:1] flex flex-col gap-4 p-5 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-semibold text-base-content">BPM 岗位草稿同步</span>
             <Chip tone="info">草稿 · 待接入</Chip>
             <Chip tone="ghost">P1 · FR-B5</Chip>
@@ -352,7 +374,7 @@ export default function Jobs({ go }: { go: Go }) {
       )}
 
       {/* 概览指标 */}
-      <div className="ws-rise [--i:2] grid gap-4 sm:grid-cols-3">
+      <div className="ws-rise [--i:2] grid gap-5 sm:grid-cols-3">
         <Card className="p-5">
           <Label>在招岗位（招募中）</Label>
           <div className="mt-2 flex items-baseline justify-between">
@@ -363,9 +385,7 @@ export default function Jobs({ go }: { go: Go }) {
               {totalHired} / {totalHc} HC
             </span>
           </div>
-          <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-base-200" role="progressbar" aria-label="在招岗位 HC 完成度" aria-valuenow={hcRate} aria-valuemin={0} aria-valuemax={100}>
-            <div className="h-full rounded-full bg-primary" style={{ width: `${hcRate}%` }} />
-          </div>
+          <HcBar pct={hcRate} ariaLabel="在招岗位 HC 完成度" className="mt-2.5" />
           <p className="mt-2 text-xs text-base-content/50">
             已暂停 {pausedCount} · 已归档 {archivedCount}（不计入在招口径）
           </p>
@@ -403,15 +423,15 @@ export default function Jobs({ go }: { go: Go }) {
       </div>
 
       {/* 主体：左翼岗位列表 + 右翼标尺白皮书 */}
-      <div className="ws-rise [--i:3] grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.18fr)]">
-        <div className="space-y-4">
+      <div className="ws-rise [--i:3] grid items-start gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.18fr)]">
+        <div className="space-y-5">
           <div className="flex items-center justify-between px-1">
             <h2 className="text-sm font-semibold tracking-tight text-base-content">业务岗位编制矩阵（{positions.length}）</h2>
             <span className="text-xs text-base-content/50">选中岗位后在右侧原地对标标尺</span>
           </div>
 
-          <div className="space-y-3.5">
-            {positions.map((p) => {
+          <div className="stagger space-y-4">
+            {positions.map((p, i) => {
               const jd = findJd(p.jdId)
               const stat = statForPos(p.id)
               const isSelected = p.id === activePos?.id
@@ -419,123 +439,122 @@ export default function Jobs({ go }: { go: Go }) {
               const hcPct = p.hc ? Math.min(100, Math.round((p.hired / p.hc) * 100)) : 0
 
               return (
-                <Card
-                  key={p.id}
-                  className={`p-0 transition-shadow hover:shadow-[var(--shadow-lift)] ${isSelected ? 'border-primary' : ''}`}
-                >
-                  {/* 可点击区域：只承载信息，操作按钮放在下面的独立行，避免嵌套交互元素 */}
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={isSelected}
-                    aria-label={`对标 ${p.name} 的能力标尺`}
-                    onClick={() => setSelectedPosId(p.id)}
-                    onKeyDown={(e) => {
-                      if (e.target !== e.currentTarget) return
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setSelectedPosId(p.id)
-                      }
-                    }}
-                    className="card-body cursor-pointer gap-0 rounded-2xl p-5 pb-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                <div key={p.id} style={{ '--i': Math.min(i, 7) } as CSSProperties}>
+                  <Card
+                    className={`motion-pop p-0 hover:shadow-[var(--shadow-lift)] ${isSelected ? 'border-primary' : ''}`}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Chip tone="ghost">
-                        {p.dept} · {p.code}
-                      </Chip>
-                      <Chip tone={st.tone} title={st.hint}>
-                        <span className={`status status-sm ${st.dot}`} aria-hidden="true" />
-                        {p.status}
-                      </Chip>
-                    </div>
-
-                    <h3 className="card-title mt-2.5 flex items-center justify-between text-base font-semibold tracking-tight text-base-content">
-                      <span className="min-w-0">{p.name}</span>
-                      {isSelected && <span className="text-xs font-semibold text-base-content/60">正在对标</span>}
-                    </h3>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                      <Chip tone="ghost" title={jd ? '该岗位初筛基准与 AI 出题依据' : '尚未装配标尺'}>
-                        标尺：{jd ? `${jd.title}（${jd.code}）` : '未装配'}
-                      </Chip>
-                      <span className="text-base-content/60">{jd?.salary ?? '薪酬待定'}</span>
-                    </div>
-
-                    {/* 来源库岗位标识：只读 */}
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                      <span className="font-mono text-base-content">
-                        来源库岗位标识：{p.sourcePositionId ?? '未关联'}
-                      </span>
-                      <span className="text-base-content/50">来自来源库，本地不可修改</span>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-2 gap-4 border-t border-base-300 pt-3 text-xs text-base-content/60">
-                      <div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span>招聘 HC</span>
-                          <span className="font-semibold text-base-content">
-                            {p.hired} / {p.hc}
-                          </span>
-                        </div>
-                        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-base-200">
-                          <div className="h-full rounded-full bg-primary" style={{ width: `${hcPct}%` }} />
-                        </div>
+                    {/* 可点击区域：只承载信息，操作按钮放在下面的独立行，避免嵌套交互元素 */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={isSelected}
+                      aria-label={`对标 ${p.name} 的能力标尺`}
+                      onClick={() => setSelectedPosId(p.id)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedPosId(p.id)
+                        }
+                      }}
+                      className="card-body cursor-pointer gap-0 rounded-2xl p-5 pb-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <Chip tone="ghost">
+                          {p.dept} · {p.code}
+                        </Chip>
+                        <Chip tone={st.tone} title={st.hint}>
+                          <span className={`status status-sm ${st.dot}`} aria-hidden="true" />
+                          {p.status}
+                        </Chip>
                       </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span>
-                          负责 HR：<strong className="font-medium text-base-content">{p.recruiter.split(' ')[0]}</strong>
+
+                      <h3 className="card-title mt-2.5 flex items-center justify-between text-base font-semibold tracking-tight text-base-content">
+                        <span className="min-w-0">{p.name}</span>
+                        {isSelected && <span className="text-xs font-semibold text-base-content/60">正在对标</span>}
+                      </h3>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                        <Chip tone="ghost" title={jd ? '该岗位初筛基准与 AI 出题依据' : '尚未装配标尺'}>
+                          标尺：{jd ? `${jd.title}（${jd.code}）` : '未装配'}
+                        </Chip>
+                        <span className="text-base-content/60">{jd?.salary ?? '薪酬待定'}</span>
+                      </div>
+
+                      {/* 来源库岗位标识：只读 */}
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                        <span className="font-mono text-base-content">
+                          来源库岗位标识：{p.sourcePositionId ?? '未关联'}
                         </span>
-                        <span>建编 {localDate(p.createdAt)}</span>
+                        <span className="text-base-content/50">来自来源库，本地不可修改</span>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-5 border-t border-base-300 pt-3 text-xs text-base-content/60">
+                        <div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span>招聘 HC</span>
+                            <span className="font-semibold text-base-content">
+                              {p.hired} / {p.hc}
+                            </span>
+                          </div>
+                          <HcBar pct={hcPct} ariaLabel={`${p.name} 的 HC 完成度`} />
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span>
+                            负责 HR：<strong className="font-medium text-base-content">{p.recruiter.split(' ')[0]}</strong>
+                          </span>
+                          <span>建编 {localDate(p.createdAt)}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* 操作行 */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-base-300 px-5 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Btn
-                        variant="ghost"
-                        ariaLabel={`查看岗位 ${p.name} 的候选人（进入候选人大池按本岗位口径）`}
-                        title="进入候选人大池，按本岗位筛选口径查看"
-                        onClick={() => setCandidatePanel(p)}
-                      >
-                        已对标候选人 {stat.total} 人
-                      </Btn>
-                      <Btn
-                        variant="ghost"
-                        ariaLabel={`前往约面管理查看岗位 ${p.name} 的 ${stat.sessions} 场面试`}
-                        title="前往约面管理：改期、取消与通知状态"
-                        onClick={() => go('schedule')}
-                      >
-                        {stat.sessions} 场面试
-                        {stat.scheduled > 0 && <span className="text-base-content/50">（{stat.scheduled} 场待进行）</span>}
-                      </Btn>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Btn variant="ghost" ariaLabel={`编辑岗位 ${p.name}`} onClick={() => openEditPos(p)}>
-                        编辑
-                      </Btn>
-                      {p.status === '招募中' ? (
+                    {/* 操作行 */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-5 py-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <Btn
                           variant="ghost"
-                          className="text-error"
-                          ariaLabel={`下架岗位 ${p.name}`}
-                          onClick={() => setConfirmStatus({ pos: p, next: '已暂停' })}
+                          ariaLabel={`查看岗位 ${p.name} 的候选人（进入候选人大池按本岗位口径）`}
+                          title="进入候选人大池，按本岗位筛选口径查看"
+                          onClick={() => setCandidatePanel(p)}
                         >
-                          下架
+                          已对标候选人 {stat.total} 人
                         </Btn>
-                      ) : (
                         <Btn
                           variant="ghost"
-                          ariaLabel={`恢复岗位 ${p.name} 为招募中`}
-                          onClick={() => setConfirmStatus({ pos: p, next: '招募中' })}
+                          ariaLabel={`前往约面管理查看岗位 ${p.name} 的 ${stat.sessions} 场面试`}
+                          title="前往约面管理：改期、取消与通知状态"
+                          onClick={() => go('schedule')}
                         >
-                          恢复
+                          {stat.sessions} 场面试
+                          {stat.scheduled > 0 && <span className="text-base-content/50">（{stat.scheduled} 场待进行）</span>}
                         </Btn>
-                      )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Btn variant="ghost" ariaLabel={`编辑岗位 ${p.name}`} onClick={() => openEditPos(p)}>
+                          编辑
+                        </Btn>
+                        {p.status === '招募中' ? (
+                          <Btn
+                            variant="ghost"
+                            className="text-error"
+                            ariaLabel={`下架岗位 ${p.name}`}
+                            onClick={() => setConfirmStatus({ pos: p, next: '已暂停' })}
+                          >
+                            下架
+                          </Btn>
+                        ) : (
+                          <Btn
+                            variant="ghost"
+                            ariaLabel={`恢复岗位 ${p.name} 为招募中`}
+                            onClick={() => setConfirmStatus({ pos: p, next: '招募中' })}
+                          >
+                            恢复
+                          </Btn>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </Card>
+                    </Card>
+                </div>
               )
             })}
           </div>
@@ -558,9 +577,9 @@ export default function Jobs({ go }: { go: Go }) {
               />
             ) : (
               <>
-                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-base-300 pb-4">
+                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-base-300 pb-4">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-3">
                       <span className="font-mono text-xs font-semibold tracking-wide text-base-content">
                         {boundJd.code} · 标准能力白皮书
                       </span>
@@ -580,7 +599,7 @@ export default function Jobs({ go }: { go: Go }) {
                   </Btn>
                 </div>
 
-                <div className="mt-5 flex flex-wrap items-center gap-2 text-xs">
+                <div className="mt-5 flex flex-wrap items-center gap-3 text-xs">
                   <Chip tone="neutral">薪酬范围 {boundJd.salary}</Chip>
                   <Chip tone="ghost">经验门槛 {boundJd.exp}</Chip>
                   <Chip tone="ghost">学历门槛 {boundJd.edu}</Chip>
@@ -588,7 +607,7 @@ export default function Jobs({ go }: { go: Go }) {
 
                 <div className="mt-5">
                   <Label>核心考核技能基准（AI 定制出题依据）</Label>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
+                  <div className="mt-2 flex flex-wrap gap-2">
                     {boundJd.skills.map((s) => (
                       <span key={s} className="badge badge-sm badge-soft border-none font-medium">
                         {s}
@@ -604,7 +623,7 @@ export default function Jobs({ go }: { go: Go }) {
 
                 <div className="mt-5">
                   <Label>岗位职责标准</Label>
-                  <ul className="mt-2 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
+                  <ul className="mt-2 list-disc space-y-2 pl-4 text-xs leading-relaxed text-base-content/80">
                     {boundJd.responsibilities.map((r, i) => (
                       <li key={i}>{r}</li>
                     ))}
@@ -613,14 +632,14 @@ export default function Jobs({ go }: { go: Go }) {
 
                 <div className="mt-5">
                   <Label>任职资格与考核要点（对标初筛基准）</Label>
-                  <ul className="mt-2 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
+                  <ul className="mt-2 list-disc space-y-2 pl-4 text-xs leading-relaxed text-base-content/80">
                     {boundJd.requirements.map((r, i) => (
                       <li key={i}>{r}</li>
                     ))}
                   </ul>
                 </div>
 
-                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 pt-4">
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-base-300 pt-4">
                   <Field label="为该岗位更换装配标尺" htmlFor="pos-rebind" className="min-w-0 flex-1">
                     <select
                       id="pos-rebind"
@@ -663,7 +682,7 @@ export default function Jobs({ go }: { go: Go }) {
           </>
         }
       >
-        <form id="pos-form" onSubmit={savePos} className="space-y-4">
+        <form id="pos-form" onSubmit={savePos} className="space-y-5">
           <Field label="在招岗位名称" htmlFor="pos-name" required hint="例如：商业化大前端研发组 · 高级前端工程师">
             <input
               id="pos-name"
@@ -676,7 +695,7 @@ export default function Jobs({ go }: { go: Go }) {
           </Field>
 
           <Field label="装配标准能力标尺 (JD)" htmlFor="pos-jd" required hint="初筛基准、面试题与评价维度都按此标尺联动">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <select
                 id="pos-jd"
                 value={posForm.jdId}
@@ -695,7 +714,7 @@ export default function Jobs({ go }: { go: Go }) {
             </div>
           </Field>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="所属部门" htmlFor="pos-dept">
               <input
                 id="pos-dept"
@@ -716,7 +735,7 @@ export default function Jobs({ go }: { go: Go }) {
             </Field>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="负责 HR" htmlFor="pos-recruiter">
               <input
                 id="pos-recruiter"
@@ -789,7 +808,7 @@ export default function Jobs({ go }: { go: Go }) {
         }
       >
         <div className="-mx-5 -my-4">
-          <div className="flex flex-wrap items-center gap-2 border-b border-base-300 bg-base-200/60 px-5 py-3">
+          <div className="flex flex-wrap items-center gap-3 border-b border-base-300 bg-base-200/60 px-5 py-3">
             <span className="text-xs text-base-content/60">套用模板：</span>
             {JD_TEMPLATES.map((tmpl, idx) => (
               <button
@@ -804,7 +823,7 @@ export default function Jobs({ go }: { go: Go }) {
           </div>
 
           <div className="grid md:grid-cols-2">
-            <form id="jd-form" onSubmit={saveJd} className="space-y-4 border-base-300 p-6 md:border-r">
+            <form id="jd-form" onSubmit={saveJd} className="space-y-5 border-base-300 p-6 md:border-r">
               <Field label="标尺职位名称" htmlFor="jd-title" required hint="用于岗位装配与能力对标展示">
                 <input
                   id="jd-title"
@@ -816,7 +835,7 @@ export default function Jobs({ go }: { go: Go }) {
                 />
               </Field>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="归属部门" htmlFor="jd-dept">
                   <input
                     id="jd-dept"
@@ -835,7 +854,7 @@ export default function Jobs({ go }: { go: Go }) {
                 </Field>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="经验门槛" htmlFor="jd-exp">
                   <input
                     id="jd-exp"
@@ -865,15 +884,15 @@ export default function Jobs({ go }: { go: Go }) {
               </Field>
 
               <Field label="核心考核技能" htmlFor="jd-tag" hint="输入技能后回车打标">
-                <div className="flex flex-wrap gap-1.5 rounded-xl bg-base-200 p-2.5">
+                <div className="flex flex-wrap gap-2 rounded-xl bg-base-200 p-2.5">
                   {jdForm.skills.map((s, idx) => (
-                    <span key={s} className="badge badge-sm badge-soft gap-1.5 border-none bg-base-100 font-medium">
+                    <span key={s} className="badge badge-sm badge-soft gap-2 border-none bg-base-100 font-medium">
                       {s}
                       <button
                         type="button"
                         aria-label={`移除技能 ${s}`}
                         onClick={() => setJdForm({ ...jdForm, skills: jdForm.skills.filter((_, i) => i !== idx) })}
-                        className="cursor-pointer text-base-content/50 hover:text-error"
+                        className="motion-pop cursor-pointer text-base-content/50 hover:text-error"
                       >
                         ✕
                       </button>
@@ -917,7 +936,7 @@ export default function Jobs({ go }: { go: Go }) {
             </form>
 
             {/* 右侧规格样张 */}
-            <div className="flex flex-col justify-between gap-4 bg-base-200/60 p-6">
+            <div className="flex flex-col justify-between gap-5 bg-base-200/60 p-6">
               <div className="rounded-2xl bg-base-100 p-6 shadow-[var(--shadow-paper)]">
                 <div className="border-b border-base-300 pb-3">
                   <span className="font-mono text-xs font-semibold tracking-wide text-base-content">
@@ -939,7 +958,7 @@ export default function Jobs({ go }: { go: Go }) {
 
                 <div className="mt-4">
                   <Label>考核要项技能</Label>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <div className="mt-1.5 flex flex-wrap gap-2">
                     {jdForm.skills.map((s) => (
                       <span key={s} className="badge badge-sm badge-soft border-none font-medium">
                         {s}
@@ -950,7 +969,7 @@ export default function Jobs({ go }: { go: Go }) {
 
                 <div className="mt-4">
                   <Label>岗位职责要求</Label>
-                  <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-relaxed text-base-content/80">
+                  <ul className="mt-1.5 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
                     {jdForm.responsibilities
                       .split('\n')
                       .filter(Boolean)
@@ -962,7 +981,7 @@ export default function Jobs({ go }: { go: Go }) {
 
                 <div className="mt-4">
                   <Label>考核指标</Label>
-                  <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-relaxed text-base-content/80">
+                  <ul className="mt-1.5 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
                     {jdForm.requirements
                       .split('\n')
                       .filter(Boolean)
@@ -1051,11 +1070,15 @@ export default function Jobs({ go }: { go: Go }) {
             <p className="mb-3 text-xs text-base-content/60">
               下列为「{candidatePanel?.name}」口径下的候选人。候选人大池暂未接收岗位参数，进入后请在「岗位」筛选中选择本岗位。
             </p>
-            <ul className="list">
-              {panelCandidates.map((c) => (
-                <li key={c.id} className="list-row items-center gap-3 px-0">
+            <ul className="list stagger">
+              {panelCandidates.map((c, i) => (
+                <li
+                  key={c.id}
+                  style={{ '--i': Math.min(i, 7) } as CSSProperties}
+                  className="motion-pop list-row items-center gap-4 rounded-xl px-0 hover:bg-base-200/50"
+                >
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-3">
                       <span className="text-sm font-semibold text-base-content">{c.name}</span>
                       <Chip tone={STAGE_TONE[c.status] ?? 'ghost'}>{c.status}</Chip>
                       <span className="text-xs text-base-content/50">渠道 {c.source}</span>

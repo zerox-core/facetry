@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { bank, bankCats, candidates } from '../data'
 import { addBankCat, addBankItem, addQuestion, commit, findC, slotLabel, useStore } from '../store'
 import { Btn, Chip, Empty, Field, Modal } from './ui'
@@ -184,13 +184,17 @@ export default function Bank() {
   const editCatOptions = Array.from(new Set([...(editDraft ? [editDraft.cat] : []), ...cats]))
 
   return (
-    <div className="space-y-6">
-      <div className="ws-rise flex flex-col justify-between gap-4 border-b border-base-300 pb-5 md:flex-row md:items-end">
+    <div className="space-y-7">
+      <div className="ws-rise flex flex-col justify-between gap-5 border-b border-base-300 pb-5 md:flex-row md:items-end">
         <div>
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-base-content">团队能力标尺题库</h1>
             <Chip tone="ghost">已沉淀 {bank.length} 道标准试题</Chip>
-            {hiddenCount > 0 && <Chip tone="neutral">{hiddenCount} 道已隐藏</Chip>}
+            {hiddenCount > 0 && (
+              <Chip tone="neutral" className="bg-neutral text-neutral-content">
+                {hiddenCount} 道已隐藏
+              </Chip>
+            )}
           </div>
           <p className="mt-1.5 text-xs text-base-content/60">
             沉淀各专业序列的标准考察问题、考核维度、参考答案与减分负向信号；题目可编辑、可隐藏并在需要时恢复
@@ -203,8 +207,8 @@ export default function Bank() {
 
       {entering && (
         <div className="login-fade card card-border bg-base-100 shadow-[var(--shadow-paper)]">
-          <div className="card-body gap-3 p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="card-body gap-4 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-[15px] font-semibold text-base-content">录入一道题</h2>
               <span className="text-xs text-base-content/50">暂存只保留最近一道题，再次暂存会覆盖</span>
             </div>
@@ -221,7 +225,7 @@ export default function Bank() {
                 </Btn>
               </div>
             )}
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-3">
               <Field label="分类" htmlFor="new-cat">
                 <select id="new-cat" className="select w-full" value={draft.cat} onChange={(e) => setDraft({ ...draft, cat: e.target.value })}>
                   {cats.map((c) => (
@@ -255,7 +259,7 @@ export default function Bank() {
                 onChange={(e) => setDraft({ ...draft, q: e.target.value })}
               />
             </Field>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               <Field label="考察要点" htmlFor="new-points" hint="选填，每行一条">
                 <textarea
                   id="new-points"
@@ -287,7 +291,7 @@ export default function Bank() {
             <Field label="减分信号" htmlFor="new-flag" hint="选填：什么样的回答要警惕">
               <input id="new-flag" className="input w-full" value={draft.flag} onChange={(e) => setDraft({ ...draft, flag: e.target.value })} />
             </Field>
-            <div className="flex items-center justify-end gap-2.5">
+            <div className="flex items-center justify-end gap-3">
               <Btn variant="ghost" disabled={!hasContent} onClick={stashIt}>
                 暂存
               </Btn>
@@ -299,7 +303,7 @@ export default function Bank() {
         </div>
       )}
 
-      <div className="flex flex-col gap-5 md:flex-row">
+      <div className="flex flex-col gap-6 md:flex-row">
         {/* 分类：按岗位组织，可自定义（一位面试官常面多个岗位） */}
         <aside className="w-full shrink-0 md:w-40">
           <ul className="ws-rise [--i:1] ws-paper rounded-xl py-1.5 text-sm">
@@ -308,19 +312,22 @@ export default function Bank() {
               const n = c === '全部' ? shownIn(bank).length : shownIn(bank).filter((b) => b.cat === c).length
               return (
                 <li key={c}>
+                  {/* 荧光青柠落点：当前分类 → 实底荧光小块；hover 底色只给未选中项 */}
                   <button
                     type="button"
                     aria-current={on ? 'true' : undefined}
                     onClick={() => setCat(c)}
-                    className={`flex w-full cursor-pointer items-center justify-between px-4 py-2 text-left transition-colors ${
-                      on ? 'font-medium text-base-content' : 'text-base-content/60 hover:text-base-content'
+                    className={`motion-pop flex w-full cursor-pointer items-center justify-between rounded-lg px-4 py-2 text-left ${
+                      on
+                        ? 'bg-accent font-medium text-accent-content'
+                        : 'text-base-content/60 hover:bg-base-200/60 hover:text-base-content'
                     }`}
                   >
-                    <span className="flex items-center gap-2">
-                      {on && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
+                    <span className="flex items-center gap-3">
+                      {on && <span className="h-1.5 w-1.5 rounded-full bg-accent-content" aria-hidden="true" />}
                       {c}
                     </span>
-                    <span className="tabular-nums text-xs text-base-content/50">{n}</span>
+                    <span className={`tabular-nums text-xs ${on ? 'text-accent-content/70' : 'text-base-content/50'}`}>{n}</span>
                   </button>
                 </li>
               )
@@ -339,7 +346,7 @@ export default function Bank() {
                   className="input input-sm w-full"
                 />
               </Field>
-              <div className="mt-1.5 flex justify-end gap-2">
+              <div className="mt-1.5 flex justify-end gap-3">
                 <Btn
                   variant="ghost"
                   onClick={() => {
@@ -358,7 +365,7 @@ export default function Bank() {
             <button
               type="button"
               onClick={() => setAddingCat(true)}
-              className="mt-2 w-full cursor-pointer rounded-xl border border-dashed border-base-300 py-2 text-sm text-base-content/60 transition hover:border-base-content/30 hover:bg-base-100 hover:text-base-content"
+              className="motion-pop mt-2 w-full cursor-pointer rounded-xl border border-dashed border-base-300 py-2 text-sm text-base-content/60 hover:border-base-content/30 hover:bg-base-100 hover:text-base-content"
             >
               新建分类
             </button>
@@ -366,7 +373,7 @@ export default function Bank() {
         </aside>
 
         <div className="min-w-0 flex-1">
-          <div className="ws-rise [--i:1] flex flex-wrap items-center gap-2">
+          <div className="ws-rise [--i:1] flex flex-wrap items-center gap-3">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -389,15 +396,19 @@ export default function Bank() {
             </div>
           </div>
 
-          <ol className="ws-rise [--i:2] mt-3 space-y-3">
-            {list.map((b) => {
+          <ol className="stagger mt-3 space-y-4">
+            {list.map((b, i) => {
               const expanded = open === b.id
               const isHidden = hidden.includes(b.id)
               const answerId = `bank-answer-${b.id}`
               return (
-                <li key={b.id} className="card card-border bg-base-100 shadow-[var(--shadow-paper)]">
-                  <div className="card-body gap-3 p-5">
-                    <div className="flex items-start justify-between gap-4">
+                <li
+                  key={b.id}
+                  style={{ '--i': Math.min(i, 7) } as CSSProperties}
+                  className="motion-pop card card-border bg-base-100 shadow-[var(--shadow-paper)] hover:border-base-content/20"
+                >
+                  <div className="card-body gap-4 p-5">
+                    <div className="flex items-start justify-between gap-5">
                       <button
                         type="button"
                         onClick={() => setOpen(expanded ? undefined : b.id)}
@@ -406,20 +417,24 @@ export default function Bank() {
                         className="min-w-0 flex-1 cursor-pointer text-left"
                       >
                         <div className={`text-[15px] font-medium ${isHidden ? 'text-base-content/50' : 'text-base-content'}`}>{b.q}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/50">
+                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-base-content/50">
                           <span>
                             {b.cat} · {b.tag} · {b.diff} · {b.hot} 次团队使用
                           </span>
-                          {isHidden && <Chip tone="neutral">已隐藏</Chip>}
+                          {isHidden && (
+                            <Chip tone="neutral" className="bg-neutral text-neutral-content">
+                              已隐藏
+                            </Chip>
+                          )}
                         </div>
                       </button>
-                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
                         <button
                           type="button"
                           onClick={() => setOpen(expanded ? undefined : b.id)}
                           aria-expanded={expanded}
                           aria-controls={answerId}
-                          className="cursor-pointer text-sm text-base-content/60 hover:text-base-content"
+                          className="motion-pop cursor-pointer text-sm text-base-content/60 hover:text-base-content"
                         >
                           {expanded ? '收起' : '答案'}
                         </button>
@@ -441,11 +456,11 @@ export default function Bank() {
                       </div>
                     </div>
                     {expanded && (
-                      <div id={answerId} className="login-fade space-y-3 border-t border-base-300 pt-4 text-sm leading-6">
+                      <div id={answerId} className="login-fade space-y-4 border-t border-base-300 pt-4 text-sm leading-6">
                         {!!b.points.length && (
                           <div>
                             <div className="text-xs font-medium text-base-content/60">考察要点</div>
-                            <ul className="mt-1 space-y-1 text-base-content/80">
+                            <ul className="mt-1 space-y-1.5 text-base-content/80">
                               {b.points.map((p) => (
                                 <li key={p}>· {p}</li>
                               ))}
@@ -459,7 +474,7 @@ export default function Bank() {
                         {!!b.follow.length && (
                           <div>
                             <div className="text-xs font-medium text-base-content/60">追问</div>
-                            <ul className="mt-1 space-y-1 text-base-content/80">
+                            <ul className="mt-1 space-y-1.5 text-base-content/80">
                               {b.follow.map((f) => (
                                 <li key={f}>· {f}</li>
                               ))}
@@ -519,9 +534,9 @@ export default function Bank() {
         }
       >
         {targets.length ? (
-          <div className="space-y-2">
+          <div className="stagger space-y-3">
             <p className="text-xs text-base-content/60">选择候选人（当前处于「约面中」的场次）</p>
-            {targets.map((c) => {
+            {targets.map((c, i) => {
               const has = pickFor ? c.qs.some((x) => x.q === pickFor.q) : false
               return (
                 <button
@@ -529,7 +544,8 @@ export default function Bank() {
                   type="button"
                   disabled={has}
                   onClick={() => pickFor && add(c.id, pickFor)}
-                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-base-300 px-3 py-2 text-left text-sm transition hover:bg-base-200 disabled:cursor-default disabled:opacity-50 disabled:hover:bg-base-100"
+                  style={{ '--i': Math.min(i, 7) } as CSSProperties}
+                  className="motion-pop flex w-full cursor-pointer items-center justify-between gap-4 rounded-lg border border-base-300 px-3 py-2 text-left text-sm hover:bg-base-200 disabled:cursor-default disabled:opacity-50 disabled:hover:bg-base-100"
                 >
                   <span className="text-base-content">
                     {c.name}
@@ -574,8 +590,8 @@ export default function Bank() {
         }
       >
         {editDraft && (
-          <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
+          <div className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-3">
               <Field label="分类" htmlFor="edit-cat">
                 <select id="edit-cat" className="select w-full" value={editDraft.cat} onChange={(e) => setEditDraft({ ...editDraft, cat: e.target.value })}>
                   {editCatOptions.map((c) => (
@@ -601,7 +617,7 @@ export default function Bank() {
             <Field label="题目" htmlFor="edit-q" required>
               <textarea id="edit-q" rows={2} className="textarea w-full resize-none text-[15px]" value={editDraft.q} onChange={(e) => setEditDraft({ ...editDraft, q: e.target.value })} />
             </Field>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               <Field label="考察要点" htmlFor="edit-points" hint="每行一条">
                 <textarea id="edit-points" rows={4} className="textarea w-full resize-none" value={editDraft.points} onChange={(e) => setEditDraft({ ...editDraft, points: e.target.value })} />
               </Field>

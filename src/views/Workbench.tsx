@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { TODAY, candidates, type ApprovalApplication, type Candidate } from '../data'
 import { approvals, retryFailedBatch, simulateSyncFailure, slotLabel, sourceDbSync, triggerSourceDbSync, type SourceDbSyncState } from '../store'
 import type { Go } from '../App'
@@ -49,12 +49,25 @@ const ATTACH_TONE: Record<Candidate['attachmentType'], Tone> = { original: 'succ
 type Tab = 'all' | 'screen' | 'schedule' | 'review' | 'approval'
 
 /** 可点击卡片：键盘可达（Enter / Space）；卡片内次级动作放在 data-row-action 容器里隔离点击 */
-function ActRow({ onActivate, ariaLabel, className = '', children }: { onActivate: () => void; ariaLabel: string; className?: string; children: ReactNode }) {
+function ActRow({
+  onActivate,
+  ariaLabel,
+  className = '',
+  style,
+  children,
+}: {
+  onActivate: () => void
+  ariaLabel: string
+  className?: string
+  style?: CSSProperties
+  children: ReactNode
+}) {
   return (
     <div
       role="button"
       tabIndex={0}
       aria-label={ariaLabel}
+      style={style}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest('[data-row-action]')) return
         onActivate()
@@ -66,9 +79,14 @@ function ActRow({ onActivate, ariaLabel, className = '', children }: { onActivat
           onActivate()
         }
       }}
-      className={`card card-border bg-base-100 shadow-[var(--shadow-paper)] cursor-pointer text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-lift)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${className}`}
+      className="rounded-[var(--radius-box)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
-      {children}
+      {/* 动效分层：错位入场由外层（.stagger 的直接子元素）承担，
+          hover/active 的上浮与下压由内层卡片上的 .motion-pop 承担 —— 否则 ws-rise 的
+          animation-fill-mode: both 会把它收尾的 transform 一直作用在可点元素上，压掉 hover 位移。 */}
+      <div className={`card card-border bg-base-100 shadow-[var(--shadow-paper)] motion-pop cursor-pointer text-left hover:border-base-content/25 hover:shadow-[var(--shadow-lift)] ${className}`}>
+        {children}
+      </div>
     </div>
   )
 }
@@ -88,7 +106,7 @@ function NextAction({ c }: { c: Candidate }) {
   return (
     <div className="mt-1 text-[11px] text-base-content/60">
       下一步：{c.nextAction.text}
-      <span className="text-base-content/40">
+      <span className="text-base-content/50">
         （{c.nextAction.owner} · 截止 {c.nextAction.dueAt}）
       </span>
     </div>
@@ -145,12 +163,13 @@ export default function Workbench({ go }: { go: Go }) {
     { key: 'approval', label: '审批状态变化', count: approvalAttention.length },
   ]
 
-  const tile = (key: Tab, title: string, badge: string, badgeTone: Tone, count: number, unit: string, note: string) => (
+  const tile = (key: Tab, i: number, title: string, badge: string, badgeTone: Tone, count: number, unit: string, note: string) => (
     <div
       role="button"
       tabIndex={0}
       aria-pressed={activeTab === key}
       aria-label={`${title}，${count} ${unit}`}
+      style={{ '--i': i } as CSSProperties}
       onClick={() => setActiveTab(key)}
       onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
         if (e.target !== e.currentTarget) return
@@ -159,30 +178,34 @@ export default function Workbench({ go }: { go: Go }) {
           setActiveTab(key)
         }
       }}
-      className={`card card-border cursor-pointer bg-base-100 shadow-[var(--shadow-paper)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[var(--shadow-lift)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-        activeTab === key ? 'border-primary/40 ring-2 ring-primary/15' : ''
-      }`}
+      className="rounded-[var(--radius-box)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
-      <div className="card-body gap-2 p-5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-medium text-base-content/70">{title}</span>
-          <Chip tone={badgeTone}>{badge}</Chip>
+      <div
+        className={`card card-border motion-pop h-full cursor-pointer bg-base-100 shadow-[var(--shadow-paper)] hover:border-base-content/25 hover:shadow-[var(--shadow-lift)] ${
+          activeTab === key ? 'border-primary/40 ring-2 ring-primary/15' : ''
+        }`}
+      >
+        <div className="card-body gap-2 p-5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-base-content/70">{title}</span>
+            <Chip tone={badgeTone}>{badge}</Chip>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold tabular-nums tracking-tight text-base-content">{count}</span>
+            <span className="text-xs text-base-content/60">{unit}</span>
+          </div>
+          <p className="line-clamp-1 text-[11px] text-base-content/50">{note}</p>
         </div>
-        <div className="flex items-baseline gap-2">
-          <span className="text-3xl font-bold tabular-nums tracking-tight text-base-content">{count}</span>
-          <span className="text-xs text-base-content/60">{unit}</span>
-        </div>
-        <p className="line-clamp-1 text-[11px] text-base-content/50">{note}</p>
       </div>
     </div>
   )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* 顶部标题栏 */}
-      <div className="ws-rise flex flex-col justify-between gap-4 border-b border-base-300 pb-5 md:flex-row md:items-end">
+      <div className="ws-rise flex flex-col justify-between gap-5 border-b border-base-300 pb-5 md:flex-row md:items-end">
         <div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-4">
             <span className="relative flex h-2.5 w-2.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-success" />
@@ -193,7 +216,7 @@ export default function Workbench({ go }: { go: Go }) {
           <p className="mt-1.5 text-xs text-base-content/60">来源库落库人选 · AI 宽松初筛 · 飞书日程协同 · 考场实录考核 · 录取双轨审批</p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-3">
           <Btn variant="ghost" onClick={() => go('bento')}>
             四色指挥舱
           </Btn>
@@ -204,7 +227,7 @@ export default function Workbench({ go }: { go: Go }) {
       </div>
 
       {toast && (
-        <div role="status" className={`alert alert-soft ${toast.kind === 'success' ? 'alert-success' : 'alert-error'} flex items-center justify-between gap-3 text-xs`}>
+        <div role="status" className={`alert alert-soft ${toast.kind === 'success' ? 'alert-success' : 'alert-error'} flex items-center justify-between gap-4 text-xs`}>
           <span>{toast.text}</span>
           <button type="button" onClick={() => setToast(null)} aria-label="关闭提示" className="btn btn-ghost btn-xs btn-circle">
             ✕
@@ -214,9 +237,9 @@ export default function Workbench({ go }: { go: Go }) {
 
       {/* 来源库同步状态（FR-A1）：读真实状态，失败显式可见并可重跑 */}
       <Card className="ws-rise [--i:1]">
-        <div className="card-body gap-3 p-4 sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
+        <div className="card-body gap-4 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
               <span className="text-sm font-semibold text-base-content">来源库同步状态</span>
               <Chip tone={SYNC_TONE[sourceDbSync.status]}>{SYNC_LABEL[sourceDbSync.status]}</Chip>
               <Chip tone={sourceDbSync.connected ? 'info' : 'error'}>{sourceDbSync.connected ? '只读连接正常' : '只读连接断开'}</Chip>
@@ -225,7 +248,7 @@ export default function Workbench({ go }: { go: Go }) {
                 累计落库 {sourceDbSync.totalSynced} 人 · 最近一批 {sourceDbSync.lastBatchCount} 人
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-3">
               <Btn variant="ghost" onClick={handleSync}>
                 刷新拉取来源库
               </Btn>
@@ -261,9 +284,10 @@ export default function Workbench({ go }: { go: Go }) {
       </Card>
 
       {/* 四大待办分区卡片 */}
-      <div className="ws-rise [--i:1] grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="ws-rise [--i:1] stagger grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {tile(
           'screen',
+          0,
           '筛选中复核',
           '影刀落库',
           'info',
@@ -273,6 +297,7 @@ export default function Workbench({ go }: { go: Go }) {
         )}
         {tile(
           'schedule',
+          1,
           '待安排面试',
           '日程协同',
           'warning',
@@ -280,9 +305,10 @@ export default function Workbench({ go }: { go: Go }) {
           '人待排期通知',
           pendingSchedule.length ? `最新：${pendingSchedule[0].name}` : '所有约面均已排期',
         )}
-        {tile('review', '待面评确认', '人工面评', 'accent', pendingReview.length, '场待补全打分', pendingReview.length ? `考场：${pendingReview[0].name}` : '已全部完成评价')}
+        {tile('review', 2, '待面评确认', '人工面评', 'accent', pendingReview.length, '场待补全打分', pendingReview.length ? `考场：${pendingReview[0].name}` : '已全部完成评价')}
         {tile(
           'approval',
+          3,
           '审批状态变化',
           '飞书 / BPM',
           'neutral',
@@ -293,10 +319,10 @@ export default function Workbench({ go }: { go: Go }) {
       </div>
 
       {/* 主体布局：左侧待办事务流，右侧今日考场与快捷动作 */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+      <div className="grid gap-7 lg:grid-cols-[1fr_360px]">
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
               <h2 className="text-base font-semibold tracking-tight text-base-content">待处理事务清单</h2>
               <span className="text-xs text-base-content/50">（回车或点击卡片推进对应业务）</span>
             </div>
@@ -320,12 +346,12 @@ export default function Workbench({ go }: { go: Go }) {
 
           {/* 1. 筛选中复核 */}
           {pendingScreen.length > 0 && (activeTab === 'all' || activeTab === 'screen') && (
-            <div className="space-y-3">
+            <div className="stagger space-y-4">
               <GroupHead title="筛选中复核" count={pendingScreen.length} tone="info" hint="AI 宽松初筛已出结论，由 HR 决定是否联系" />
-              {pendingScreen.map((c) => (
-                <ActRow key={c.id} ariaLabel={`筛选中复核：${c.name}，应聘 ${c.role}`} onActivate={() => go('detail', c.id)}>
-                  <div className="card-body flex-row items-center justify-between gap-4 p-4">
-                    <div className="flex items-center gap-3.5">
+              {pendingScreen.map((c, i) => (
+                <ActRow key={c.id} ariaLabel={`筛选中复核：${c.name}，应聘 ${c.role}`} onActivate={() => go('detail', c.id)} style={{ '--i': Math.min(i, 7) } as CSSProperties}>
+                  <div className="card-body flex-row items-center justify-between gap-5 p-4">
+                    <div className="flex items-center gap-4">
                       <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-base-300 bg-base-200 text-xs font-bold text-base-content/70">筛</div>
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -353,12 +379,12 @@ export default function Workbench({ go }: { go: Go }) {
 
           {/* 2. 待联系：点击带候选人上下文进入约面管理 */}
           {pendingSchedule.length > 0 && (activeTab === 'all' || activeTab === 'schedule') && (
-            <div className="space-y-3">
+            <div className="stagger space-y-4">
               <GroupHead title="待联系" count={pendingSchedule.length} tone="warning" hint="初筛通过，待确认双方时间并发起预约" />
-              {pendingSchedule.map((c) => (
-                <ActRow key={c.id} ariaLabel={`待联系：${c.name}，点击进入约面管理`} onActivate={() => go('schedule', c.id)}>
-                  <div className="card-body flex-row items-center justify-between gap-4 p-4">
-                    <div className="flex items-center gap-3.5">
+              {pendingSchedule.map((c, i) => (
+                <ActRow key={c.id} ariaLabel={`待联系：${c.name}，点击进入约面管理`} onActivate={() => go('schedule', c.id)} style={{ '--i': Math.min(i, 7) } as CSSProperties}>
+                  <div className="card-body flex-row items-center justify-between gap-5 p-4">
+                    <div className="flex items-center gap-4">
                       <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-base-300 bg-base-200 text-xs font-bold text-base-content/70">约</div>
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -392,12 +418,12 @@ export default function Workbench({ go }: { go: Go }) {
 
           {/* 3. 待面评确认 */}
           {pendingReview.length > 0 && (activeTab === 'all' || activeTab === 'review') && (
-            <div className="space-y-3">
+            <div className="stagger space-y-4">
               <GroupHead title="待面评确认" count={pendingReview.length} tone="accent" hint="考场已结束，AI 草稿需人工确认后保存" />
-              {pendingReview.map((c) => (
-                <ActRow key={c.id} ariaLabel={`待面评：${c.name}，点击进入考场`} onActivate={() => go('room', c.id)}>
-                  <div className="card-body flex-row items-center justify-between gap-4 p-4">
-                    <div className="flex items-center gap-3.5">
+              {pendingReview.map((c, i) => (
+                <ActRow key={c.id} ariaLabel={`待面评：${c.name}，点击进入考场`} onActivate={() => go('room', c.id)} style={{ '--i': Math.min(i, 7) } as CSSProperties}>
+                  <div className="card-body flex-row items-center justify-between gap-5 p-4">
+                    <div className="flex items-center gap-4">
                       <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-base-300 bg-base-200 text-xs font-bold text-base-content/70">评</div>
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -423,8 +449,8 @@ export default function Workbench({ go }: { go: Go }) {
 
           {/* 4. 审批状态变化提醒（FR-C4）：逐状态分组，单边通过与同步失败单独可辨 */}
           {approvals.length > 0 && (activeTab === 'all' || activeTab === 'approval') && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2 px-1">
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center gap-3 px-1">
                 <Chip tone="neutral">审批状态口径</Chip>
                 {FINAL_ORDER.map((st) => (
                   <Chip key={st} tone={FINAL_TONE[st]}>
@@ -436,16 +462,21 @@ export default function Workbench({ go }: { go: Go }) {
 
               {approvalGroups.map(({ st, items }) =>
                 items.length === 0 ? null : (
-                  <div key={st} className="space-y-3">
+                  <div key={st} className="stagger space-y-4">
                     <GroupHead
                       title={FINAL_LABEL[st]}
                       count={items.length}
                       tone={FINAL_TONE[st]}
                       hint={st === 'partial' ? '仅一侧通过，必需审批未完成，不得标记为整体录用' : undefined}
                     />
-                    {items.map((a) => (
-                      <ActRow key={a.id} ariaLabel={`审批单 ${a.id}，候选人 ${a.candidateName}，整体结论 ${FINAL_LABEL[a.finalStatus]}`} onActivate={() => go('approvals')}>
-                        <div className="card-body gap-3 p-4">
+                    {items.map((a, i) => (
+                      <ActRow
+                        key={a.id}
+                        ariaLabel={`审批单 ${a.id}，候选人 ${a.candidateName}，整体结论 ${FINAL_LABEL[a.finalStatus]}`}
+                        onActivate={() => go('approvals')}
+                        style={{ '--i': Math.min(i, 7) } as CSSProperties}
+                      >
+                        <div className="card-body gap-4 p-4">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm font-semibold text-base-content">{a.candidateName}</span>
@@ -463,7 +494,7 @@ export default function Workbench({ go }: { go: Go }) {
                             </div>
                           </div>
 
-                          <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="grid gap-3 sm:grid-cols-2">
                             {(['feishu', 'bpm'] as const).map((k) => {
                               const t = a[k]
                               return (
@@ -513,9 +544,9 @@ export default function Workbench({ go }: { go: Go }) {
         </div>
 
         {/* 右侧：今日面试日程与快捷入口 */}
-        <aside className="space-y-5">
+        <aside className="space-y-6">
           <Card>
-            <div className="card-body gap-3 p-5">
+            <div className="card-body stagger gap-4 p-5">
               <div className="flex items-center justify-between border-b border-base-300 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="status status-success" aria-hidden="true" />
@@ -524,8 +555,14 @@ export default function Workbench({ go }: { go: Go }) {
                 <span className="font-mono text-xs text-base-content/50">{TODAY}</span>
               </div>
 
-              {todayInterviews.map((c) => (
-                <ActRow key={c.id} ariaLabel={`今日面试：${c.name}，点击进入考场`} onActivate={() => go('room', c.id)} className="!shadow-none">
+              {todayInterviews.map((c, i) => (
+                <ActRow
+                  key={c.id}
+                  ariaLabel={`今日面试：${c.name}，点击进入考场`}
+                  onActivate={() => go('room', c.id)}
+                  className="!shadow-none"
+                  style={{ '--i': Math.min(i + 1, 7) } as CSSProperties}
+                >
                   <div className="card-body gap-2 p-3.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-semibold text-base-content">
@@ -555,9 +592,9 @@ export default function Workbench({ go }: { go: Go }) {
           </Card>
 
           <Card>
-            <div className="card-body gap-3 p-5">
+            <div className="card-body gap-4 p-5">
               <h3 className="text-sm font-semibold text-base-content">系统快捷入口</h3>
-              <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="grid grid-cols-2 gap-3 text-xs">
                 {(
                   [
                     { k: 'jobs', t: '岗位编制', s: '维护 JD 标尺' },
@@ -570,7 +607,7 @@ export default function Workbench({ go }: { go: Go }) {
                     key={it.k}
                     type="button"
                     onClick={() => go(it.k)}
-                    className="cursor-pointer rounded-xl border border-base-300 bg-base-200/60 p-3 text-left transition-colors hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="motion-pop cursor-pointer rounded-xl border border-base-300 bg-base-200/60 p-3 text-left hover:border-base-content/25 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     <div className="font-semibold text-base-content">{it.t}</div>
                     <div className="mt-0.5 text-[10px] text-base-content/50">{it.s}</div>

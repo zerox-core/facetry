@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { resumes, type Candidate, type ResumeLine } from '../data'
 import { Empty } from './ui'
 
@@ -35,7 +35,7 @@ export default function ResumeDoc({ c, active, onPick, filter = 'all' }: Props) 
   const note = (l: ResumeLine): string | undefined => (l.mark === 'hi' ? c.highlights : c.risks)?.[l.ref ?? 0]
 
   return (
-    <article className="mx-auto max-w-[640px] bg-base-100 px-12 py-10 text-base-content">
+    <article className="stagger mx-auto max-w-[640px] bg-base-100 px-12 py-10 text-base-content">
       <header className="border-b border-base-300 pb-6">
         <h2 className="text-[26px] font-semibold tracking-tight text-base-content">{c.name}</h2>
         <p className="mt-2 text-sm text-base-content/70">
@@ -48,8 +48,8 @@ export default function ResumeDoc({ c, active, onPick, filter = 'all' }: Props) 
         {c.attachmentType === 'platform' && <p className="mt-2 text-xs text-base-content/50">当前展示的是平台模板文件解析结果。</p>}
       </header>
 
-      {r.sections.map((sec) => (
-        <section key={sec.title} className="mt-8">
+      {r.sections.map((sec, i) => (
+        <section key={sec.title} style={{ '--i': Math.min(i + 1, 7) } as CSSProperties} className="mt-8">
           <h3 className="text-[13px] font-semibold tracking-wide text-base-content/50">{sec.title}</h3>
           <ul className="mt-3">
             {sec.lines.map((l) => {
@@ -90,15 +90,15 @@ export default function ResumeDoc({ c, active, onPick, filter = 'all' }: Props) 
                           {noteText}
                         </>
                       ) : (
-                        <span className="text-base-content/40">该项暂无要点明细（简历要点未标注对应条目）</span>
+                        <span className="text-base-content/50">该项暂无要点明细（简历要点未标注对应条目）</span>
                       )}
                     </span>
                   )}
                 </>
               )
 
-              const rowClass = `-mx-3 block w-[calc(100%+1.5rem)] rounded-lg px-3 py-1.5 text-left text-[15px] leading-7 transition-colors ${
-                clickable ? 'cursor-pointer hover:bg-base-200' : ''
+              const rowClass = `-mx-3 block w-[calc(100%+1.5rem)] rounded-lg px-3 py-1.5 text-left text-[15px] leading-7 ${
+                clickable ? 'motion-pop cursor-pointer hover:bg-base-200' : ''
               } ${on ? 'bg-base-200 font-medium text-base-content' : ''} ${
                 !on && shown ? 'text-base-content' : !shown ? 'text-base-content/70' : ''
               }`

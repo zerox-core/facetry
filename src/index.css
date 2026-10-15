@@ -2,9 +2,9 @@
 @import 'tailwindcss';
 
 /* ───────────── daisyUI 5 · 模式 B：把项目 token 映射成品牌主题 ─────────────
-   颜色只有一套来源：daisyUI 语义色 ←→ 下方 --apple-* 令牌。
-   base-100 = 纸面（卡片白）· base-200 = 画布（页面灰）· primary = 品牌黑。
-   圆角对齐项目：卡片 rounded-2xl(1rem)、输入 rounded-xl(0.75rem)、按钮胶囊。 */
+   风格：「整页黑白灰，只留一支荧光」——近白底 + 墨黑结构 + 一支荧光青柠。
+   荧光青柠只落在「当前/进度/激活」上：当前页签、进行中指标、选中态、在线点。
+   状态色压成近墨的暗调（橄榄墨/琥珀墨/砖墨），面积上仍是黑白灰，但保住语义可辨。 */
 @plugin 'daisyui' {
   themes: false;
   logs: false;
@@ -15,31 +15,31 @@
   color-scheme: light;
 
   --color-base-100: #ffffff;
-  --color-base-200: #f2f4f7;
-  --color-base-300: #e4e7eb;
-  --color-base-content: #1d1d1f;
+  --color-base-200: #f3f2ec;
+  --color-base-300: #e4e3d9;
+  --color-base-content: #1b1b18;
 
-  --color-primary: #1d1d1f;
-  --color-primary-content: #ffffff;
-  --color-secondary: #515154;
-  --color-secondary-content: #ffffff;
-  --color-accent: #b45309; /* 琥珀：一屏仅一处焦点动作 */
-  --color-accent-content: #ffffff;
-  --color-neutral: #2c2c2e;
-  --color-neutral-content: #ffffff;
+  --color-primary: #1b1b18;
+  --color-primary-content: #f8f8f3;
+  --color-secondary: #33332e;
+  --color-secondary-content: #f8f8f3;
+  --color-accent: #d9e04a;
+  --color-accent-content: #1c1f04;
+  --color-neutral: #1b1b18;
+  --color-neutral-content: #f8f8f3;
 
-  --color-info: #475569;
-  --color-info-content: #ffffff;
-  --color-success: #047857;
-  --color-success-content: #ffffff;
-  --color-warning: #b45309;
-  --color-warning-content: #ffffff;
-  --color-error: #b91c1c;
-  --color-error-content: #ffffff;
+  --color-info: #63635b;
+  --color-info-content: #f8f8f3;
+  --color-success: #55661d;
+  --color-success-content: #f6f8ea;
+  --color-warning: #8a6a14;
+  --color-warning-content: #fbf7e8;
+  --color-error: #8c2f28;
+  --color-error-content: #fdf1ef;
 
-  --radius-selector: 1rem;
+  --radius-selector: 9999px;
   --radius-field: 0.75rem;
-  --radius-box: 1rem;
+  --radius-box: 1.25rem;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
@@ -60,14 +60,20 @@
 
 @layer base {
   body {
-    background: #f0f2f5;
-    color: #1d1d1f;
+    background: #f3f2ec;
+    color: #1b1b18;
     font-family: var(--font-sans);
     font-feature-settings: 'tnum';
     -webkit-font-smoothing: antialiased;
   }
   ::selection {
-    background: #cce4ff;
+    background: rgb(217 224 74 / 0.45);
+    color: #1b1b18;
+  }
+  /* 键盘焦点环全站统一（墨黑，白底上对比足够） */
+  :focus-visible {
+    outline: 2px solid var(--color-primary, #1b1b18);
+    outline-offset: 2px;
   }
 }
 
@@ -119,22 +125,21 @@
 
 /* ───────────── 现代化高立体感苹果级设计系统 ───────────── */
 :root {
-  --apple-canvas: #f2f4f7;
+  /* 浅色令牌：与 daisyUI 主题同源，页面既可用语义类也可直接 var() */
+  --apple-canvas: #f3f2ec;
   --apple-paper: #ffffff;
-  --apple-text: #1d1d1f;
-  --apple-muted: #6e6e73;
-  --apple-brand: #1d1d1f;
-  --apple-brand-hover: #2c2c2e;
+  --apple-text: #1b1b18;
+  --apple-muted: #75756b;
+  --apple-brand: #1b1b18;
+  --apple-brand-hover: #000000;
 
-  /* 多层深度弥散投影体系 (Spatial Tactile Depth) */
+  /* 浅色层次：小阴影 + 细墨线，不再用深色大柔影 */
   --shadow-paper:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 4px 16px -2px rgba(15, 23, 42, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 1);
+    0 1px 2px rgba(27, 27, 24, 0.05),
+    0 10px 28px -14px rgba(27, 27, 24, 0.12);
   --shadow-lift:
-    0 4px 8px rgba(0, 0, 0, 0.04),
-    0 16px 32px -4px rgba(15, 23, 42, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 1);
+    0 4px 10px rgba(27, 27, 24, 0.06),
+    0 24px 48px -16px rgba(27, 27, 24, 0.18);
 
   --dur-fast: 160ms;
   --dur-base: 280ms;
@@ -142,26 +147,30 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.ws-canvas {
-  background-color: var(--apple-canvas);
-  color: var(--apple-text);
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
-}
+/* 以下项目级样式放进 @layer components：让 Tailwind 工具类可以覆盖它们
+   （无 layer 的规则会压过 @layer utilities，页面上的 border-*/bg-* 会静默失效） */
+@layer components {
+  .ws-canvas {
+    background-color: var(--apple-canvas);
+    color: var(--apple-text);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
 
-/* 苹果磨砂玻璃顶栏（微高光底部立体边） */
-.ws-bar {
-  background-color: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(24px) saturate(190%);
-  -webkit-backdrop-filter: blur(24px) saturate(190%);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 4px 12px rgba(0, 0, 0, 0.02);
-}
+  /* 浅色磨砂玻璃顶栏（底部 1px 墨线分隔） */
+  .ws-bar {
+    background-color: rgba(255, 255, 255, 0.86);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border-bottom: 1px solid rgba(27, 27, 24, 0.08);
+    box-shadow: 0 1px 3px rgba(27, 27, 24, 0.05), 0 8px 24px -12px rgba(27, 27, 24, 0.1);
+  }
 
-/* 立体 Bento 卡片 */
-.ws-paper {
-  background-color: var(--apple-paper);
-  border: 1px solid rgba(0, 0, 0, 0.07);
-  box-shadow: var(--shadow-paper);
+  /* 立体 Bento 卡片 */
+  .ws-paper {
+    background-color: var(--apple-paper);
+    border: 1px solid rgba(27, 27, 24, 0.08);
+    box-shadow: var(--shadow-paper);
+  }
 }
 
 .ws-lift {
@@ -170,7 +179,7 @@
 .ws-lift:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-lift);
-  border-color: rgba(0, 0, 0, 0.2);
+  border-color: rgba(27, 27, 24, 0.25);
 }
 
 .ws-press {
@@ -185,23 +194,27 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .ws-rise {
-  animation: ws-rise 0.4s var(--ease-out) both;
+  /* 用 backwards 而不是 both：动画结束后不保留末态 transform，
+     否则会压掉同一元素上 .motion-pop 的 hover 上浮 / active 下压。 */
+  animation: ws-rise 0.4s var(--ease-out) backwards;
   animation-delay: calc(var(--i, 0) * 40ms);
 }
 
 /* 立体分段控制器凹槽 (Tactile Segmented Bar) */
-.ws-segmented-track {
-  background: linear-gradient(180deg, #e4e7ed 0%, #ebedf2 100%);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08), inset 0 0.5px 1px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-}
-.ws-segmented-active {
-  background: #ffffff;
-  color: #1d1d1f;
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.1),
-    0 1px 2px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 1);
+@layer components {
+  .ws-segmented-track {
+    background: linear-gradient(180deg, #ecebe1 0%, #e7e6db 100%);
+    box-shadow: inset 0 2px 4px rgba(27, 27, 24, 0.1), inset 0 0.5px 1px rgba(27, 27, 24, 0.06);
+    border: 1px solid rgba(27, 27, 24, 0.07);
+  }
+  .ws-segmented-active {
+    background: #ffffff;
+    color: #1b1b18;
+    box-shadow:
+      0 2px 8px rgba(27, 27, 24, 0.12),
+      0 1px 2px rgba(27, 27, 24, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 1);
+  }
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -264,33 +277,32 @@
   100% { offset-distance: 100%; }
 }
 
-/* 黑曜石空间层级卡片 */
-.obsidian-panel {
-  background: linear-gradient(145deg, #16171b 0%, #111215 60%, #0d0e10 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow:
-    0 24px 48px -12px rgba(0, 0, 0, 0.45),
-    0 1px 2px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
-}
+/* 纸面空间层级卡片（原黑曜石面板浅色化：白渐变 + 墨线 + 柔影） */
+@layer components {
+  .obsidian-panel {
+    background: linear-gradient(145deg, #ffffff 0%, #fbfaf5 60%, #f6f5ee 100%);
+    border: 1px solid rgba(27, 27, 24, 0.1);
+    box-shadow:
+      0 24px 48px -20px rgba(27, 27, 24, 0.18),
+      0 1px 2px rgba(27, 27, 24, 0.06);
+  }
 
-.obsidian-card {
-  background: rgba(255, 255, 255, 0.035);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  transition: all var(--dur-base) var(--ease-out);
-}
-.obsidian-card:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.18);
-  transform: translateY(-2px);
-  box-shadow:
-    0 12px 28px -6px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  .obsidian-card {
+    background: rgba(27, 27, 24, 0.03);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(27, 27, 24, 0.08);
+    box-shadow:
+      0 4px 12px rgba(27, 27, 24, 0.06);
+    transition: all var(--dur-base) var(--ease-out);
+  }
+  .obsidian-card:hover {
+    background: rgba(27, 27, 24, 0.06);
+    border-color: rgba(27, 27, 24, 0.18);
+    transform: translateY(-2px);
+    box-shadow:
+      0 12px 28px -8px rgba(27, 27, 24, 0.16);
+  }
 }
 
 /* 点缀光晕 (Vibrant Accents) */
@@ -305,5 +317,59 @@
 }
 .glow-rose {
   box-shadow: 0 0 20px -3px rgba(244, 63, 94, 0.35);
+}
+
+/* ───────────── 动效规范：统一时长/缓动 + 逐条错位 + 尊重「减少动态效果」 ───────────── */
+
+/* 逐条错位入场：容器加 .stagger，子元素用 style={{ '--i': i }} 指定次序。
+   同样用 backwards：延迟期间保持起始态，播完后交还元素自身的 transform，
+   让子元素可以同时安全地使用 .motion-pop。 */
+.stagger > * {
+  animation: ws-rise 0.42s var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* 数据类动效统一走这两组，避免各页各写一套 duration/easing */
+.motion-meter {
+  transition:
+    width var(--dur-slow) var(--ease-out),
+    height var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+}
+.motion-pop {
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.motion-pop:hover {
+  transform: translateY(-2px);
+}
+.motion-pop:active {
+  transform: translateY(0) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ws-rise,
+  .stagger > * {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .animate-shimmer::after,
+  .animate-float,
+  .animate-pulse-glow,
+  .voice-ring {
+    animation: none !important;
+  }
 }
 

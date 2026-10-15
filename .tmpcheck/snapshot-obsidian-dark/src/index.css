@@ -1,0 +1,381 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+/* ───────────── daisyUI 5 · 模式 B：把项目 token 映射成品牌主题 ─────────────
+   颜色只有一套来源：daisyUI 语义色 ←→ 下方 --apple-* 令牌 ←→ 指挥舱四色。
+   黑曜石底：base-100 = 卡面(#16171f) · base-200 = 画布(#0c0d12) · base-300 = 描边。
+   四色体系：primary 橙=主行动 · secondary 靛=次行动/数据 · accent 天蓝=信息 · 正向=鼠尾草绿。
+   圆角对齐项目：卡面 1.25rem、输入 0.75rem、按钮与徽标胶囊。 */
+@plugin 'daisyui' {
+  themes: false;
+  logs: false;
+}
+@plugin 'daisyui/theme' {
+  name: 'facetry';
+  default: true;
+  color-scheme: dark;
+
+  --color-base-100: #16171f;
+  --color-base-200: #0c0d12;
+  --color-base-300: #2b2c35;
+  --color-base-content: #f2f2f5;
+
+  --color-primary: #ff5a36;
+  --color-primary-content: #ffffff;
+  --color-secondary: #6366f1;
+  --color-secondary-content: #ffffff;
+  --color-accent: #7cd7f3;
+  --color-accent-content: #0f2938;
+  --color-neutral: #22232b;
+  --color-neutral-content: #e9e9ee;
+
+  --color-info: #7cd7f3;
+  --color-info-content: #0f2938;
+  --color-success: #5fd39a;
+  --color-success-content: #04281a;
+  --color-warning: #fbbf24;
+  --color-warning-content: #3a2a05;
+  --color-error: #f87171;
+  --color-error-content: #3b0a0a;
+
+  --radius-selector: 9999px;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* 全站按钮沿用项目的胶囊形，避免与 .ws-* 按钮外观分叉 */
+@utility btn {
+  @apply rounded-full;
+}
+
+@theme {
+  --font-display: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  --font-sans: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  --font-mono: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    background: #0c0d12;
+    color: #f2f2f5;
+    font-family: var(--font-sans);
+    font-feature-settings: 'tnum';
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: rgb(255 90 54 / 0.35);
+    color: #ffffff;
+  }
+  /* 键盘焦点环全站统一（此前只有个别按钮有，属"交互反馈不严谨"的一类） */
+  :focus-visible {
+    outline: 2px solid var(--color-primary, #ff5a36);
+    outline-offset: 2px;
+  }
+}
+
+/* ───────────── 登录页保持不变 (视觉结构冻结) ───────────── */
+@keyframes login-scan { from { top: 60px; opacity: 0 } 15% { opacity: 1 } to { top: 330px; opacity: 0 } }
+@keyframes login-fill { from { width: 0 } to { width: 100% } }
+@keyframes login-fade { from { opacity: 0; transform: translateY(3px) } to { opacity: 1; transform: none } }
+.login-scan { animation: login-scan 0.9s ease-in-out forwards; }
+.login-fill { animation: login-fill linear forwards; }
+.login-fade { animation: login-fade 0.4s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .login-scan, .login-fill, .login-fade { animation: none; }
+  .login-fill { width: 100%; }
+}
+@keyframes login-check { to { background: #334d70; border-color: #334d70; color: white } }
+@keyframes login-pick { to { background: #334d70; color: white } }
+.login-check { color: transparent; animation: login-check 0.25s ease-out forwards; }
+.login-pick { animation: login-pick 0.25s ease-out 1.5s forwards; }
+@keyframes login-draw { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+.login-draw { animation: login-draw 0.4s ease-out; }
+.login-desk {
+  background-color: #1d2939;
+  background-image: radial-gradient(rgb(255 255 255 / 0.06) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.login-paper {
+  background: #fffdf9;
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 1px rgb(15 23 42 / 0.04),
+    0 1px 1px rgb(0 0 0 / 0.12),
+    0 3px 6px rgb(0 0 0 / 0.12),
+    0 14px 28px -8px rgb(0 0 0 / 0.35),
+    0 44px 80px -24px rgb(0 0 0 / 0.6);
+}
+.login-paper::before, .login-paper::after {
+  content: ''; position: absolute; z-index: -1; bottom: 14px; width: 45%; height: 30px;
+  box-shadow: 0 18px 16px rgb(0 0 0 / 0.55);
+}
+.login-paper::before { left: 12px; transform: rotate(-3deg); }
+.login-paper::after { right: 12px; transform: rotate(3deg); }
+.login-sheet {
+  background: #f1ede4;
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2), 0 18px 36px -16px rgb(0 0 0 / 0.55);
+}
+@keyframes login-nudge { 50% { transform: translateX(3px) } }
+.login-nudge { animation: login-nudge 1.4s ease-in-out infinite; }
+
+/* ───────────── 现代化高立体感苹果级设计系统 ───────────── */
+:root {
+  /* 深色令牌：与 daisyUI 主题同源，页面既可用语义类也可直接 var() */
+  --apple-canvas: #0c0d12;
+  --apple-paper: #16171f;
+  --apple-text: #f2f2f5;
+  --apple-muted: #9a9aa5;
+  --apple-brand: #ff5a36;
+  --apple-brand-hover: #f14925;
+
+  /* 深色层次靠大范围柔影 + 1px 内高光，不再靠浅色硬边 */
+  --shadow-paper:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 8px 24px -6px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-lift:
+    0 4px 12px rgba(0, 0, 0, 0.5),
+    0 20px 44px -10px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+  --dur-fast: 160ms;
+  --dur-base: 280ms;
+  --dur-slow: 600ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 以下项目级样式放进 @layer components：让 Tailwind 工具类可以覆盖它们
+   （无 layer 的规则会压过 @layer utilities，页面上的 border-*/bg-* 会静默失效） */
+@layer components {
+  .ws-canvas {
+    background-color: var(--apple-canvas);
+    color: var(--apple-text);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* 深色磨砂玻璃顶栏（底部 1px 冷光分隔） */
+  .ws-bar {
+    background-color: rgba(18, 19, 24, 0.86);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  }
+
+  /* 立体 Bento 卡片 */
+  .ws-paper {
+    background-color: var(--apple-paper);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: var(--shadow-paper);
+  }
+}
+
+.ws-lift {
+  transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), border-color var(--dur-fast);
+}
+.ws-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.ws-press {
+  transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast), background-color var(--dur-fast);
+}
+.ws-press:active {
+  transform: scale(0.97);
+}
+
+@keyframes ws-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.ws-rise {
+  /* 用 backwards 而不是 both：动画结束后不保留末态 transform，
+     否则会压掉同一元素上 .motion-pop 的 hover 上浮 / active 下压。 */
+  animation: ws-rise 0.4s var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+/* 立体分段控制器凹槽 (Tactile Segmented Bar) */
+@layer components {
+  .ws-segmented-track {
+    background: linear-gradient(180deg, #17181e 0%, #121319 100%);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 0.5px 1px rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .ws-segmented-active {
+    background: #262731;
+    color: #f2f2f5;
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.5),
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 语音动效：声波 */
+@keyframes voice-ring { from { transform: scale(1); opacity: .45 } to { transform: scale(1.6); opacity: 0 } }
+.voice-ring { animation: voice-ring 1.2s var(--ease-out) infinite; }
+
+/* 苹果极润毛玻璃遮罩 */
+.ws-scrim {
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+/* ───────────── 苹果级深曜黑阶层次与流光动画 (Obsidian Pro Code Animations) ───────────── */
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.animate-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%);
+  animation: shimmer-sweep 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.08); }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+@keyframes float-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.animate-float {
+  animation: float-subtle 4s ease-in-out infinite;
+}
+
+@keyframes border-beam {
+  0% { offset-distance: 0%; }
+  100% { offset-distance: 100%; }
+}
+
+/* 黑曜石空间层级卡片 */
+@layer components {
+  .obsidian-panel {
+    background: linear-gradient(145deg, #16171b 0%, #111215 60%, #0d0e10 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow:
+      0 24px 48px -12px rgba(0, 0, 0, 0.45),
+      0 1px 2px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  }
+
+  .obsidian-card {
+    background: rgba(255, 255, 255, 0.035);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transition: all var(--dur-base) var(--ease-out);
+  }
+  .obsidian-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.18);
+    transform: translateY(-2px);
+    box-shadow:
+      0 12px 28px -6px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  }
+}
+
+/* 点缀光晕 (Vibrant Accents) */
+.glow-violet {
+  box-shadow: 0 0 20px -3px rgba(139, 92, 246, 0.35);
+}
+.glow-emerald {
+  box-shadow: 0 0 20px -3px rgba(16, 185, 129, 0.35);
+}
+.glow-amber {
+  box-shadow: 0 0 20px -3px rgba(245, 158, 11, 0.35);
+}
+.glow-rose {
+  box-shadow: 0 0 20px -3px rgba(244, 63, 94, 0.35);
+}
+
+/* ───────────── 动效规范：统一时长/缓动 + 逐条错位 + 尊重「减少动态效果」 ───────────── */
+
+/* 逐条错位入场：容器加 .stagger，子元素用 style={{ '--i': i }} 指定次序。
+   同样用 backwards：延迟期间保持起始态，播完后交还元素自身的 transform，
+   让子元素可以同时安全地使用 .motion-pop。 */
+.stagger > * {
+  animation: ws-rise 0.42s var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* 数据类动效统一走这两组，避免各页各写一套 duration/easing */
+.motion-meter {
+  transition:
+    width var(--dur-slow) var(--ease-out),
+    height var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+}
+.motion-pop {
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.motion-pop:hover {
+  transform: translateY(-2px);
+}
+.motion-pop:active {
+  transform: translateY(0) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ws-rise,
+  .stagger > * {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .animate-shimmer::after,
+  .animate-float,
+  .animate-pulse-glow,
+  .voice-ring {
+    animation: none !important;
+  }
+}
+
