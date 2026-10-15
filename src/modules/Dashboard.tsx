@@ -5,7 +5,7 @@ interface DashboardProps {
   navTo?: (mod: string, params?: Record<string, any>) => void
 }
 
-// 平滑 SVG 面积图
+// 极简纯净的平滑细线曲线 (无发光无渐变)
 function SmoothArea({ data, color = '#d7a62a', height = 36 }: { data: number[]; color?: string; height?: number }) {
   const max = Math.max(...data)
   const min = Math.min(...data)
@@ -25,17 +25,8 @@ function SmoothArea({ data, color = '#d7a62a', height = 36 }: { data: number[]; 
     return `${acc} C ${cx} ${prevY}, ${cx} ${y}, ${x} ${y}`
   }, '')
 
-  const fillD = `${pathD} L ${width} ${height} L 0 ${height} Z`
-
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-28 h-9 overflow-visible shrink-0">
-      <defs>
-        <linearGradient id={`grad-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.0" />
-        </linearGradient>
-      </defs>
-      <path d={fillD} fill={`url(#grad-${color.replace('#', '')})`} />
       <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" />
       <circle cx={pts.at(-1)![0]} cy={pts.at(-1)![1]} r="2.5" fill={color} />
     </svg>
@@ -137,56 +128,77 @@ export default function Dashboard({ navTo }: DashboardProps) {
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-y-auto bg-canvas">
-      {/* 顶部：AI 招聘态势感知与全景 Morning Briefing Banner */}
+      {/* 顶部：纯净雅致的纸质决策看板 (彻底摒弃黑底与渐变毛玻璃) */}
       <div className="shrink-0 px-5 pt-4 pb-2">
-        <div className="relative rounded-[8px] bg-gradient-to-r from-[#1b232c] via-[#24303d] to-[#1b232c] text-paper p-4.5 shadow-lg overflow-hidden border border-white/10">
-          <div className="absolute -right-8 -top-8 w-48 h-48 bg-amber/15 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute right-36 -bottom-10 w-36 h-36 bg-emerald-500/10 rounded-full blur-xl pointer-events-none" />
-
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <span className="w-6 h-6 rounded-full bg-amber text-base font-serif font-black flex items-center justify-center text-[12px] shadow-sm">
-                  知
-                </span>
-                <h1 className="font-serif-brand text-[17px] font-bold tracking-wide">
-                  知马招聘态势感知指挥中心
-                </h1>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/10 text-amber font-mono font-medium flex items-center gap-1 border border-white/10">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  AI 实时协同已在线
-                </span>
-              </div>
-              <div className="mt-2 text-[12.5px] text-paper/85 leading-relaxed flex flex-wrap items-center gap-x-4 gap-y-1">
-                <span>
-                  尊敬的 <strong className="text-amber">王璐 · HRBP</strong>，当前在招岗位 <strong className="text-paper font-semibold">14</strong> 个，已锁定高匹配意向候选人 <strong className="text-paper font-semibold">8</strong> 位。
-                </span>
-                <span className="text-white/40">|</span>
-                <span className="text-amber-200/90 text-[12px] flex items-center gap-1">
-                  <span>⚡ AI 建议：</span>
-                  <span>候选人「周以宁」初面已超 4 小时，建议优先发起催办以达成 24h SLA。</span>
-                </span>
+        <section className="panel rounded-[6px] p-4.5 bg-paper flex flex-col gap-3.5 shadow-2xs border border-line">
+          {/* 上半部分：标题与操作动作 */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-line/70 pb-3.5">
+            <div className="flex items-center gap-3">
+              <span className="w-7 h-7 rounded-[3px] bg-amber text-base font-serif font-black flex items-center justify-center text-[13px] shadow-2xs">
+                知
+              </span>
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h1 className="font-serif text-[17px] font-bold text-ink tracking-tight">
+                    知马 · 招聘总览与态势看板
+                  </h1>
+                  <span className="text-[11px] px-2 py-0.5 rounded-[3px] bg-[#faf8f3] text-ink/65 border border-line font-mono">
+                    2025 招聘季 · 第 11 周
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[3px] text-[11px] font-medium bg-[#e1edf5] text-[#2f6f9a]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#2f6f9a]" />
+                    AI 协同已在线
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => {
-                  toast('✦ AI 已为您自动重新整理生成今日招聘战略简报')
-                }}
-                className="h-8 px-3 text-[12px] font-medium bg-white/10 hover:bg-white/15 text-paper border border-white/15 rounded-[4px] transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
-              >
-                <span>✦ 生成今日简报</span>
-              </button>
-              <button
-                onClick={() => go('talent')}
-                className="h-8 px-3.5 text-[12px] font-semibold bg-amber text-base hover:brightness-105 rounded-[4px] shadow-sm transition-all cursor-pointer"
-              >
+            <div className="flex items-center gap-2.5 shrink-0">
+              <Btn onClick={() => toast('✦ 已导出今日招聘决策简报')}>
+                ✦ 导出简报
+              </Btn>
+              <Btn primary onClick={() => go('talent')}>
                 人才库作业 →
-              </button>
+              </Btn>
             </div>
           </div>
-        </div>
+
+          {/* 下半部分：三列工整的晨间纪要条目 (纸本分栏排版) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="p-3 bg-[#faf8f3] border border-line/80 rounded-[4px] flex items-start gap-2.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber mt-1.5 shrink-0" />
+              <div>
+                <div className="text-[11px] font-semibold text-ink/50 uppercase tracking-wide">在招与编制</div>
+                <div className="text-[12.5px] font-medium text-ink mt-0.5">
+                  在招核心岗位 <strong>14</strong> 个，重点攻坚「后端架构师」与「高级前端」
+                </div>
+                <div className="text-[11px] text-ink/45 mt-0.5 font-mono">HC 达成度 78.5% · 离季度目标差 6 人</div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-[#faf8f3] border border-line/80 rounded-[4px] flex items-start gap-2.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#c0604f] mt-1.5 shrink-0" />
+              <div>
+                <div className="text-[11px] font-semibold text-[#c0604f] uppercase tracking-wide">待办与预警</div>
+                <div className="text-[12.5px] font-medium text-ink mt-0.5">
+                  候选人「周以宁」初面已超 4h SLA，等待专业面评
+                </div>
+                <div className="text-[11px] text-ink/45 mt-0.5 font-mono">已停留 4 小时 · 建议优先催办评委</div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-[#faf8f3] border border-line/80 rounded-[4px] flex items-start gap-2.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#3f7a3a] mt-1.5 shrink-0" />
+              <div>
+                <div className="text-[11px] font-semibold text-[#3f7a3a] uppercase tracking-wide">高意向突破</div>
+                <div className="text-[12.5px] font-medium text-ink mt-0.5">
+                  数据科学家「许星河」(匹配度 98) 终面通过
+                </div>
+                <div className="text-[11px] text-ink/45 mt-0.5 font-mono">P7 职级带宽已确认 · 正在审批流</div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
       {/* 核心指标仪表舱 (6 个卡片，带平滑面积图与微渐变) */}
@@ -370,8 +382,8 @@ export default function Dashboard({ navTo }: DashboardProps) {
             </div>
 
             <div className="p-3.5 space-y-3">
-              {/* 实时进行中的高光卡片 */}
-              <div className="p-3 rounded-[5px] border border-amber bg-gradient-to-br from-[#fcf9f0] to-[#f9f5e9] shadow-xs relative overflow-hidden">
+              {/* 实时进行中的高光卡片 (纯净纸质底色，无渐变) */}
+              <div className="p-3 rounded-[5px] border border-amber/70 bg-[#fcf9f0] shadow-2xs relative overflow-hidden">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber text-base font-bold flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-base animate-ping" />
