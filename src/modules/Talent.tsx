@@ -180,14 +180,21 @@ export default function Talent() {
             </div>
           )}
           <div className="flex-1 overflow-auto">
-            <table className="w-full border-collapse text-[12px]">
+            <table className="w-full min-w-[1080px] border-collapse text-[12px]">
               <thead><tr>
-                <Th w="36px"><input type="checkbox" className="accent-[#d7a62a] w-3.5 h-3.5 rounded" checked={checked.length === shown.length && shown.length > 0} onChange={e => setChecked(e.target.checked ? shown.map(c => c.id) : [])} /></Th>
-                <Th w="150px">候选人</Th><Th>应聘岗位</Th><Th w="54px">工作年限</Th><Th w="72px">学历</Th><Th w="46px">城市</Th><Th w="46px">来源</Th>
-                <Th w="68px">阶段</Th><Th w="52px">能力</Th>
-                <Th w="80px" r><button onClick={() => setSort('match')} className={sort === 'match' ? 'text-ink' : ''}>匹配度 {sort === 'match' && '↓'}</button></Th>
-                <Th w="52px" r>面评</Th><Th w="52px">负责人</Th>
-                <Th w="70px" r><button onClick={() => setSort('days')} className={sort === 'days' ? 'text-ink' : ''}>更新 {sort === 'days' && '↓'}</button></Th>
+                <Th w="38px"><input type="checkbox" className="accent-[#d7a62a] w-3.5 h-3.5 rounded" checked={checked.length === shown.length && shown.length > 0} onChange={e => setChecked(e.target.checked ? shown.map(c => c.id) : [])} /></Th>
+                <Th w="185px">候选人</Th>
+                <Th w="160px">应聘岗位</Th>
+                <Th w="72px">工作年限</Th>
+                <Th w="120px">学历与院校</Th>
+                <Th w="56px">城市</Th>
+                <Th w="56px">来源</Th>
+                <Th w="78px">阶段</Th>
+                <Th w="66px">能力</Th>
+                <Th w="96px" r><button onClick={() => setSort('match')} className={sort === 'match' ? 'text-ink' : ''}>匹配度 {sort === 'match' && '↓'}</button></Th>
+                <Th w="56px" r>面评</Th>
+                <Th w="64px">负责人</Th>
+                <Th w="76px" r><button onClick={() => setSort('days')} className={sort === 'days' ? 'text-ink' : ''}>更新 {sort === 'days' && '↓'}</button></Th>
               </tr></thead>
               <tbody>{shown.map(c => {
                 const on = c.id === sel; const ck = checked.includes(c.id)
@@ -195,17 +202,31 @@ export default function Talent() {
                 return (
                   <tr key={c.id} onClick={() => { setSel(c.id); setTab(0) }} className={`h-[50px] border-b border-[#ece8de] cursor-pointer transition-all duration-150 ${on ? 'bg-amber-soft/80 shadow-xs' : ck ? 'bg-[#faf5e6]' : 'hover:bg-[#f9f7f1]'} ${c.stage === '淘汰' ? 'text-ink/45 opacity-75' : ''}`}>
                     <td className="relative px-3">{on && <span className="absolute left-0 inset-y-0 w-[3.5px] bg-amber shadow-[1px_0_4px_rgba(215,166,42,0.4)]" />}<input type="checkbox" className="accent-[#d7a62a] w-3.5 h-3.5 rounded" checked={ck} onClick={e => e.stopPropagation()} onChange={() => setChecked(x => ck ? x.filter(i => i !== c.id) : [...x, c.id])} /></td>
-                    <td className="px-3"><div className="flex items-center gap-1.5"><span className="font-semibold text-[13px] text-ink">{c.name}</span><span className="text-[11px] text-ink/45">{c.gender}·{c.age}</span>{c.flag && <span className="text-[10px] px-1.5 py-0.5 rounded-[2px] text-[#a8483a] bg-[#f6e3df] font-medium">{c.flag}</span>}</div><div className="font-mono text-[10.5px] text-ink/40 mt-0.5">{c.id}</div></td>
-                    <td className="px-3"><div className="truncate text-[12.5px] font-medium text-ink/90">{c.role}</div><div className="text-[11px] text-ink/45 mt-0.5">{c.dept}</div></td>
-                    <td className="px-3 tnum text-[12.5px] font-medium">{c.years} 年</td>
-                    <td className="px-3"><div className="text-[12px] font-medium text-ink">{c.edu}</div><div className="text-[11px] text-ink/45 truncate max-w-[80px] mt-0.5">{c.school}</div></td>
-                    <td className="px-3 text-[12px] text-ink/80">{c.city}</td><td className="px-3 text-[12px] text-ink/70">{c.source}</td>
-                    <td className="px-3"><Tag s={c.stage} /></td>
+                    <td className="px-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span className="font-semibold text-[13px] text-ink whitespace-nowrap shrink-0">{c.name}</span>
+                        <span className="text-[11px] text-ink/45 whitespace-nowrap shrink-0">{c.gender}·{c.age}</span>
+                        {c.flag && <span className="text-[10px] px-1.5 py-0.5 rounded-[2px] text-[#a8483a] bg-[#f6e3df] font-medium whitespace-nowrap shrink-0">{c.flag}</span>}
+                      </div>
+                      <div className="font-mono text-[10.5px] text-ink/40 mt-0.5">{c.id}</div>
+                    </td>
+                    <td className="px-3">
+                      <div className="truncate text-[12.5px] font-medium text-ink/90">{c.role}</div>
+                      <div className="text-[11px] text-ink/45 mt-0.5">{c.dept}</div>
+                    </td>
+                    <td className="px-3 tnum text-[12.5px] font-medium whitespace-nowrap">{c.years} 年</td>
+                    <td className="px-3">
+                      <div className="text-[12px] font-medium text-ink whitespace-nowrap">{c.edu}</div>
+                      <div className="text-[11px] text-ink/45 truncate max-w-[110px] mt-0.5" title={c.school}>{c.school}</div>
+                    </td>
+                    <td className="px-3 text-[12px] text-ink/80 whitespace-nowrap">{c.city}</td>
+                    <td className="px-3 text-[12px] text-ink/70 whitespace-nowrap">{c.source}</td>
+                    <td className="px-3 whitespace-nowrap"><Tag s={c.stage} /></td>
                     <td className="px-3"><Finger v={c.skills} /></td>
                     <td className="px-3"><MatchBar v={c.match} /></td>
-                    <td className="px-3 text-right tnum">{a ? <span className={`text-[12.5px] font-semibold ${a >= 4 ? 'text-[#3f7a3a]' : a < 3 ? 'text-[#a8483a]' : 'text-ink'}`}>{a.toFixed(1)}</span> : <span className="text-ink/30">—</span>}</td>
-                    <td className="px-3 text-[12px] text-ink/70">{c.owner}</td>
-                    <td className={`px-3 text-right tnum text-[11.5px] ${c.days > 5 ? 'text-[#a8483a] font-semibold' : 'text-ink/45'}`}>{c.updated}</td>
+                    <td className="px-3 text-right tnum whitespace-nowrap">{a ? <span className={`text-[12.5px] font-semibold ${a >= 4 ? 'text-[#3f7a3a]' : a < 3 ? 'text-[#a8483a]' : 'text-ink'}`}>{a.toFixed(1)}</span> : <span className="text-ink/30">—</span>}</td>
+                    <td className="px-3 text-[12px] text-ink/70 whitespace-nowrap">{c.owner}</td>
+                    <td className={`px-3 text-right tnum text-[11.5px] whitespace-nowrap ${c.days > 5 ? 'text-[#a8483a] font-semibold' : 'text-ink/45'}`}>{c.updated}</td>
                   </tr>
                 )
               })}</tbody>
@@ -219,7 +240,7 @@ export default function Talent() {
         </section>
 
         {/* detail */}
-        <aside key={cur.id} className="panel-elevated rise rounded-[6px] w-[500px] shrink-0 flex flex-col">
+        <aside key={cur.id} className="panel-elevated rise rounded-[6px] w-[420px] lg:w-[450px] xl:w-[480px] shrink-0 flex flex-col">
           <div className="px-5 pt-4 pb-3.5 border-b border-line bg-paper">
             <div className="flex gap-4 items-start">
               <div className="flex-1 min-w-0">
