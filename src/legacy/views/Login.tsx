@@ -1,21 +1,47 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import { Btn } from '../components/ui'
 import LoginShowcase from './LoginShowcase'
 
-export default function Login() {
+type Mode = 'feishu' | 'password'
+
+// 伪二维码：固定种子生成的点阵 + 三个定位点
+function QR({ dim }: { dim: boolean }) {
+  const cells = useMemo(() => {
+    let x = 7
+    const out: [number, number][] = []
+    for (let r = 0; r < 25; r++) for (let c = 0; c < 25; c++) {
+      x = (x * 9301 + 49297) % 233280
+      const finder = (r < 8 && c < 8) || (r < 8 && c > 16) || (r > 16 && c < 8)
+      if (!finder && x / 233280 > 0.52) out.push([r, c])
+    }
+    return out
+  }, [])
+  const finder = (x: number, y: number) => (
+    <g key={`${x}-${y}`}>
+      <rect x={x} y={y} width={7} height={7} fill="currentColor" />
+      <rect x={x + 1} y={y + 1} width={5} height={5} fill="white" />
+      <rect x={x + 2} y={y + 2} width={3} height={3} fill="currentColor" />
+    </g>
+  )
+  return (
+    <svg viewBox="-1 -1 27 27" className={`h-full w-full text-slate-900 transition-opacity ${dim ? 'opacity-10' : ''}`} shapeRendering="crispEdges" aria-label="飞书登录二维码">
+      {cells.map(([r, c]) => <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="currentColor" />)}
+      {finder(0, 0)}{finder(18, 0)}{finder(0, 18)}
+    </svg>
+  )
+}
+
+export default function Login({ onLogin }: { onLogin?: (name: string) => void }) {
+  const [mode, setMode] = useState<Mode>('feishu')
+  const [qr, setQr] = useState<'wait' | 'scanned' | 'expired'>('wait')
+  const [account, setAccount] = useState('wanglei@facetry.cn')
+  const [pwd, setPwd] = useState('')
+  const [show, setShow] = useState(false)
   const [err, setErr] = useState('')
-  const [feishuBusy, setFeishuBusy] = useState(false)
-  const [feishuErr, setFeishuErr] = useState('')
-  // 演示模式：后端开启 ENABLE_DEMO_LOGIN 时，页脚出现一个不显眼的入口（仅供内部预览）
-  const [demo, setDemo] = useState(false)
-  const [demoBusy, setDemoBusy] = useState(false)
+  const [busy, setBusy] = useState(false)
   // 登录卡平时藏在简历纸背后，只露出一枚书签；点击后从纸后抽出
   const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    api.status().then((s) => setDemo(!!s.demo)).catch(() => {})
-  }, [])
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
@@ -23,46 +49,119 @@ export default function Login() {
     return () => window.removeEventListener('keydown', esc)
   }, [])
 
-  // 飞书回调失败时后端重定向回 /?login_error=...：显示并从地址栏清除
+  // 二维码 60 秒过期
   useEffect(() => {
-    const e = new URLSearchParams(location.search).get('login_error')
-    if (e) {
-      setErr(e)
-      history.replaceState(null, '', location.pathname)
-    }
-  }, [])
+    if (mode !== 'feishu' || qr !== 'wait') return
+    const t = setTimeout(() => setQr('expired'), 60000)
+    return () => clearTimeout(t)
+  }, [mode, qr])
 
-  // 飞书 OAuth：先确认后端已配置，再整页跳转授权
-  const feishuLogin = async () => {
-    setFeishuBusy(true)
-    setFeishuErr('')
+  // 完成登录并写入后端会话
+  const finish = async (userName: string = '王磊') => {
+    setBusy(true)
     try {
-      const s = await api.status()
-      if (s.feishu) {
-        window.location.href = 'api/auth/feishu'
-        return
-      }
-      setFeishuErr('飞书登录未配置，请联系管理员')
-    } catch (e) {
-      setFeishuErr(e instanceof Error ? e.message : '网络异常，请稍后重试')
+      await api.demoLogin(userName)
+    } catch {
+      // 降级模式：本地或静态演示直接进入
     }
-    setFeishuBusy(false)
+    if (onLogin) {
+      onLogin(userName)
+    } else {
+      location.reload()
+    }
   }
+
+  // 模拟扫码
+  const scan = () => {
+    setQr('scanned')
+    setTimeout(() => void finish('王磊'), 1200)
+  }
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!account.trim()) return setErr('请输入企业邮箱或工号')
+    if (pwd.length < 6) return setErr('密码至少 6 位')
+    setErr('')
+    const displayName = account.split('@')[0] || '演示用户'
+    void finish(displayName)
+  }
+
+  const field = 'h-11 w-full rounded-lg border border-slate-200 bg-white px-3.5 text-[15px] outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
 
   const body = (
     <>
-          <h2 className="text-xl font-semibold text-slate-900">登录</h2>
-          <p className="mt-1 text-sm text-slate-500">使用飞书账号登录简历评审工作台</p>
-          {err && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</p>}
+      <h2 className="text-xl font-semibold text-slate-900">登录</h2>
+      <p className="mt-1 text-sm text-slate-500">使用公司账号登录面试官工作台</p>
 
-          <div className="mt-6">
-            <p className="text-center text-sm leading-6 text-slate-600">使用<span className="font-medium text-slate-900">飞书账号</span>授权登录，<br />点击按钮跳转飞书确认即可</p>
-            {feishuErr && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{feishuErr}</p>}
-            <Btn className="mt-5 w-full justify-center" disabled={feishuBusy} onClick={() => void feishuLogin()}>
-              <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden><path d="M3 5.5 10.5 3l6.5 6-6.5 8L3 14.5z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
-              {feishuBusy ? '正在跳转飞书…' : '使用飞书登录'}
-            </Btn>
+      <div className="mt-6 grid grid-cols-2 rounded-lg bg-slate-100 p-1 text-sm">
+        {([['feishu', '飞书登录'], ['password', '账号密码']] as const).map(([k, t]) => (
+          <button
+            key={k}
+            onClick={() => { setMode(k); setErr('') }}
+            className={`h-9 cursor-pointer rounded-md transition ${mode === k ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'feishu' ? (
+        <div className="mt-6">
+          <div className="relative mx-auto h-44 w-44 rounded-xl border border-slate-200 p-4">
+            <QR dim={qr !== 'wait'} />
+            {qr === 'scanned' && (
+              <div className="absolute inset-0 grid place-items-center text-center">
+                <div>
+                  <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-emerald-600 text-lg text-white">✓</div>
+                  <div className="mt-3 text-sm font-medium text-slate-900">扫码成功</div>
+                  <div className="mt-0.5 text-xs text-slate-500">{busy ? '正在进入工作台…' : '请在飞书中确认登录'}</div>
+                </div>
+              </div>
+            )}
+            {qr === 'expired' && (
+              <button onClick={() => setQr('wait')} className="absolute inset-0 grid cursor-pointer place-items-center text-center">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">二维码已过期</div>
+                  <div className="mt-1 text-sm text-blue-600">点击刷新</div>
+                </div>
+              </button>
+            )}
           </div>
+          <p className="mt-5 text-center text-sm text-slate-600">打开<span className="font-medium text-slate-900">飞书 App</span>，扫一扫登录</p>
+          <div className="my-6 flex items-center gap-3 text-xs text-slate-400">
+            <span className="h-px flex-1 bg-slate-200" />或<span className="h-px flex-1 bg-slate-200" />
+          </div>
+          <Btn variant="ghost" className="w-full justify-center" onClick={() => void finish('王磊')}>
+            <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden><path d="M3 5.5 10.5 3l6.5 6-6.5 8L3 14.5z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+            {busy ? '正在唤起飞书…' : '使用飞书客户端登录'}
+          </Btn>
+          <button
+            onClick={scan}
+            disabled={qr !== 'wait' || busy}
+            className="mt-3 w-full cursor-pointer text-center text-xs text-slate-400 hover:text-slate-600 disabled:cursor-default"
+          >
+            演示：模拟扫码
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="mt-8 space-y-4" noValidate>
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">企业邮箱 / 工号</span>
+            <input value={account} onChange={(e) => setAccount(e.target.value)} autoComplete="username" className={`mt-1.5 ${field}`} placeholder="name@company.com" />
+          </label>
+          <label className="block">
+            <span className="flex justify-between text-sm"><span className="font-medium text-slate-700">密码</span><a href="#" onClick={(e) => e.preventDefault()} className="text-slate-500 hover:text-slate-900">忘记密码</a></span>
+            <span className="relative mt-1.5 block">
+              <input value={pwd} onChange={(e) => setPwd(e.target.value)} type={show ? 'text' : 'password'} autoComplete="current-password" autoFocus className={`${field} pr-14`} placeholder="至少 6 位" />
+              <button type="button" onClick={() => setShow(!show)} className="absolute inset-y-0 right-0 cursor-pointer px-3.5 text-sm text-slate-400 hover:text-slate-700">{show ? '隐藏' : '显示'}</button>
+            </span>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" defaultChecked className="h-4 w-4 accent-blue-600" />7 天内免登录</label>
+          {err && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</p>}
+          <button type="submit" disabled={busy} className="h-11 w-full cursor-pointer rounded-lg bg-blue-600 text-[15px] font-medium text-white transition hover:bg-blue-700 disabled:bg-blue-400">{busy ? '登录中…' : '登录'}</button>
+          <p className="text-center text-xs text-slate-400">演示环境：任意 6 位以上密码即可登录</p>
+        </form>
+      )}
     </>
   )
 
@@ -71,7 +170,7 @@ export default function Login() {
       <header className="relative z-30 flex h-16 shrink-0 items-center gap-2">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#fffdf9] p-0.5"><img src="logo.png" alt="知马" className="h-full w-full object-contain" /></span>
         <span className="text-lg font-semibold">知马</span>
-        <span className="ml-1 rounded px-1.5 py-0.5 text-xs text-slate-300 ring-1 ring-white/15">简历评审工作台</span>
+        <span className="ml-1 rounded px-1.5 py-0.5 text-xs text-slate-300 ring-1 ring-white/15">人才招聘工作台</span>
         <button onClick={() => setOpen(!open)} className="ml-auto hidden h-9 cursor-pointer rounded-lg bg-amber-400 px-5 text-sm font-semibold text-[#1d2939] transition hover:bg-amber-300 md:block">{open ? '收起登录' : '登录'}</button>
       </header>
 
@@ -88,16 +187,16 @@ export default function Login() {
         <div className="relative mt-10 w-[640px] origin-top scale-[0.58] lg:scale-[0.84] xl:scale-100">
           {/* 今日面试：压在纸下的一角 */}
           <div className={`absolute -left-44 top-10 hidden w-60 -rotate-[5deg] rounded-md bg-[#f3efe6] p-4 pr-10 text-slate-700 shadow-[0_20px_40px_-18px_rgba(0,0,0,0.6)] transition-all duration-500 xl:block ${open ? '-translate-x-[200px] opacity-0' : ''}`} aria-hidden>
-            <div className="text-xs text-slate-500">最近评审 · 10 月 8 日</div>
-            {[['潘鑫宇', 'AI-agent 开发'], ['曾浩男', 'AI 管培生']].map(([n, r]) => (
-              <div key={n} className="mt-2.5 flex items-center gap-2.5 text-[13px]"><span className="font-medium">{n}</span><span className="text-xs text-slate-400">{r}</span></div>
+            <div className="text-xs text-slate-500">今日面试 · 10 月 15 日</div>
+            {[['14:00', '刘一帆', '临床监查员（CRA）'], ['16:30', '何思雨', '算法专家']].map(([t, n, r]) => (
+              <div key={n} className="mt-2.5 flex items-center gap-2.5 text-[13px]"><span className="tabular-nums text-slate-400">{t}</span><span className="font-medium">{n}</span><span className="text-xs text-slate-400">{r}</span></div>
             ))}
           </div>
 
           {/* 登录卡：在纸后，closed 时只露出右侧书签 */}
           <div
             onClick={(e) => { e.stopPropagation(); setOpen(true) }}
-            className={`absolute right-0 top-12 z-0 w-[300px] rounded-xl bg-white px-7 pb-9 pt-10 text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.1),0_30px_60px_-20px_rgba(0,0,0,0.55)] transition-all duration-500 ease-[cubic-bezier(.2,.8,.2,1)] ${open ? 'z-20 translate-x-[140px] rotate-[0.6deg]' : 'group cursor-pointer translate-x-0 hover:translate-x-[16px]'}`}
+            className={`absolute right-0 top-12 z-0 w-[360px] rounded-xl bg-white px-8 pb-8 pt-8 text-slate-900 shadow-[0_2px_4px_rgba(0,0,0,0.1),0_30px_60px_-20px_rgba(0,0,0,0.55)] transition-all duration-500 ease-[cubic-bezier(.2,.8,.2,1)] ${open ? 'z-20 translate-x-[180px] rotate-[0.6deg]' : 'group cursor-pointer translate-x-0 hover:translate-x-[16px]'}`}
           >
             <span className="absolute inset-x-0 top-0 h-1 rounded-t-xl bg-amber-400" />
             {/* 书签：从纸后伸出的登录入口 */}
@@ -131,24 +230,7 @@ export default function Login() {
 
       <footer className="relative flex shrink-0 flex-col gap-1 py-5 text-xs text-slate-500 sm:flex-row sm:justify-between">
         <span>仅限企业内部使用 · 候选人数据按公司信息安全规范存储</span>
-        <span className="flex items-center gap-3">
-          {demo && (
-            <button
-              disabled={demoBusy}
-              onClick={() => {
-                setDemoBusy(true)
-                void api
-                  .demoLogin('演示用户')
-                  .then(() => location.reload())
-                  .catch(() => setDemoBusy(false))
-              }}
-              className="cursor-pointer text-slate-500 underline decoration-slate-600 underline-offset-4 transition-colors hover:text-slate-300"
-            >
-              {demoBusy ? '正在进入…' : '演示模式进入'}
-            </button>
-          )}
-          <span>登录即表示同意《内部系统使用规范》与《候选人信息保护协议》</span>
-        </span>
+        <span>登录即表示同意《内部系统使用规范》与《候选人信息保护协议》</span>
       </footer>
     </div>
   )

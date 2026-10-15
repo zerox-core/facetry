@@ -86,7 +86,7 @@ export function App() {
         <button onClick={checkAuth}>重试连接</button>
       </div>
     );
-  if (!auth?.user) return <Login />;
+  if (!auth?.user) return <Login onLogin={checkAuth} />;
   return (
     <Workspace
       auth={auth}
