@@ -29,7 +29,7 @@ def match_summary(db: Session, m: MatchRow) -> dict:
 def candidate_row_json(db: Session, c: CandidateRow) -> dict:
     matches = db.scalars(select(MatchRow).where(MatchRow.candidateId == c.id)
                          .order_by(MatchRow.updatedAt.desc())).all()
-    return {**candidate_json(c), "matches": [match_summary(db, m) for m in matches[:2]]}
+    return {**candidate_json(c), "matches": [match_summary(db, m) for m in matches]}
 
 
 def match_json(db: Session, m: MatchRow) -> dict:

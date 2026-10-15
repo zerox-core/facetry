@@ -6,6 +6,7 @@ RUN npm ci --registry=https://registry.npmmirror.com
 COPY index.html vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json ./
 COPY src ./src
 COPY public ./public
+COPY frontend-v2 ./frontend-v2
 RUN npm run build
 
 # ---------- Python 后端依赖 ----------

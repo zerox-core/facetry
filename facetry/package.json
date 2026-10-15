@@ -4,13 +4,18 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "server": "node server/server.js",
-    "start": "node server/server.js"
+    "dev": "vite --config frontend-v2/vite.config.mjs",
+    "build": "vite build --config frontend-v2/vite.config.mjs",
+    "preview": "vite preview --config frontend-v2/vite.config.mjs",
+    "dev:legacy": "vite",
+    "build:legacy": "tsc -b && vite build",
+    "test:v2": "node --test frontend-v2/tests/*.test.mjs",
+    "server": "cd backend && python -m app.main",
+    "start": "npm run server",
+    "server:legacy": "node server/server.js"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "pdfjs-dist": "^5.4.296",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

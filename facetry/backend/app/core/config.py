@@ -8,7 +8,12 @@ DATA_DIR = BACKEND_DIR / "data"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=str(BACKEND_DIR / ".env"), extra="ignore")
+    # Reuse the existing Node service's LLM/Feishu environment during frontend migration.
+    # Python-specific settings take precedence; process environment still overrides both.
+    model_config = SettingsConfigDict(
+        env_file=(str(BACKEND_DIR.parent / "server" / ".env"), str(BACKEND_DIR / ".env")),
+        extra="ignore",
+    )
 
     # ---- 服务 ----
     app_host: str = "0.0.0.0"
